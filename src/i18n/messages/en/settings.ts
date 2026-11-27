@@ -2,6 +2,12 @@
 export default {
   title: "Settings",
   appearance: {
+    background: "Library background",
+    backgroundOwn: "Your own background pictures are showing instead. Remove them to use these.",
+    backgroundHint: "Official GTA VI artwork from Rockstar Games.",
+    shuffle: "Shuffle on each launch",
+    shuffleHint: "Picks one of these at random every time VILauncher starts.",
+    shuffleLabel: "Shuffle the library background on each launch",
     title: "Appearance",
     description: "Dark is the default. Light and calm are flat, with no glow. The look is remembered on this PC.",
     look: "Look",

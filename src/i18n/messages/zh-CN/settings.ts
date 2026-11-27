@@ -4,6 +4,12 @@ import type { Translation } from "../../types"
 export default {
   title: "设置",
   appearance: {
+    background: "项目库背景",
+    backgroundOwn: "目前显示的是你自己的背景图片。移除它们才能使用这些图片。",
+    backgroundHint: "Rockstar Games 官方 GTA VI 美术图。",
+    shuffle: "每次启动时随机切换",
+    shuffleHint: "每次 VILauncher 启动时随机挑选其中一张。",
+    shuffleLabel: "每次启动时随机切换项目库背景",
     title: "外观",
     description: "默认为深色。浅色和柔和是扁平风格，没有光晕。主题会保存在这台电脑上。",
     look: "主题",

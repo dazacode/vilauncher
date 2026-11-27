@@ -2,12 +2,54 @@ import type en from "../en/library"
 import type { Translation } from "../../types"
 
 export default {
+  identity: {
+    build: "构建 {commit}",
+    installed: "已安装",
+    notBuilt: "尚未构建",
+  },
+  status: {
+    notInstalled: "未安装",
+    notInstalledGit: "未安装 · 下载构建版本即可开始游戏",
+    update: "有可用的更新 · <link>玩当前这个版本</link>",
+    lastPlayed: "已安装 · 上次游玩：{time}",
+    ready: "已安装 · 可以开始游戏",
+    playing: "游戏中",
+    nothing: "已构建 · 这个工作区没有可运行的程序",
+  },
+  downloads: {
+    to: "下载到",
+    folder: "下载文件夹：{path}",
+    wait: "请等当前的任务完成",
+    pickTitle: "构建版本的下载位置",
+    change: "更改",
+    have: "已经有了吗？",
+  },
+  workshop: {
+    soon: "即将推出",
+    title: "工坊",
+    body: "社区为构建版本制作的补丁、工具和视觉包会显示在这里，一键即可安装。以下是即将推出内容的示例。",
+    example: "示例",
+    items: {
+      shaders: "Vice City 着色器",
+      handling: "Leonida 操控包",
+      overlay: "RAGE9 调试叠加层",
+      timecycle: "日落时间循环",
+    },
+    tags: {
+      shaders: "着色器",
+      handling: "操控",
+      tools: "工具",
+      visuals: "视觉",
+    },
+  },
   listError: {
+    source: "viportlive.com · 项目列表",
     title: "未能获取项目列表",
     body: "VILauncher 会从 viportlive.com 读取社区构建版本的列表。请检查网络连接，然后重试。",
   },
   loading: "正在加载项目库",
   hero: {
+    verifiedBy: "已通过 VIPortLive 验证",
     playtime: "游玩时间",
     personalFps: "个人平均帧率",
     resetPersonalFps: "重置个人帧率",
@@ -35,6 +77,7 @@ export default {
     removed: "已从你的项目库移除",
   },
   action: {
+    download: "下载",
     waiting: "等待中",
     setUp: "完成设置",
     install: "安装",

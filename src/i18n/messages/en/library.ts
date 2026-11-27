@@ -1,12 +1,58 @@
 // The library: project hero, tabs and actions (src/features/library).
 export default {
+  /** The line over the project's name (library-view.tsx). */
+  identity: {
+    build: "build {commit}",
+    installed: "installed",
+    notBuilt: "not built yet",
+  },
+  /** The status line under the main button (library-view.tsx). */
+  status: {
+    notInstalled: "Not installed",
+    notInstalledGit: "Not installed · download the build to play",
+    update: "Update available · <link>play this version</link>",
+    lastPlayed: "Installed · last played {time}",
+    ready: "Installed · ready to play",
+    playing: "Playing",
+    nothing: "Built · this workspace has no program to run",
+  },
+  /** Where builds download to (library-view.tsx). */
+  downloads: {
+    to: "Downloads to",
+    folder: "Download folder: {path}",
+    wait: "Wait for the current job to finish",
+    pickTitle: "Where builds are downloaded",
+    change: "Change",
+    have: "Already have it?",
+  },
+  /** The Workshop page, not wired to a source yet (workshop-view.tsx). */
+  workshop: {
+    soon: "Coming soon",
+    title: "Workshop",
+    body: "Community patches, tools and visual packs for your builds will show here, ready to install in one click. These are examples of what is coming.",
+    example: "Example",
+    items: {
+      shaders: "Vice City shaders",
+      handling: "Leonida handling pack",
+      overlay: "RAGE9 debug overlay",
+      timecycle: "Sunset timecycle",
+    },
+    tags: {
+      shaders: "Shaders",
+      handling: "Handling",
+      tools: "Tools",
+      visuals: "Visuals",
+    },
+  },
   /** The list didn't load (library-view.tsx). */
   listError: {
+    source: "viportlive.com · project list",
     title: "The project list didn't arrive",
     body: "VILauncher reads the list of community builds from viportlive.com. Check your connection, then try again.",
   },
   loading: "Loading the library",
   hero: {
+    verifiedBy: "Verified by VIPortLive",
     playtime: "Playtime",
     personalFps: "Personal FPS",
     resetPersonalFps: "Reset personal FPS",
@@ -36,6 +82,7 @@ export default {
   },
   /** The main button (primary-action.tsx). */
   action: {
+    download: "Download",
     waiting: "Waiting",
     setUp: "Set up",
     install: "Install",

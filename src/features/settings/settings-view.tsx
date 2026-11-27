@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch"
 import { GraphicsGroups } from "@/features/library/graphics-tab"
 import { ControllerKeysGroup } from "@/features/settings/controller-keys"
 import { LanguageSelect } from "@/features/shared/language-select"
+import { BackdropPicker } from "./backdrop-picker"
 import { ResponsibilityDialog } from "@/features/shared/responsibility"
 import { formatBytes, formatList, Trans, useT } from "@/i18n"
 import { openUrl, pickFile, pickFolder } from "@/lib/api"
@@ -39,7 +40,7 @@ export function SettingsView() {
   const u = snap.updater
   return (
     <div className="h-full overflow-y-auto">
-      <div data-tauri-drag-region="deep" className="drag h-12" />
+      <div data-tauri-drag-region="deep" className="drag h-6" />
       <div className="mx-auto max-w-[760px] space-y-10 px-10 pb-16">
         <header>
           <h1 className="font-display text-page font-bold tracking-[-0.02em] text-fg">{t("settings.title")}</h1>
@@ -51,6 +52,7 @@ export function SettingsView() {
             <Segmented label={t("settings.appearance.look")} size="sm" value={theme} options={looks} onChange={(v) => setTheme(v as Theme)} />
           </Row>
           <LanguageRow />
+          <BackdropPicker />
         </Group>
 
         <Group title={t("settings.privacy.title")}>

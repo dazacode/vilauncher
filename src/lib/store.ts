@@ -4,7 +4,7 @@ import { setLocale, useT } from "@/i18n"
 import { act as send, getBackend } from "./api"
 import type { Action, PlayChoice, Project, Snapshot } from "./types"
 
-export type View = "library" | "settings"
+export type View = "library" | "workshop" | "settings"
 export type ProjectTab = "overview" | "graphics" | "launch" | "notes" | "activity"
 
 export type Dialog =
@@ -16,14 +16,19 @@ export type Dialog =
   | { kind: "notice" }
   | null
 
+/** Whether the library panel is folded to its icons; remembered on this PC. */
+const COLLAPSED = "vilauncher.sidebar-collapsed"
+
 interface State {
   snap: Snapshot | null
   view: View
+  collapsed: boolean
   search: string
   tab: ProjectTab
   screenshot: boolean
   dialog: Dialog
   setView(view: View): void
+  setCollapsed(collapsed: boolean): void
   setSearch(search: string): void
   setTab(tab: ProjectTab): void
   setScreenshot(on: boolean): void
@@ -34,11 +39,16 @@ interface State {
 export const useStore = create<State>((set) => ({
   snap: null,
   view: "library",
+  collapsed: localStorage.getItem(COLLAPSED) === "1",
   search: "",
   tab: "overview",
   screenshot: false,
   dialog: null,
   setView: (view) => set({ view }),
+  setCollapsed: (collapsed) => {
+    localStorage.setItem(COLLAPSED, collapsed ? "1" : "0")
+    set({ collapsed })
+  },
   setSearch: (search) => set({ search }),
   setTab: (tab) => set({ tab }),
   setScreenshot: (screenshot) => set({ screenshot }),

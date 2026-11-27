@@ -10,7 +10,7 @@
 
 A launcher for community game projects, for Windows, macOS and Linux. It lists projects from [VIPortLive](https://viportlive.com), downloads and builds them with Git and Cargo, and starts them with **your own copy of the game files**.
 
-![VILauncher library: recommended builds, filters and a project's overview](assets/screenshots/library.png)
+![VILauncher library: the project list, and the selected build over the GTA VI art with its Play button](assets/screenshots/library.png)
 
 > **No game is included.** VILauncher ships no game files, downloads none, and is not affiliated with Rockstar Games, Take-Two Interactive, or any other publisher. See [LEGAL.md](LEGAL.md).
 
@@ -91,9 +91,9 @@ chmod +x VILauncher_*_amd64.AppImage
 
 ## Screenshots
 
-![A project that is not installed yet, with the Set up button](assets/screenshots/first-setup.png)
+![A build that is not installed yet, with the Download button and the downloads folder](assets/screenshots/first-setup.png)
 
-The screenshots use example data from the browser mock, not a real PC or account.
+The screenshots use example data from the browser mock, not a real PC or account. The GTA VI key art and logo on the library page belong to Rockstar Games and are shown only to identify the game; see [assets/gta6-src](assets/gta6-src/README.md).
 
 ## Requirements
 

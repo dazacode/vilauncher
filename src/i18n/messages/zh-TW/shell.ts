@@ -5,12 +5,17 @@ export default {
   unlocked: "已解鎖新主題，可以在「設定」的「外觀」中找到。",
   notifications: "通知",
   nav: {
+    games: "遊戲",
+    workshop: "工作坊",
     label: "頁面",
     library: "專案庫",
     settings: "設定",
   },
   search: "搜尋專案庫",
   list: {
+    title: "我的專案庫",
+    fold: "收合專案庫",
+    unfold: "展開專案庫",
     label: "專案",
     loadFailed: "無法載入專案清單。",
     noMatch: "沒有符合「{query}」的專案。",
@@ -44,6 +49,9 @@ export default {
     vram: "顯示記憶體（GB）",
   },
   row: {
+    mayNotRun: "在這台電腦上可能無法順暢執行",
+    badgeDown: "已下架",
+    badgeUpdate: "更新",
     takenDown: "已下架 · 在 VIPortLive 上開啟",
     update: "有可用的更新",
     imported: "匯入的建置版本",

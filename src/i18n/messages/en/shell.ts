@@ -5,12 +5,17 @@ export default {
   /** The toasts' region, for screen readers. */
   notifications: "Notifications",
   nav: {
+    games: "Games",
+    workshop: "Workshop",
     label: "Pages",
     library: "Library",
     settings: "Settings",
   },
   search: "Search library",
   list: {
+    title: "My library",
+    fold: "Fold the library",
+    unfold: "Show the library",
     label: "Projects",
     loadFailed: "The project list could not load.",
     noMatch: "No project matches “{query}”.",
@@ -45,6 +50,9 @@ export default {
   },
   /** The second line of a project's row in the sidebar. */
   row: {
+    mayNotRun: "May not run well on this PC",
+    badgeDown: "DOWN",
+    badgeUpdate: "UPDATE",
     takenDown: "Taken down · open on VIPortLive",
     update: "Update available",
     imported: "Imported build",

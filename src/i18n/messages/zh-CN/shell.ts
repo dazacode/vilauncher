@@ -5,12 +5,17 @@ export default {
   unlocked: "已解锁新主题，可以在“设置”的“外观”中找到。",
   notifications: "通知",
   nav: {
+    games: "游戏",
+    workshop: "工坊",
     label: "页面",
     library: "项目库",
     settings: "设置",
   },
   search: "搜索项目库",
   list: {
+    title: "我的项目库",
+    fold: "收起项目库",
+    unfold: "展开项目库",
     label: "项目",
     loadFailed: "无法加载项目列表。",
     noMatch: "没有与“{query}”匹配的项目。",
@@ -44,6 +49,9 @@ export default {
     vram: "显存（GB）",
   },
   row: {
+    mayNotRun: "在这台电脑上可能无法流畅运行",
+    badgeDown: "已下架",
+    badgeUpdate: "更新",
     takenDown: "已下架 · 在 VIPortLive 上打开",
     update: "有可用更新",
     imported: "导入的构建版本",

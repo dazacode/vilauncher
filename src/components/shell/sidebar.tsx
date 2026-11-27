@@ -1,5 +1,4 @@
-import { BadgeCheck, LayoutGrid, Plus, Search, Settings2, SlidersHorizontal } from "lucide-react"
-import { motion } from "motion/react"
+import { AlertTriangle, BadgeCheck, PanelLeftClose, PanelLeftOpen, Plus, Search, SlidersHorizontal } from "lucide-react"
 import { useEffect, useId, useRef, useState } from "react"
 import { Popover } from "radix-ui"
 import { ProjectAvatar } from "@/components/art/project-avatar"
@@ -9,6 +8,7 @@ import { Select } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip } from "@/components/ui/tooltip"
+import { LauncherUpdate } from "@/features/shared/launcher-update"
 import { useT } from "@/i18n"
 import { assess, mainGpu, SORTS, sortLabel, sortProjects, withSpec } from "@/lib/compat"
 import { openUrl } from "@/lib/api"
@@ -17,27 +17,27 @@ import { run, useAlias, useStore } from "@/lib/store"
 import type { Project, Snapshot } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Brand } from "./brand"
-import { LauncherUpdate } from "@/features/shared/launcher-update"
 import { JobCard } from "./job-card"
 import { Bone, SidebarSkeleton } from "./skeleton"
 
 const ROW = "[data-row]"
 
+/** The black library panel: the VIPortLive mark, search, the project list, and the jobs. */
 export function Sidebar() {
   const t = useT()
   const snap = useStore((s) => s.snap)
-  const view = useStore((s) => s.view)
-  const setView = useStore((s) => s.setView)
   const search = useStore((s) => s.search)
   const setSearch = useStore((s) => s.setSearch)
   const open = useStore((s) => s.open)
   const screenshot = useStore((s) => s.screenshot)
+  const collapsed = useStore((s) => s.collapsed)
+  const setCollapsed = useStore((s) => s.setCollapsed)
   const listRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   // The row that takes Tab into the list (roving tabindex): the last one focused, else the selection.
   const [cursor, setCursor] = useState<string | null>(null)
 
-  const query = screenshot ? "" : search.trim().toLowerCase()
+  const query = screenshot || collapsed ? "" : search.trim().toLowerCase()
   const filter = snap?.settings.gpu_filter ?? 0
   const loading = !snap || snap.list.status === "loading"
   const sections = snap ? group(snap, query, filter) : []
@@ -52,12 +52,12 @@ export function Sidebar() {
     let next: number
     if (e.key === "ArrowDown") next = Math.min(i + 1, all.length - 1)
     else if (e.key === "ArrowUp") {
-      if (i === 0) {
+      if (i === 0 && searchRef.current) {
         e.preventDefault()
-        searchRef.current?.focus()
+        searchRef.current.focus()
         return
       }
-      next = i - 1
+      next = Math.max(i - 1, 0)
     } else if (e.key === "Home") next = 0
     else if (e.key === "End") next = all.length - 1
     else return
@@ -79,59 +79,63 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex w-[264px] shrink-0 flex-col border-r border-line bg-sidebar">
-      <div data-tauri-drag-region="deep" className="drag flex h-12 shrink-0 items-center px-4">
-        <Brand />
+    <aside className={cn("relative flex h-full shrink-0 flex-col overflow-hidden bg-black transition-[width] duration-200 ease-out", collapsed ? "w-[64px]" : "w-[300px]")}>
+      <div data-tauri-drag-region="deep" className={cn("drag flex h-[76px] shrink-0 items-end", collapsed ? "pl-[18px]" : "pl-[28px]")}>
+        {collapsed ? <img src="/logo.svg" alt="VILauncher" className="size-[28px] rounded-[7px]" draggable={false} /> : <Brand size="lg" />}
       </div>
-      <nav className="space-y-1 px-2 pt-1" aria-label={t("shell.nav.label")}>
-        <NavItem icon={<LayoutGrid />} label={t("shell.nav.library")} active={view === "library"} onClick={() => setView("library")} />
-        <NavItem icon={<Settings2 />} label={t("shell.nav.settings")} active={view === "settings"} onClick={() => setView("settings")} />
-      </nav>
-      <div className="flex items-center gap-1.5 px-2 pt-4">
-        <label className="relative block min-w-0 flex-1">
-          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-fg-3" />
-          <input
-            ref={searchRef}
-            value={screenshot ? "" : search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={onSearchKey}
-            placeholder={t("shell.search")}
-            aria-label={t("shell.search")}
-            aria-controls="sidebar-projects"
-            spellCheck={false}
-            className="h-8 w-full rounded-md border border-line bg-fill-1 pr-3 pl-9 text-secondary text-fg placeholder:text-fg-3 transition-colors hover:border-line-2 focus-visible:border-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25"
-          />
-        </label>
-        {snap ? <FilterMenu snap={snap} /> : <Bone className="size-8 shrink-0 rounded-md" />}
-      </div>
+
+      {!collapsed && (
+        <div className="shrink-0 px-[28px] pt-[36px]">
+          <div className="flex items-center justify-between gap-2">
+            <h1 className="font-display text-[19px] leading-[22px] font-bold tracking-[-0.01em] text-white">{t("shell.list.title")}</h1>
+            {snap ? <FilterMenu snap={snap} /> : <Bone className="size-8 shrink-0 rounded-md" />}
+          </div>
+          <label className="relative mt-[16px] block">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-white/40" />
+            <input
+              ref={searchRef}
+              value={screenshot ? "" : search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={onSearchKey}
+              placeholder={t("shell.search")}
+              aria-label={t("shell.search")}
+              aria-controls="sidebar-projects"
+              spellCheck={false}
+              className="h-9 w-full rounded-md border border-white/[0.08] bg-white/[0.05] pr-3 pl-9 text-secondary text-white placeholder:text-white/40 transition-colors hover:border-white/[0.14] focus-visible:border-accent/60 focus-visible:ring-2 focus-visible:ring-accent/25 focus-visible:outline-none"
+            />
+          </label>
+        </div>
+      )}
+      {collapsed && <div className="h-[24px] shrink-0" />}
+
       <div
         ref={listRef}
         id="sidebar-projects"
         aria-label={t("shell.list.label")}
         aria-busy={loading || undefined}
         onKeyDown={onListKey}
-        className="min-h-0 flex-1 overflow-y-auto px-2 pb-4"
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-[8px] pb-[24px] [scrollbar-width:none] [mask-image:linear-gradient(to_bottom,#000_calc(100%-40px),transparent)] [&::-webkit-scrollbar]:hidden"
       >
-        {loading && <SidebarSkeleton />}
-        {snap?.list.status === "error" && (
-          <div className="mt-4 rounded-lg border border-line bg-fill-1 p-3">
-            <p className="text-secondary text-fg-2">{screenshot ? t("shell.list.loadFailed") : snap.list.error}</p>
+        {loading && !collapsed && <div className="px-[20px]"><SidebarSkeleton /></div>}
+        {snap?.list.status === "error" && !collapsed && (
+          <div className="mx-[28px] mt-4 rounded-lg border border-white/10 bg-white/[0.04] p-3">
+            <p className="text-secondary text-white/70">{screenshot ? t("shell.list.loadFailed") : snap.list.error}</p>
             <Button size="sm" className="mt-2" onClick={() => void run({ type: "refresh_projects" })}>{t("common.retry")}</Button>
           </div>
         )}
         {snap &&
           sections.map((s) => (
-            <Section key={s.id} title={t(`shell.list.sections.${s.id}`)}>
+            <Section key={s.id} title={t(`shell.list.sections.${s.id}`)} collapsed={collapsed}>
               {s.rows.map((p) => (
                 <li key={p.repo}>
-                  <Row project={p} snap={snap} tabbable={p.repo === active} onFocus={() => setCursor(p.repo)} />
+                  <Row project={p} snap={snap} collapsed={collapsed} tabbable={p.repo === active} onFocus={() => setCursor(p.repo)} />
                 </li>
               ))}
             </Section>
           ))}
-        {snap?.list.status === "ready" && order.length === 0 && (
-          <div className="px-2 pt-6">
-            <p className="text-secondary text-fg-2">{query ? t("shell.list.noMatch", { query: search.trim() }) : t("shell.list.noneForCard")}</p>
+        {snap?.list.status === "ready" && order.length === 0 && !collapsed && (
+          <div className="px-[28px] pt-6">
+            <p className="text-secondary text-white/65">{query ? t("shell.list.noMatch", { query: search.trim() }) : t("shell.list.noneForCard")}</p>
             {query ? (
               <Button variant="ghost" size="sm" className="mt-2 -ml-3" onClick={() => setSearch("")}>{t("shell.list.clearSearch")}</Button>
             ) : filter !== 0 ? (
@@ -140,17 +144,146 @@ export function Sidebar() {
           </div>
         )}
       </div>
-      <div className="space-y-2 border-t border-line px-2 py-3">
-        <LauncherUpdate />
-        <JobCard />
-        {!screenshot && (
-          <Button variant="ghost" size="sm" className="w-full justify-start gap-3 px-2" onClick={() => open({ kind: "import" })}>
-            <Plus className="size-4!" /> {t("shell.list.import")}
-          </Button>
+
+      <div className={cn("shrink-0 border-t border-white/[0.07] pt-[14px] pb-[22px]", collapsed ? "px-[16px]" : "px-[24px]")}>
+        {!collapsed && (
+          <div className="mb-[14px] space-y-2 empty:hidden">
+            <LauncherUpdate />
+            <JobCard />
+          </div>
         )}
+        <div className="flex items-center gap-3">
+          <Tooltip label={collapsed ? t("shell.list.unfold") : t("shell.list.fold")} side="right">
+            <button
+              type="button"
+              aria-label={collapsed ? t("shell.list.unfold") : t("shell.list.fold")}
+              aria-expanded={!collapsed}
+              onClick={() => setCollapsed(!collapsed)}
+              className="grid size-[32px] shrink-0 cursor-pointer place-items-center rounded-md text-white/75 transition-colors hover:bg-white/[0.08] hover:text-white"
+            >
+              {collapsed ? <PanelLeftOpen className="size-[24px]" strokeWidth={1.5} /> : <PanelLeftClose className="size-[24px]" strokeWidth={1.5} />}
+            </button>
+          </Tooltip>
+          {!collapsed && !screenshot && (
+            <Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start gap-2 px-2 text-white/70 hover:text-white" onClick={() => open({ kind: "import" })}>
+              <Plus className="size-4!" /> {t("shell.list.import")}
+            </Button>
+          )}
+        </div>
       </div>
     </aside>
   )
+}
+
+function Section({ title, collapsed, children }: { title: string; collapsed: boolean; children: React.ReactNode }) {
+  const id = useId()
+  return (
+    <section aria-labelledby={id} className={cn(collapsed ? "pt-3 first:pt-0" : "pt-[22px] first:pt-[14px]")}>
+      <h2 id={id} className={cn("pb-[8px] pl-[28px] text-[11px] leading-[16px] font-semibold tracking-[0.12em] text-white/45 uppercase", collapsed && "sr-only")}>
+        {title}
+      </h2>
+      {collapsed && <div aria-hidden className="mx-auto mb-2 h-px w-6 bg-white/10" />}
+      <ul role="list">{children}</ul>
+    </section>
+  )
+}
+
+function Row({ project: p, snap, collapsed, tabbable, onFocus }: { project: Project; snap: Snapshot; collapsed: boolean; tabbable: boolean; onFocus(): void }) {
+  const t = useT()
+  const alias = useAlias()(p)
+  const selected = snap.selected === p.repo
+  const setView = useStore((s) => s.setView)
+  const job = p.build_job ?? (snap.job.repo === p.repo ? snap.job : null)
+  const working = !!job?.running
+  let line: React.ReactNode
+  let tone = "text-white/50"
+  let warning: string | null = null
+  let badge: { label: string; tone: "warn" | "bad" } | null = null
+  // The second line: what it is doing, or what it measured and how it fits this PC.
+  if (working) {
+    line = <><Spinner className="size-3 text-accent-fg" /> {shortStage(job.stage_kind, job.stage)}</>
+    tone = "text-accent-fg"
+  } else if (p.listing.nuked) {
+    line = t("shell.row.takenDown")
+    tone = "text-warn"
+  } else if (p.kind === "zip") {
+    line = t("shell.row.imported")
+  } else if (p.custom) {
+    line = p.installed ? t("shell.row.installedByLink") : t("shell.row.byLink")
+  } else {
+    const f = fps(p)
+    // A build that may not suit this PC keeps a quiet line; the warning is an icon by the name.
+    const verdict = assess(p, withSpec(snap.system, snap.settings))
+    if (verdict.level === "concern") warning = verdict.warning ?? t("shell.row.mayNotRun")
+    line = [f != null ? `${f} fps` : null, p.gpu.length ? gpuText(p.gpu) : null].filter(Boolean).join(" · ") || t("shell.row.notMeasured")
+  }
+  // The outlined tag on the right, for what needs the player's eye.
+  if (!working && p.listing.nuked) badge = { label: t("shell.row.badgeDown"), tone: "bad" }
+  else if (!working && p.update) badge = { label: t("shell.row.badgeUpdate"), tone: "warn" }
+  const button = (
+    <button
+      type="button"
+      data-row
+      tabIndex={tabbable ? 0 : -1}
+      onFocus={onFocus}
+      aria-current={selected ? "true" : undefined}
+      aria-label={collapsed ? alias.name : undefined}
+      onClick={() => {
+        // A taken-down project has nothing to install: its page on VIPortLive explains it.
+        if (p.listing.nuked) {
+          void openUrl(p.listing.id ? `${snap.brand.site}/projects/${p.listing.id}` : snap.brand.site)
+          return
+        }
+        setView("library")
+        void run({ type: "select", repo: p.repo })
+      }}
+      className={cn(
+        "group relative flex h-[60px] w-full cursor-pointer items-center text-left outline-none",
+        collapsed ? "justify-center" : "gap-[14px] px-[28px]",
+        "focus-visible:bg-white/[0.06] focus-visible:shadow-[inset_0_0_0_2px_var(--color-focus)]",
+      )}
+    >
+      <span className={cn("absolute inset-y-[3px] rounded-lg transition-colors duration-150", collapsed ? "inset-x-[10px]" : "inset-x-[14px]", selected ? "bg-white/[0.07]" : "group-hover:bg-white/[0.04]")} />
+      <span className="relative">
+        <ProjectAvatar project={p} owner={alias.owner} size={36} />
+        {collapsed && working && <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-accent ring-2 ring-black" />}
+      </span>
+      {!collapsed && (
+        <>
+          <span className="relative min-w-0 flex-1">
+            <span className="flex items-center gap-1">
+              <Name text={alias.name} className={selected ? "font-semibold text-white" : "text-white/85 group-hover:text-white"} />
+              {p.verified && <BadgeCheck aria-label={t("shell.row.verified")} className="size-3.5 shrink-0 text-accent-fg" />}
+              {warning && (
+                <Tooltip label={warning} side="right">
+                  <AlertTriangle aria-label={warning} className="size-3.5 shrink-0 text-warn" />
+                </Tooltip>
+              )}
+              {p.activity?.pending && !working && <span className="ml-1 size-1.5 shrink-0 rounded-full bg-white/60" aria-label={p.activity.pending} />}
+            </span>
+            <span className={cn("mt-[3px] flex items-center gap-1 truncate text-[12px] leading-[16px]", tone)}>{line}</span>
+          </span>
+          {p.personal_fps != null && (
+            <span className="relative shrink-0 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[11px] tabular-nums text-white/70" title={t("library.hero.personalFps")}>
+              {p.personal_fps.toFixed(1)} fps
+            </span>
+          )}
+          {badge && (
+            <span
+              className={cn(
+                "relative grid h-[18px] shrink-0 place-items-center rounded-[4px] border px-[6px] pl-[calc(6px+0.1em)] text-[9px] leading-none font-bold tracking-[0.1em]",
+                badge.tone === "warn" && "border-warn/70 text-warn",
+                badge.tone === "bad" && "border-bad/70 text-bad",
+              )}
+            >
+              {badge.label}
+            </span>
+          )}
+        </>
+      )}
+    </button>
+  )
+  return collapsed ? <Tooltip label={alias.name} side="right">{button}</Tooltip> : button
 }
 
 /**
@@ -208,8 +341,8 @@ function FilterMenu({ snap }: { snap: Snapshot }) {
           aria-label={changed ? t("shell.filter.buttonOn", { count: changed }) : t("shell.filter.button")}
           title={t("shell.filter.button")}
           className={cn(
-            "relative grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-line bg-fill-1 text-fg-2 transition-colors hover:border-line-2 hover:bg-fill-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25",
-            open && "border-line-2 bg-fill-3 text-fg",
+            "relative grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-white/[0.08] bg-white/[0.05] text-white/70 transition-colors hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25",
+            open && "border-white/[0.14] bg-white/[0.1] text-white",
           )}
         >
           <SlidersHorizontal className="size-4" />
@@ -345,105 +478,6 @@ function SpecInput({
         className="h-8 w-24 rounded-md border border-line bg-fill-1 px-2 text-right text-secondary text-fg placeholder:text-fg-3 focus-visible:border-accent/60 focus-visible:outline-none"
       />
     </label>
-  )
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  const id = useId()
-  return (
-    <section aria-labelledby={id} className="pt-6 first:pt-4">
-      <h2 id={id} className="px-2 pb-1 text-caption font-semibold tracking-[0.01em] text-fg-2">
-        {title}
-      </h2>
-      <ul role="list">{children}</ul>
-    </section>
-  )
-}
-
-function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick(): void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "flex h-8 w-full cursor-pointer items-center gap-3 rounded-md px-2 text-body font-medium transition-colors duration-150 [&_svg]:size-4",
-        active ? "bg-fill-3 text-fg [&_svg]:text-accent-fg" : "text-fg-2 hover:bg-fill-2 hover:text-fg active:bg-fill-3 [&_svg]:text-fg-3",
-      )}
-    >
-      {icon}
-      {label}
-    </button>
-  )
-}
-
-function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: Snapshot; tabbable: boolean; onFocus(): void }) {
-  const t = useT()
-  const alias = useAlias()(p)
-  const selected = snap.selected === p.repo
-  const setView = useStore((s) => s.setView)
-  const job = p.build_job ?? (snap.job.repo === p.repo ? snap.job : null)
-  const working = !!job?.running
-  let line: React.ReactNode
-  let tone = "text-fg-3"
-  if (working) {
-    line = <><Spinner className="size-3 text-accent-fg" /> {shortStage(job.stage_kind, job.stage)}</>
-    tone = "text-accent-fg"
-  } else if (p.listing.nuked) {
-    line = t("shell.row.takenDown")
-    tone = "text-warn"
-  } else if (p.update) {
-    line = t("shell.row.update")
-    tone = "text-warn"
-  } else if (p.kind === "zip") {
-    line = t("shell.row.imported")
-  } else if (p.custom) {
-    line = p.installed ? t("shell.row.installedByLink") : t("shell.row.byLink")
-  } else {
-    const f = fps(p)
-    // Where a build doesn't fit the PC, its warning takes the place of the cards it runs on.
-    const verdict = assess(p, withSpec(snap.system, snap.settings))
-    if (verdict.level === "concern") tone = "text-warn"
-    const detail = verdict.warning ?? (p.gpu.length ? gpuText(p.gpu) : null)
-    line = [f != null ? `${f} fps` : null, detail].filter(Boolean).join(" · ") || t("shell.row.notMeasured")
-  }
-  return (
-    <button
-      type="button"
-      data-row
-      tabIndex={tabbable ? 0 : -1}
-      onFocus={onFocus}
-      aria-current={selected ? "true" : undefined}
-      onClick={() => {
-        // A taken-down project has nothing to install: its page on VIPortLive explains it.
-        if (p.listing.nuked) {
-          void openUrl(p.listing.id ? `${snap.brand.site}/projects/${p.listing.id}` : snap.brand.site)
-          return
-        }
-        setView("library")
-        void run({ type: "select", repo: p.repo })
-      }}
-      className="group relative flex h-[52px] w-full cursor-pointer items-center gap-3 rounded-md px-2 text-left focus-visible:outline-offset-0"
-    >
-      {selected && (
-        <motion.span layoutId="sidebar-pick" className="absolute inset-0 rounded-md bg-fill-3" transition={{ type: "spring", duration: 0.28, bounce: 0.1 }} />
-      )}
-      <span className="absolute inset-0 rounded-md transition-colors duration-150 group-hover:bg-fill-1 group-active:bg-fill-2" />
-      <ProjectAvatar project={p} owner={alias.owner} size={32} className="relative" />
-      <span className="relative min-w-0 flex-1">
-        <span className="flex items-center gap-1">
-          <Name text={alias.name} className={selected ? "text-fg" : "text-fg/90"} />
-          {p.verified && <BadgeCheck aria-label={t("shell.row.verified")} className="size-3.5 shrink-0 text-fg-3" />}
-          {p.activity?.pending && !working && <span className="ml-1 size-1.5 shrink-0 rounded-full bg-fg-2" aria-label={p.activity.pending} />}
-        </span>
-        <span className={cn("flex items-center gap-1 truncate text-caption", tone)}>{line}</span>
-      </span>
-      {p.personal_fps != null && (
-        <span className="relative shrink-0 rounded-md bg-fill-2 px-1.5 py-0.5 text-caption tabular-nums text-fg-2" title={t("library.hero.personalFps")}>
-          {p.personal_fps.toFixed(1)} fps
-        </span>
-      )}
-    </button>
   )
 }
 
