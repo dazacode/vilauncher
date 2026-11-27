@@ -29,6 +29,9 @@ pub(crate) enum Action {
     Report {
         repo: String,
     },
+    OpenLink {
+        url: String,
+    },
     CheckRepo {
         repo: String,
     },
@@ -240,6 +243,10 @@ impl App {
             }
             Action::SetGpuFilter { value } => {
                 self.saved.gpu_filter = value.min(2);
+                Value::Null
+            }
+            Action::OpenLink { url } => {
+                open_link(&url)?;
                 Value::Null
             }
             Action::Report { repo } => {
@@ -898,6 +905,22 @@ fn known_responsibility(id: &str) -> Option<&'static str> {
         .iter()
         .copied()
         .find(|known| *known == id)
+}
+
+/// Opens an https link in the player's browser. Only plain https links are accepted, and no shell
+/// is involved: the link is passed to Explorer as one argument.
+fn open_link(url: &str) -> Result<(), String> {
+    let plain = url.len() <= 2048
+        && url.starts_with("https://")
+        && !url.chars().any(|c| c.is_control() || c.is_whitespace());
+    if !plain {
+        return Err("Only https links can be opened from the launcher.".into());
+    }
+    std::process::Command::new("explorer.exe")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not open the link: {error}"))
 }
 
 fn open_folder(path: &Path) -> Result<(), String> {

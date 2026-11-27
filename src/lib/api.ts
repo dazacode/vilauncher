@@ -63,18 +63,53 @@ export async function saveFile(title: string, defaultPath: string, filters: { na
   return save({ title, defaultPath, filters })
 }
 
+/**
+ * Copies text: the clipboard plugin, then the browser's clipboard, then a hidden text field.
+ * Throws only when every route fails, so the caller can say so.
+ */
 export async function copyText(text: string) {
   if (inTauri) {
-    const { writeText } = await import("@tauri-apps/plugin-clipboard-manager")
-    return writeText(text)
+    try {
+      const { writeText } = await import("@tauri-apps/plugin-clipboard-manager")
+      await writeText(text)
+      return
+    } catch {
+      // Try the next route.
+    }
   }
-  return navigator.clipboard.writeText(text)
+  try {
+    await navigator.clipboard.writeText(text)
+    return
+  } catch {
+    // Try the next route.
+  }
+  const field = document.createElement("textarea")
+  field.value = text
+  field.setAttribute("readonly", "")
+  field.style.position = "fixed"
+  field.style.opacity = "0"
+  document.body.appendChild(field)
+  field.select()
+  const copied = document.execCommand("copy")
+  field.remove()
+  if (!copied) throw new Error("The link could not be copied.")
 }
 
+/**
+ * Opens a web link: the opener plugin, then the launcher itself (Explorer opens the default browser).
+ * Throws only when both fail, so the caller can say so.
+ */
 export async function openUrl(url: string) {
   if (inTauri) {
-    const { openUrl } = await import("@tauri-apps/plugin-opener")
-    return openUrl(url)
+    try {
+      const { openUrl } = await import("@tauri-apps/plugin-opener")
+      await openUrl(url)
+      return
+    } catch {
+      const { invoke } = await import("@tauri-apps/api/core")
+      await invoke("act", { action: { type: "open_link", url } })
+      return
+    }
   }
   window.open(url, "_blank", "noopener")
 }

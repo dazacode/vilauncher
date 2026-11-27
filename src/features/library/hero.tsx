@@ -4,6 +4,7 @@ import { avatarUrl, ProjectAvatar } from "@/components/art/project-avatar"
 import { Button } from "@/components/ui/button"
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/menu"
 import { Tooltip } from "@/components/ui/tooltip"
+import { toast } from "sonner"
 import { copyText, openUrl } from "@/lib/api"
 import { fps, gpuText } from "@/lib/format"
 import { run, useAlias, useStore } from "@/lib/store"
@@ -57,7 +58,7 @@ export function Hero({ project: p }: { project: Project }) {
           <PrimaryAction project={p} />
           {p.web_url && !screenshot && (
             <Tooltip label="Open repository">
-              <Button variant="secondary" size="icon-lg" aria-label="Open repository" onClick={() => void openUrl(p.web_url!)}>
+              <Button variant="secondary" size="icon-lg" aria-label="Open repository" onClick={() => openUrl(p.web_url!).catch((error) => toast.error(String(error)))}>
                 <ExternalLink />
               </Button>
             </Tooltip>
@@ -133,7 +134,13 @@ function MoreMenu({ project: p }: { project: Project }) {
           </MenuItem>
         )}
         {p.web_url && !screenshot && (
-          <MenuItem onSelect={() => void copyText(p.web_url!).then(() => import("sonner").then(({ toast }) => toast.success("Link copied")))}>
+          <MenuItem
+            onSelect={() =>
+              copyText(p.web_url!)
+                .then(() => toast.success("Link copied"))
+                .catch((error) => toast.error(String(error)))
+            }
+          >
             <Copy /> Copy link
           </MenuItem>
         )}

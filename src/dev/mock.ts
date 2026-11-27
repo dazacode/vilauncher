@@ -139,6 +139,9 @@ async function act(a: Action): Promise<unknown> {
       state.specRam = a.ram_gb
       state.specVram = a.vram_gb
       break
+    case "open_link":
+      window.open(a.url, "_blank", "noopener")
+      break
     case "report":
       return {
         title: `${a.repo}: mock report`,

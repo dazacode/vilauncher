@@ -217,6 +217,7 @@ export type Action =
   | { type: "set_gpu_filter"; value: number }
   | { type: "set_list_options"; show_nuked: boolean; sort: number; tier: number }
   | { type: "report"; repo: string }
+  | { type: "open_link"; url: string }
   | { type: "set_spec"; ram_gb: number | null; vram_gb: number | null }
   | { type: "check_repo"; repo: string }
   | { type: "install"; repo: string }
