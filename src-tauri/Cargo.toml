@@ -1,0 +1,41 @@
+[package]
+name = "vilauncher"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+description = "VILauncher by the VIPortLive team: a community launcher for VIctory-based projects. Pick a project from VIPortLive or a custom link, check the game files, build and play. Forked from Mandyhub."
+license = "GPL-3.0-or-later"
+repository = "https://github.com/dazacode/vilauncher"
+homepage = "https://viportlive.com"
+authors = ["VIPortLive team", "Zettrox and the Mandyhub contributors"]
+
+[[bin]]
+name = "VILauncher"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-opener = "2"
+window-vibrancy = "0.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ron = "0.8"
+ureq = { version = "2.10", features = ["json"] }
+url = "2"
+ring = "0.17"
+zip = { version = "9.8.2", default-features = false, features = ["deflate"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Time", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi"] }
+
+[profile.release]
+opt-level = 3
+strip = true
+lto = "thin"
+codegen-units = 1

@@ -1,0 +1,157 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/schibsted-grotesk";
+@import "@fontsource/yellowtail/400.css";
+
+/*
+ * VILauncher design tokens.
+ *
+ * Space: a 4 px grid (Tailwind's own scale). Pages pad 40 px, groups 24 px,
+ * rows 12-16 px.
+ * Type: 12 caption · 13 secondary · 14 body · 16 lead · 20 section · 28 page
+ * · 52 hero. Inter for the interface, Schibsted Grotesk (VIPortLive's face)
+ * for big names, Yellowtail only in the wordmark.
+ * Colour: neutral graphite glass; one accent (VIPortLive pink) for the main
+ * action, the selection and focus. Green, amber and red only for status.
+ * Radius: 6 controls · 8 buttons · 12 cards · 16 dialogs.
+ * Motion: 150-250 ms, ease-out; nothing moves for reduced-motion users.
+ */
+@theme {
+  --font-sans: "Inter Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Schibsted Grotesk Variable", "Inter Variable", "Segoe UI Variable Display", system-ui, sans-serif;
+  --font-script: "Yellowtail", cursive;
+  --font-mono: "Cascadia Mono", "SF Mono", ui-monospace, Consolas, monospace;
+
+  --color-ground: #0c0b10;
+  --color-fg: #f4f3f6;
+  --color-fg-2: rgb(244 243 246 / 0.7);
+  --color-fg-3: rgb(244 243 246 / 0.56);
+  --color-fg-4: rgb(244 243 246 / 0.36);
+  --color-fill-1: rgb(255 255 255 / 0.04);
+  --color-fill-2: rgb(255 255 255 / 0.07);
+  --color-fill-3: rgb(255 255 255 / 0.11);
+  --color-fill-4: rgb(255 255 255 / 0.16);
+  --color-line: rgb(255 255 255 / 0.08);
+  --color-line-2: rgb(255 255 255 / 0.13);
+  --color-accent: #e0338a;
+  --color-accent-hover: #ea4598;
+  --color-accent-soft: rgb(255 95 170 / 0.16);
+  --color-accent-fg: #ff8cc4;
+  --color-ok: #3ccf8e;
+  --color-warn: #f4b13e;
+  --color-bad: #ff6369;
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --text-caption: 12px;
+  --text-caption--line-height: 16px;
+  --text-secondary: 13px;
+  --text-secondary--line-height: 18px;
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-lead: 16px;
+  --text-lead--line-height: 24px;
+  --text-section: 20px;
+  --text-section--line-height: 28px;
+  --text-page: 28px;
+  --text-page--line-height: 34px;
+  --text-hero: 52px;
+  --text-hero--line-height: 56px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --shadow-float: 0 1px 0 rgb(255 255 255 / 0.06) inset, 0 12px 40px -12px rgb(0 0 0 / 0.6);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  html {
+    color-scheme: dark;
+    background: transparent;
+  }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    color: var(--color-fg);
+    font-feature-settings: "cv11", "ss03";
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    overflow: hidden;
+  }
+  /* Where there is no system glass (a browser, Windows 10 without Acrylic), a solid ground. */
+  body:not(.has-glass) {
+    background: var(--color-ground);
+  }
+  input,
+  textarea,
+  [data-selectable] {
+    user-select: text;
+  }
+  :focus-visible {
+    outline: 2px solid rgb(255 120 185 / 0.75);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: rgb(255 95 170 / 0.35);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 0.16) transparent;
+  }
+}
+
+@keyframes busy {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@utility glass {
+  background: rgb(28 26 34 / 0.55);
+  backdrop-filter: blur(28px) saturate(170%);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  border: 1px solid var(--color-line);
+  box-shadow: var(--shadow-float);
+}
+
+@utility glass-thin {
+  background: rgb(255 255 255 / 0.06);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgb(255 255 255 / 0.1);
+}
+
+@utility drag {
+  -webkit-app-region: drag;
+}
+
+@utility no-drag {
+  -webkit-app-region: no-drag;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
