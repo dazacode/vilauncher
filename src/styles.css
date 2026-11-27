@@ -142,7 +142,7 @@
   --color-warn: #b45309;
   --color-bad: #b91c1c;
   --color-raised: #ffffff;
-  --color-sidebar: rgb(255 255 255 / 0.7);
+  --color-sidebar: rgb(255 255 255 / 0.92);
   --color-glass: rgb(255 255 255 / 0.97);
   --color-glass-solid: rgb(255 255 255 / 0.96);
   --color-glass-thin: rgb(0 0 0 / 0.03);
@@ -189,6 +189,11 @@
   --color-glass: rgb(32 24 20 / 0.96);
   --color-glass-solid: rgb(38 29 24 / 0.96);
   --color-glass-thin: rgb(255 230 210 / 0.06);
+}
+
+/* On Windows the window is transparent so Mica shows; Mica is dark, so the light look needs its own solid ground. */
+:root[data-theme="light"] main {
+  background: var(--color-ground);
 }
 
 @keyframes busy {
