@@ -986,12 +986,15 @@ pub(crate) fn from_log(lines: &[String]) -> Vec<Finding> {
             data: None,
         });
     }
+    // These must stay specific to real cache-read failures: the game logs a benign
+    // "host pipeline library saved ..." line on every run, so a bare "pipeline library"
+    // would delete the shader cache before every Play.
     if has(&[
         "pipelines.rejected",
         "host-pipelines.rejected",
-        "pipeline library",
-        "pipeline cache",
-        "shader cache",
+        "pipeline library rejected",
+        "pipeline cache rejected",
+        "shader cache rejected",
         "corrupt",
         "failed to read the cache",
     ]) {
@@ -1202,6 +1205,18 @@ mod tests {
             );
         }
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_benign_pipeline_library_save_does_not_wipe_the_cache() {
+        // Logged on every normal run; must not be read as a cache failure.
+        let good = vec![
+            "INFO victory_gpu::pipeline::library: host pipeline library saved bytes=8076908 made=413 loaded=407".to_string(),
+        ];
+        assert!(from_log(&good).iter().all(|f| f.fix != Some(FIX_CACHE)));
+        // A real rejection still is.
+        let bad = vec!["victory_gpu::pipeline::library: pipeline library rejected".to_string()];
+        assert!(from_log(&bad).iter().any(|f| f.fix == Some(FIX_CACHE)));
     }
 
     #[test]
