@@ -10,6 +10,7 @@ import { run, useAlias, useStore } from "@/lib/store"
 import type { Project } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { ActionNote, PrimaryAction } from "./primary-action"
+import { useUpdateWarning } from "./update-button"
 
 /**
  * The summary's first sentence, whole, or nothing: never cut mid-word. Too
@@ -100,6 +101,7 @@ function MoreMenu({ project: p }: { project: Project }) {
   const open = useStore((s) => s.open)
   const screenshot = useStore((s) => s.screenshot)
   const busy = snap.job.running
+  const warning = useUpdateWarning(p.repo)
   return (
     <Menu>
       <Tooltip label="More">
@@ -121,7 +123,7 @@ function MoreMenu({ project: p }: { project: Project }) {
           </MenuItem>
         )}
         {p.installed && p.kind === "git" && (
-          <MenuItem disabled={busy} onSelect={() => void run({ type: "install", repo: p.repo })}>
+          <MenuItem disabled={busy} onSelect={warning.ask}>
             <RotateCcw /> Reinstall
           </MenuItem>
         )}
@@ -147,6 +149,7 @@ function MoreMenu({ project: p }: { project: Project }) {
           </MenuItem>
         )}
       </MenuContent>
+      {warning.dialog}
     </Menu>
   )
 }

@@ -10,57 +10,194 @@ use serde_json::{json, Value};
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum Action {
-    Select { repo: Option<String> },
+    Select {
+        repo: Option<String>,
+    },
     RefreshProjects,
-    SetGpuFilter { value: usize },
-    CheckRepo { repo: String },
+    SetGpuFilter {
+        value: usize,
+    },
+    SetListOptions {
+        show_nuked: bool,
+        sort: usize,
+        tier: usize,
+    },
+    SetSpec {
+        ram_gb: Option<f64>,
+        vram_gb: Option<f64>,
+    },
+    Report {
+        repo: String,
+    },
+    CheckRepo {
+        repo: String,
+    },
     /// Install, update or reinstall.
-    Install { repo: String },
-    Later { repo: String, remote: String },
+    Install {
+        repo: String,
+    },
+    Later {
+        repo: String,
+        remote: String,
+    },
     /// The first step of Play: answers what to ask before the game starts.
-    Play { repo: String },
+    Play {
+        repo: String,
+    },
     /// A launch preset picked (or none: the current settings), then on to the saves.
-    ConfirmPreset { repo: String, index: Option<usize> },
-    StartWithSave { repo: String, choice: SaveChoice },
-    Warm { repo: String },
-    Uninstall { repo: String },
+    ConfirmPreset {
+        repo: String,
+        index: Option<usize>,
+    },
+    StartWithSave {
+        repo: String,
+        choice: SaveChoice,
+    },
+    Warm {
+        repo: String,
+    },
+    /// Check the installed build for known problems, fix what can be fixed and verify it.
+    Fix {
+        repo: String,
+    },
+    /// Swap the installed build with the one before the last update.
+    Rollback {
+        repo: String,
+    },
+    /// Show the warning before an update (false: from now on, not again).
+    SetUpdateWarning {
+        show: bool,
+    },
+    /// Let AI agents help with builds (off by default; turning it on needs the "agent-access" warning first).
+    SetAgentAccess {
+        enabled: bool,
+    },
+    /// The player accepted one of the responsibility warnings (only the known ids are kept).
+    Acknowledge {
+        id: String,
+    },
+    Uninstall {
+        repo: String,
+    },
+    /// Disk use per project and in total, for the Storage section of Settings.
+    StorageScan,
+    /// Deletes a project's shader cache. Its saves and sources stay.
+    ClearCache {
+        repo: String,
+    },
+    /// Deletes the build kept for rollback, if there is one.
+    ClearPrevious {
+        repo: String,
+    },
     Stop,
-    RemoveCustom { repo: String },
-    AddRepoLink { link: String },
-    ImportBuildZip { path: String },
+    RemoveCustom {
+        repo: String,
+    },
+    AddRepoLink {
+        link: String,
+    },
+    ImportBuildZip {
+        path: String,
+    },
     DismissImportError,
     InstallTools,
-    SetGameDir { path: String },
+    SetGameDir {
+        path: String,
+    },
     FindGameFiles,
-    SetSettings { patch: SettingsPatch },
-    SetDefaultGraphics { graphics: GraphicsSettings },
-    SetProjectGraphics { repo: String, graphics: Option<GraphicsSettings> },
-    SetProjectArgs { repo: String, value: Option<String> },
-    SetProjectSwitches { repo: String, value: Option<String> },
-    SetScriptOption { repo: String, option: String, enabled: bool },
-    SetProjectNotes { repo: String, notes: String },
-    SavePreset { repo: String, name: String, include_switches: bool },
-    ApplyPreset { repo: String, name: Option<String> },
-    DeletePreset { repo: String, name: String },
-    ImportPresetFile { repo: String, path: String },
-    ImportPresetText { repo: String, text: String },
-    ExportPreset { name: String, path: String },
-    PresetText { name: String },
-    DetectedPreset { repo: String },
-    ChooseInstallDir { path: String },
+    SetSettings {
+        patch: SettingsPatch,
+    },
+    SetDefaultGraphics {
+        graphics: GraphicsSettings,
+    },
+    SetProjectGraphics {
+        repo: String,
+        graphics: Option<GraphicsSettings>,
+    },
+    SetProjectArgs {
+        repo: String,
+        value: Option<String>,
+    },
+    SetProjectSwitches {
+        repo: String,
+        value: Option<String>,
+    },
+    SetScriptOption {
+        repo: String,
+        option: String,
+        enabled: bool,
+    },
+    SetProjectNotes {
+        repo: String,
+        notes: String,
+    },
+    SavePreset {
+        repo: String,
+        name: String,
+        include_switches: bool,
+    },
+    ApplyPreset {
+        repo: String,
+        name: Option<String>,
+    },
+    DeletePreset {
+        repo: String,
+        name: String,
+    },
+    ImportPresetFile {
+        repo: String,
+        path: String,
+    },
+    ImportPresetText {
+        repo: String,
+        text: String,
+    },
+    ExportPreset {
+        name: String,
+        path: String,
+    },
+    PresetText {
+        name: String,
+    },
+    DetectedPreset {
+        repo: String,
+    },
+    ChooseInstallDir {
+        path: String,
+    },
     UseDefaultInstallDir,
     /// The answer to "move the installed projects?": "move", "keep" or "cancel".
-    ConfirmMove { answer: String },
-    Open { what: String, repo: Option<String> },
-    ExportLog { path: String },
+    ConfirmMove {
+        answer: String,
+    },
+    Open {
+        what: String,
+        repo: Option<String>,
+    },
+    ExportLog {
+        path: String,
+    },
     CheckUpdate,
     DownloadUpdate,
     RestartToUpdate,
-    SavesList { repo: String },
-    Checkpoint { name: String, source: String },
-    ImportSaveZip { path: String },
-    ExportSave { source: String, path: String },
-    DeleteSave { path: String },
+    SavesList {
+        repo: String,
+    },
+    Checkpoint {
+        name: String,
+        source: String,
+    },
+    ImportSaveZip {
+        path: String,
+    },
+    ExportSave {
+        source: String,
+        path: String,
+    },
+    DeleteSave {
+        path: String,
+    },
     /// The player agreed to the legal notice.
     AcceptNotice,
 }
@@ -105,6 +242,51 @@ impl App {
                 self.saved.gpu_filter = value.min(2);
                 Value::Null
             }
+            Action::Report { repo } => {
+                // Nothing is sent: the report is text, and the links open GitHub's issue form.
+                let p = self.project(&repo)?;
+                let (stage, log) = {
+                    let job = self.job.lock().unwrap();
+                    (job.stage.clone(), job.log.clone())
+                };
+                let system = self.system.lock().unwrap().clone().unwrap_or_default();
+                let mut private = vec![
+                    std::env::var("USERNAME").unwrap_or_default(),
+                    std::env::var("USERPROFILE").unwrap_or_default(),
+                    self.saved.install_dir.clone(),
+                    self.saved.game_dir.clone(),
+                    workspace().display().to_string(),
+                ];
+                private.retain(|s| !s.trim().is_empty());
+                let report = crate::report::make(&crate::report::Facts {
+                    project: &p.name,
+                    repo: &p.repo,
+                    stage: &stage,
+                    log: &log,
+                    gpus: system.gpus.iter().map(|g| g.name.clone()).collect(),
+                    cpu: system.cpu.clone(),
+                    ram_gb: system.ram_gb,
+                    private,
+                });
+                serde_json::to_value(report).map_err(|error| error.to_string())?
+            }
+            Action::SetListOptions {
+                show_nuked,
+                sort,
+                tier,
+            } => {
+                self.saved.show_nuked = show_nuked;
+                self.saved.list_sort = sort.min(4);
+                self.saved.list_tier = tier.min(2);
+                Value::Null
+            }
+            Action::SetSpec { ram_gb, vram_gb } => {
+                // Only plausible amounts are kept; anything else goes back to what the launcher found.
+                let keep = |v: Option<f64>| v.filter(|g| g.is_finite() && *g > 0.0 && *g <= 1024.0);
+                self.saved.spec_ram_gb = keep(ram_gb);
+                self.saved.spec_vram_gb = keep(vram_gb);
+                Value::Null
+            }
             Action::CheckRepo { repo } => {
                 let p = self.project(&repo)?;
                 self.check_repo(&ctx, &p);
@@ -147,7 +329,13 @@ impl App {
             }
             Action::StartWithSave { repo, choice } => {
                 let p = self.project(&repo)?;
+                // Looked at right now: the drive may have been unplugged since the last check.
+                self.files_checked = None;
+                self.check_files();
                 if !self.files_ok() {
+                    if self.unplugged {
+                        return Err("The drive with your game files is not connected. Plug it in and press Play again.".into());
+                    }
                     return Err("Choose the folder with your game files first.".into());
                 }
                 let choice = match choice {
@@ -163,9 +351,63 @@ impl App {
                 self.start(&ctx, p, Kind::Warm);
                 Value::Null
             }
+            Action::Rollback { repo } => {
+                let p = self.project(&repo)?;
+                if self.job.lock().unwrap().running {
+                    return Err("Wait for the current job to finish.".into());
+                }
+                if previous::previous_commit(&previous_dir(&p.repo)).is_none() {
+                    return Err("There is no previous build to restore for this project.".into());
+                }
+                self.start(&ctx, p, Kind::Rollback);
+                Value::Null
+            }
+            Action::SetUpdateWarning { show } => {
+                self.saved.skip_update_warning = !show;
+                Value::Null
+            }
+            Action::SetAgentAccess { enabled } => {
+                self.saved.agent_access = enabled;
+                Value::Null
+            }
+            Action::Acknowledge { id } => {
+                let id =
+                    known_responsibility(&id).ok_or_else(|| format!("Unknown warning: {id}"))?;
+                if !self.saved.acknowledged.iter().any(|a| a == id) {
+                    self.saved.acknowledged.push(id.to_string());
+                }
+                Value::Null
+            }
+            Action::Fix { repo } => {
+                let p = self.project(&repo)?;
+                self.start(&ctx, p, Kind::Fix);
+                Value::Null
+            }
             Action::Uninstall { repo } => {
                 let p = self.project(&repo)?;
                 self.start(&ctx, p, Kind::Uninstall);
+                Value::Null
+            }
+            Action::StorageScan => {
+                let ws = workspace();
+                let projects = self.all_projects();
+                let slugs: Vec<String> = projects.iter().map(|p| slug(&p.repo)).collect();
+                let mut view = crate::storage::scan(&ws, &slugs);
+                for (row, p) in view.projects.iter_mut().zip(&projects) {
+                    row.repo = p.repo.clone();
+                    row.label = p.name.clone();
+                }
+                view.free_bytes = free_bytes(&ws);
+                serde_json::to_value(view).map_err(|error| error.to_string())?
+            }
+            Action::ClearCache { repo } => {
+                let p = self.project(&repo)?;
+                self.clear_folder(&p, "cache")?;
+                Value::Null
+            }
+            Action::ClearPrevious { repo } => {
+                let p = self.project(&repo)?;
+                self.clear_folder(&p, "previous")?;
                 Value::Null
             }
             Action::Stop => {
@@ -180,8 +422,9 @@ impl App {
                 Value::Null
             }
             Action::AddRepoLink { link } => {
-                let repo = parse_git_repo(&link)
-                    .ok_or("Enter an HTTPS, HTTP, SSH or Git clone link without a password in it.")?;
+                let repo = parse_git_repo(&link).ok_or(
+                    "Enter an HTTPS, HTTP, SSH or Git clone link without a password in it.",
+                )?;
                 self.add_custom(repo.clone());
                 json!(repo)
             }
@@ -255,7 +498,11 @@ impl App {
                 self.tidy_launch(&repo);
                 Value::Null
             }
-            Action::SetScriptOption { repo, option, enabled } => {
+            Action::SetScriptOption {
+                repo,
+                option,
+                enabled,
+            } => {
                 use script_preset::{set_enabled, HOOKS, PROBE_RAYS, RAY_TRACING};
                 let global = self.saved.extra_env.clone();
                 let launch = self.launch_mut(&repo);
@@ -280,19 +527,38 @@ impl App {
                 self.tidy_launch(&repo);
                 Value::Null
             }
-            Action::SavePreset { repo, name, include_switches } => {
+            Action::SavePreset {
+                repo,
+                name,
+                include_switches,
+            } => {
                 let p = self.project(&repo)?;
                 let standalone = p.runs_standalone();
                 let key = project_key(&repo);
-                let (global_args, global_switches) = (self.saved.launch_args.clone(), self.saved.extra_env.clone());
+                let (global_args, global_switches) =
+                    (self.saved.launch_args.clone(), self.saved.extra_env.clone());
                 let launch = self.saved.project_launch.get(&key);
-                let inherited_args = if standalone { String::new() } else { global_args };
+                let inherited_args = if standalone {
+                    String::new()
+                } else {
+                    global_args
+                };
                 let include_switches = include_switches && !standalone;
                 let preset = LaunchPreset {
                     name: name.trim().to_owned(),
-                    args: launch.and_then(|l| l.args.clone()).unwrap_or(inherited_args),
-                    switches: include_switches.then(|| launch.and_then(|l| l.switches.clone()).unwrap_or(global_switches)),
-                    script_options: if include_switches { launch.and_then(|l| l.script_options) } else { None },
+                    args: launch
+                        .and_then(|l| l.args.clone())
+                        .unwrap_or(inherited_args),
+                    switches: include_switches.then(|| {
+                        launch
+                            .and_then(|l| l.switches.clone())
+                            .unwrap_or(global_switches)
+                    }),
+                    script_options: if include_switches {
+                        launch.and_then(|l| l.script_options)
+                    } else {
+                        None
+                    },
                     projects: vec![key],
                     repo_script: None,
                 };
@@ -302,17 +568,29 @@ impl App {
             Action::ApplyPreset { repo, name } => {
                 let p = self.project(&repo)?;
                 let preset = match name {
-                    Some(name) => self.saved.launch_presets.iter().find(|x| x.name == name).cloned(),
+                    Some(name) => self
+                        .saved
+                        .launch_presets
+                        .iter()
+                        .find(|x| x.name == name)
+                        .cloned(),
                     None => presets::detected_preset(&p),
                 }
                 .ok_or("That preset is gone.")?;
                 let key = project_key(&repo);
                 let launch = self.saved.project_launch.entry(key.clone()).or_default();
-                let applied = presets::apply_to_profile(&mut self.saved.launch_presets, launch, &key, preset)?;
+                let applied = presets::apply_to_profile(
+                    &mut self.saved.launch_presets,
+                    launch,
+                    &key,
+                    preset,
+                )?;
                 json!(applied)
             }
             Action::DeletePreset { repo, name } => {
-                self.saved.launch_presets.retain(|preset| preset.name != name);
+                self.saved
+                    .launch_presets
+                    .retain(|preset| preset.name != name);
                 if let Some(launch) = self.saved.project_launch.get_mut(&project_key(&repo)) {
                     if launch.selected_preset.as_deref() == Some(&name) {
                         launch.selected_preset = None;
@@ -329,21 +607,38 @@ impl App {
                 json!(self.accept_import(&repo, imported)?)
             }
             Action::ExportPreset { name, path } => {
-                let preset = self.saved.launch_presets.iter().find(|p| p.name == name).ok_or("That preset is gone.")?;
+                let preset = self
+                    .saved
+                    .launch_presets
+                    .iter()
+                    .find(|p| p.name == name)
+                    .ok_or("That preset is gone.")?;
                 let json = presets::encode(preset)?;
-                std::fs::write(&path, json).map_err(|e| format!("Could not export the preset: {e}"))?;
+                std::fs::write(&path, json)
+                    .map_err(|e| format!("Could not export the preset: {e}"))?;
                 Value::Null
             }
             Action::PresetText { name } => {
-                let preset = self.saved.launch_presets.iter().find(|p| p.name == name).ok_or("That preset is gone.")?;
+                let preset = self
+                    .saved
+                    .launch_presets
+                    .iter()
+                    .find(|p| p.name == name)
+                    .ok_or("That preset is gone.")?;
                 json!(presets::encode(preset)?)
             }
             Action::DetectedPreset { repo } => {
                 let p = self.project(&repo)?;
                 let key = project_key(&repo);
-                let detected = (!p.runs_standalone()).then(|| presets::detected_preset(&p)).flatten().filter(|candidate| {
-                    !self.saved.launch_presets.iter().any(|saved| saved.repo_script == candidate.repo_script && saved.projects.contains(&key))
-                });
+                let detected = (!p.runs_standalone())
+                    .then(|| presets::detected_preset(&p))
+                    .flatten()
+                    .filter(|candidate| {
+                        !self.saved.launch_presets.iter().any(|saved| {
+                            saved.repo_script == candidate.repo_script
+                                && saved.projects.contains(&key)
+                        })
+                    });
                 json!(detected.map(|d| d.name))
             }
             Action::ChooseInstallDir { path } => {
@@ -379,7 +674,11 @@ impl App {
                     ("backgrounds", _) => crate::backgrounds::folder(),
                     ("workspace", _) => workspace(),
                     ("update", _) => match &self.updater.state {
-                        updater::State::Downloaded(update) => update.path.parent().map(Path::to_path_buf).ok_or("No update folder.")?,
+                        updater::State::Downloaded(update) => update
+                            .path
+                            .parent()
+                            .map(Path::to_path_buf)
+                            .ok_or("No update folder.")?,
                         _ => return Err("No update has been downloaded.".into()),
                     },
                     _ => return Err(format!("Nothing to open for {what}.")),
@@ -389,7 +688,8 @@ impl App {
                 Value::Null
             }
             Action::ExportLog { path } => {
-                std::fs::write(&path, self.whole_log()).map_err(|e| format!("Could not export the log: {e}"))?;
+                std::fs::write(&path, self.whole_log())
+                    .map_err(|e| format!("Could not export the log: {e}"))?;
                 Value::Null
             }
             Action::CheckUpdate => {
@@ -421,18 +721,25 @@ impl App {
             }
             Action::Checkpoint { name, source } => {
                 let root = workspace().join("checkpoints");
-                saves::checkpoint(&root, &name, Path::new(&source)).map_err(|e| format!("Could not save the checkpoint: {e}"))?;
+                saves::checkpoint(&root, &name, Path::new(&source))
+                    .map_err(|e| format!("Could not save the checkpoint: {e}"))?;
                 Value::Null
             }
             Action::ImportSaveZip { path } => {
                 let root = workspace().join("checkpoints");
-                let (name, _) = save_zip::import(&root, Path::new(&path)).map_err(|e| format!("Could not import the save: {e}"))?;
+                let (name, _) = save_zip::import(&root, Path::new(&path))
+                    .map_err(|e| format!("Could not import the save: {e}"))?;
                 json!(name)
             }
             Action::ExportSave { source, path } => {
                 let destination = PathBuf::from(path);
-                let destination = if destination.extension().is_none() { destination.with_extension("zip") } else { destination };
-                save_zip::export(Path::new(&source), &destination).map_err(|e| format!("Could not export the save: {e}"))?;
+                let destination = if destination.extension().is_none() {
+                    destination.with_extension("zip")
+                } else {
+                    destination
+                };
+                save_zip::export(Path::new(&source), &destination)
+                    .map_err(|e| format!("Could not export the save: {e}"))?;
                 json!(destination.display().to_string())
             }
             Action::AcceptNotice => {
@@ -440,7 +747,8 @@ impl App {
                 Value::Null
             }
             Action::DeleteSave { path } => {
-                saves::delete_save(&workspace(), Path::new(&path)).map_err(|e| format!("Could not delete the save: {e}"))?;
+                saves::delete_save(&workspace(), Path::new(&path))
+                    .map_err(|e| format!("Could not delete the save: {e}"))?;
                 Value::Null
             }
         };
@@ -448,13 +756,37 @@ impl App {
         Ok(Outcome::Value(value))
     }
 
+    /// Deletes `p`'s folder under the workspace's `part` folder (`cache` or `previous`).
+    /// Saves (`data`) and sources are never touched.
+    fn clear_folder(&self, p: &Project, part: &str) -> Result<(), String> {
+        if self.job_running().0 {
+            return Err("Wait until the current job finishes.".into());
+        }
+        let ws = workspace();
+        let dir = ws.join(part).join(slug(&p.repo));
+        if !crate::storage::may_clear(&ws, &dir) {
+            return Err("That folder is outside the install folder.".into());
+        }
+        if !dir.exists() {
+            return Ok(());
+        }
+        remove_tree_forcibly(&dir, &|_: String| {})
+            .map_err(|error| format!("Could not clear it: {error}"))
+    }
+
     /// The project with this repo, listed or added.
     fn project(&self, repo: &str) -> Result<Project, String> {
-        self.all_projects().into_iter().find(|p| p.repo == repo).ok_or_else(|| "That project is no longer in the list.".to_owned())
+        self.all_projects()
+            .into_iter()
+            .find(|p| p.repo == repo)
+            .ok_or_else(|| "That project is no longer in the list.".to_owned())
     }
 
     fn launch_mut(&mut self, repo: &str) -> &mut ProjectLaunch {
-        self.saved.project_launch.entry(project_key(repo)).or_default()
+        self.saved
+            .project_launch
+            .entry(project_key(repo))
+            .or_default()
     }
 
     /// A project's settings that hold nothing are dropped, so it follows the global ones.
@@ -482,7 +814,11 @@ impl App {
         }
     }
 
-    fn accept_import(&mut self, repo: &str, imported: Result<LaunchPreset, String>) -> Result<String, String> {
+    fn accept_import(
+        &mut self,
+        repo: &str,
+        imported: Result<LaunchPreset, String>,
+    ) -> Result<String, String> {
         let mut preset = imported?;
         preset.projects = vec![project_key(repo)];
         preset.repo_script = None;
@@ -500,10 +836,19 @@ impl App {
         if let Some(pid) = pid {
             #[cfg(windows)]
             {
-                let mut c = Command::new("taskkill");
-                c.args(["/PID", &pid.to_string(), "/T", "/F"]);
-                hide_window(&mut c);
-                let _ = c.spawn();
+                // A window close first, so the game can save; forced only if it is still running a few seconds later.
+                let pid = pid.to_string();
+                std::thread::spawn(move || {
+                    let mut close = Command::new("taskkill");
+                    close.args(["/PID", &pid, "/T"]);
+                    hide_window(&mut close);
+                    let _ = close.status();
+                    std::thread::sleep(std::time::Duration::from_secs(8));
+                    let mut force = Command::new("taskkill");
+                    force.args(["/PID", &pid, "/T", "/F"]);
+                    hide_window(&mut force);
+                    let _ = force.status();
+                });
             }
             #[cfg(not(windows))]
             {
@@ -514,7 +859,12 @@ impl App {
 
     /// Puts a repo added by link at the top of the list and picks it.
     fn add_custom(&mut self, repo: String) {
-        let name = repo.split('/').next_back().unwrap_or(&repo).trim_end_matches(".git").to_string();
+        let name = repo
+            .split('/')
+            .next_back()
+            .unwrap_or(&repo)
+            .trim_end_matches(".git")
+            .to_string();
         self.saved.custom.retain(|p| p.repo != repo);
         self.saved.custom.insert(
             0,
@@ -532,15 +882,37 @@ impl App {
                 archive_exe: None,
                 highlights: Vec::new(),
                 blockers: Vec::new(),
+                listing: Default::default(),
             },
         );
         self.saved.selected = Some(repo);
     }
 }
 
+/// The responsibility warnings the player can accept. Anything else is refused.
+const RESPONSIBILITY_IDS: [&str; 3] = ["import-repo", "agent-access", "agent-patch"];
+
+/// The id as the fixed list spells it, or None for an unknown id.
+fn known_responsibility(id: &str) -> Option<&'static str> {
+    RESPONSIBILITY_IDS
+        .iter()
+        .copied()
+        .find(|known| *known == id)
+}
+
 fn open_folder(path: &Path) -> Result<(), String> {
-    let program = if cfg!(windows) { "explorer" } else if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
-    Command::new(program).arg(path).spawn().map(|_| ()).map_err(|e| format!("Could not open {}: {e}", path.display()))
+    let program = if cfg!(windows) {
+        "explorer"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    Command::new(program)
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Could not open {}: {e}", path.display()))
 }
 
 /// The saves a project can start from: this build's, other builds' and the favourites.
@@ -550,21 +922,40 @@ fn saves_list(project: &Project) -> Value {
     let project_data = data.join(slug(&project.repo));
     let checkpoint_root = ws.join("checkpoints");
     let current = saves::save_folder(&project_data);
-    let option = |title: String, detail: &str, kind: &str, path: Option<&Path>, source: Option<&Path>| {
-        json!({
-            "title": title,
-            "detail": detail,
-            "kind": kind,
-            "path": path.map(|p| p.display().to_string()),
-            "source": source.map(|p| p.display().to_string()),
-        })
-    };
+    let option =
+        |title: String, detail: &str, kind: &str, path: Option<&Path>, source: Option<&Path>| {
+            json!({
+                "title": title,
+                "detail": detail,
+                "kind": kind,
+                "path": path.map(|p| p.display().to_string()),
+                "source": source.map(|p| p.display().to_string()),
+            })
+        };
     let mut this_build = vec![
-        option("Continue".into(), "Use this build's active save.", "continue", None, current.as_deref()),
-        option("Start fresh".into(), "Begin a new game in a separate save profile.", "fresh", None, None),
+        option(
+            "Continue".into(),
+            "Use this build's active save.",
+            "continue",
+            None,
+            current.as_deref(),
+        ),
+        option(
+            "Start fresh".into(),
+            "Begin a new game in a separate save profile.",
+            "fresh",
+            None,
+            None,
+        ),
     ];
     for (name, path) in saves::previous_saves(&project_data) {
-        this_build.push(option(name, "Starts from a copy of an earlier save.", "copy", Some(&path), Some(&path)));
+        this_build.push(option(
+            name,
+            "Starts from a copy of an earlier save.",
+            "copy",
+            Some(&path),
+            Some(&path),
+        ));
     }
     let mut other_builds = Vec::new();
     for entry in std::fs::read_dir(&data).into_iter().flatten().flatten() {
@@ -577,9 +968,16 @@ fn saves_list(project: &Project) -> Value {
     }
     other_builds.sort();
     let mut favorites = Vec::new();
-    for entry in std::fs::read_dir(&checkpoint_root).into_iter().flatten().flatten() {
+    for entry in std::fs::read_dir(&checkpoint_root)
+        .into_iter()
+        .flatten()
+        .flatten()
+    {
         let filename = entry.file_name();
-        if let Some(name) = filename.to_str().and_then(|name| name.strip_prefix("Checkpoint - ")) {
+        if let Some(name) = filename
+            .to_str()
+            .and_then(|name| name.strip_prefix("Checkpoint - "))
+        {
             if entry.path().is_dir() {
                 favorites.push((name.to_owned(), entry.path()));
             }
@@ -592,4 +990,20 @@ fn saves_list(project: &Project) -> Value {
         "other_builds": other_builds.iter().map(|(n, p)| option(n.clone(), "Copies this build's active save.", "copy", Some(p), Some(p))).collect::<Vec<_>>(),
         "favorites": favorites.iter().map(|(n, p)| option(n.clone(), "Starts from a copy of this checkpoint.", "copy", Some(p), None)).collect::<Vec<_>>(),
     })
+}
+
+#[cfg(test)]
+mod responsibility_tests {
+    use super::known_responsibility;
+
+    #[test]
+    fn only_the_fixed_warning_ids_are_accepted() {
+        assert_eq!(known_responsibility("import-repo"), Some("import-repo"));
+        assert_eq!(known_responsibility("agent-access"), Some("agent-access"));
+        assert_eq!(known_responsibility("agent-patch"), Some("agent-patch"));
+        assert_eq!(known_responsibility(""), None);
+        assert_eq!(known_responsibility("Import-Repo"), None);
+        assert_eq!(known_responsibility("import-repo "), None);
+        assert_eq!(known_responsibility("../settings"), None);
+    }
 }

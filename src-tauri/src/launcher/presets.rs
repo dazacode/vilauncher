@@ -68,7 +68,6 @@ impl PlayPresetPicker {
         })
     }
 
-
     /// The choices as the window shows them.
     pub(crate) fn describe(&self) -> PlayChoice {
         let options = self
@@ -85,13 +84,19 @@ impl PlayPresetPicker {
                             format!("{script}.ps1 · Found in the project")
                         },
                     ),
-                    Some(script) => ("Standard repo launch".to_owned(), format!("{script}.ps1 · The repository's standard settings")),
+                    Some(script) => (
+                        "Standard repo launch".to_owned(),
+                        format!("{script}.ps1 · The repository's standard settings"),
+                    ),
                     None => (preset.name.clone(), "A saved preset.".to_owned()),
                 };
                 PlayOption { title, detail }
             })
             .collect();
-        PlayChoice { options, recommended: self.recommended }
+        PlayChoice {
+            options,
+            recommended: self.recommended,
+        }
     }
 }
 
@@ -149,7 +154,6 @@ fn scripts(folder: &Path, project_name: &str) -> Vec<LaunchPreset> {
         .collect()
 }
 
-
 pub(crate) fn apply_to_profile(
     presets: &mut Vec<LaunchPreset>,
     launch: &mut ProjectLaunch,
@@ -181,7 +185,10 @@ pub(crate) fn apply_to_profile(
     Ok(saved.name.clone())
 }
 
-pub(crate) fn store(presets: &mut Vec<LaunchPreset>, mut preset: LaunchPreset) -> Result<usize, String> {
+pub(crate) fn store(
+    presets: &mut Vec<LaunchPreset>,
+    mut preset: LaunchPreset,
+) -> Result<usize, String> {
     preset.name = preset.name.trim().to_owned();
     encode(&preset)?;
     if presets
@@ -269,7 +276,6 @@ pub(crate) fn encode(preset: &LaunchPreset) -> Result<String, String> {
     Ok(json)
 }
 
-
 #[cfg(test)]
 #[test]
 fn shared_presets_preserve_quotes_empty_overrides_and_duplicate_names() {
@@ -321,7 +327,8 @@ fn accepting_a_detected_preset_saves_it_to_the_profile_without_duplicates() {
 #[cfg(test)]
 #[test]
 fn prefills_the_matching_custom_script_ahead_of_the_standard_script() {
-    let folder = std::env::temp_dir().join(format!("vilauncher-play-presets-{}", std::process::id()));
+    let folder =
+        std::env::temp_dir().join(format!("vilauncher-play-presets-{}", std::process::id()));
     std::fs::create_dir(&folder).unwrap();
     let valid = "$settings = @{\nVICTORY_LOG = 'warn'\n}";
     let fixtures = [
@@ -361,6 +368,7 @@ fn accepting_current_settings_or_a_preset_skips_future_prompts() {
         archive_exe: None,
         highlights: Vec::new(),
         blockers: Vec::new(),
+        listing: Default::default(),
     };
     let presets = ["First", "Second"].map(|name| LaunchPreset {
         name: name.into(),
@@ -382,4 +390,3 @@ fn accepting_current_settings_or_a_preset_skips_future_prompts() {
     };
     assert!(PlayPresetPicker::for_project(&project, &presets, Some(&previous)).is_none());
 }
-

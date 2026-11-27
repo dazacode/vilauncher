@@ -1,10 +1,11 @@
-import { Download, Play, RefreshCw, Wrench } from "lucide-react"
+import { Download, Play, RefreshCw, Square, Wrench } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
-import { shortStage } from "@/lib/format"
+import { shortCommit, shortStage } from "@/lib/format"
 import { allProjects, run, useAlias, useStore } from "@/lib/store"
 import type { PlayNext, Project, Snapshot } from "@/lib/types"
+import { UpdateButton } from "./update-button"
 
 export type ActionState =
   | { kind: "busy"; label: string }
@@ -13,11 +14,14 @@ export type ActionState =
   | { kind: "install" }
   | { kind: "update" }
   | { kind: "play" }
+  | { kind: "stop" }
   | { kind: "nothing" }
 
 /** What the main button does for `p` now: never off without a way forward. */
 export function actionState(p: Project, snap: Snapshot, name: (p: Project) => string): ActionState {
   const job = snap.job
+  // While the game runs, the main button stops it, as Steam does. "Playing" is the stage a game run sets.
+  if (job.running && job.repo === p.repo && job.stoppable && job.stage === "Playing") return { kind: "stop" }
   if (job.running && job.repo === p.repo) return { kind: "busy", label: shortStage(job.stage) }
   if (job.running) {
     const other = job.repo ? allProjects(snap).find((q) => q.repo === job.repo) : undefined
@@ -77,14 +81,20 @@ export function PrimaryAction({ project: p }: { project: Project }) {
       )
     case "update":
       return (
-        <Button variant="primary" size="lg" onClick={() => void run({ type: "install", repo: p.repo })}>
+        <UpdateButton repo={p.repo} variant="primary" size="lg">
           <RefreshCw /> Update
-        </Button>
+        </UpdateButton>
       )
     case "play":
       return (
         <Button variant="primary" size="lg" onClick={() => void startPlay(p.repo)}>
           <Play className="fill-current" /> Play
+        </Button>
+      )
+    case "stop":
+      return (
+        <Button variant="danger" size="lg" onClick={() => void run({ type: "stop" })}>
+          <Square /> Stop
         </Button>
       )
     case "nothing":
@@ -125,11 +135,40 @@ export function ActionNote({ project: p }: { project: Project }) {
       text = <>A new version is out. {link("Play this version instead", () => void startPlay(p.repo))}</>
       break
     case "play":
-      text = p.activity ? [p.activity.updated_ago, p.activity.last_run ? `Last played ${p.activity.last_run}` : p.activity.pending].filter(Boolean).join(" · ") : p.standalone ? "Starts the installed program." : "Starts your installed build with your own game files."
+      text =
+        snap.job.failed && snap.job.repo === p.repo ? (
+          <>
+            {snap.job.stage} · {link("Fix and verify", () => void run({ type: "fix", repo: p.repo }))} · {link("View log", () => setTab("activity"))}
+          </>
+        ) : p.activity ? (
+          [p.activity.updated_ago, p.activity.last_run ? `Last played ${p.activity.last_run}` : p.activity.pending].filter(Boolean).join(" · ")
+        ) : p.standalone ? (
+          "Starts the installed program."
+        ) : (
+          "Starts your installed build with your own game files."
+        )
+      break
+    case "stop":
+      text = <>Closes the game so it can save, then stops it if it is still running. · {link("View log", () => setTab("activity"))}</>
       break
     case "nothing":
       text = "This Rust workspace has no program to run."
       break
   }
-  return <p className="text-body text-fg-3">{text}</p>
+  // Going back to the build before the last update: offered next to the update and play notes.
+  const restore =
+    p.previous_build !== null && (state.kind === "update" || state.kind === "play") ? (
+      <p className="text-caption text-fg-3">
+        {link(
+          p.previous_build ? `Restore previous build (commit ${shortCommit(p.previous_build)})` : "Restore previous build",
+          () => void run({ type: "rollback", repo: p.repo }),
+        )}
+      </p>
+    ) : null
+  return (
+    <>
+      <p className="text-body text-fg-3">{text}</p>
+      {restore}
+    </>
+  )
 }

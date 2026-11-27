@@ -49,7 +49,9 @@ fn env_path(var: &str) -> Option<PathBuf> {
 
 fn answers(program: &Path) -> bool {
     let mut c = Command::new(program);
-    c.arg("--version").stdout(Stdio::null()).stderr(Stdio::null());
+    c.arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     crate::hide_window(&mut c);
     c.status().map(|s| s.success()).unwrap_or(false)
 }
@@ -59,7 +61,11 @@ fn find(name: &str, places: &[Option<PathBuf>]) -> Option<PathBuf> {
     if answers(Path::new(name)) {
         return Some(PathBuf::from(name));
     }
-    places.iter().flatten().find(|p| p.is_file() && answers(p)).cloned()
+    places
+        .iter()
+        .flatten()
+        .find(|p| p.is_file() && answers(p))
+        .cloned()
 }
 
 fn msvc_installed() -> bool {
@@ -67,20 +73,36 @@ fn msvc_installed() -> bool {
     // installer's own list, else the usual folders.
     let mut roots: Vec<PathBuf> = Vec::new();
     if let Some(pf86) = env_path("ProgramFiles(x86)") {
-        let vswhere = pf86.join("Microsoft Visual Studio").join("Installer").join("vswhere.exe");
+        let vswhere = pf86
+            .join("Microsoft Visual Studio")
+            .join("Installer")
+            .join("vswhere.exe");
         if vswhere.is_file() {
             let mut c = Command::new(vswhere);
             c.args(["-all", "-products", "*", "-property", "installationPath"]);
             crate::hide_window(&mut c);
             if let Ok(o) = c.output() {
-                roots.extend(String::from_utf8_lossy(&o.stdout).lines().map(str::trim).filter(|l| !l.is_empty()).map(PathBuf::from));
+                roots.extend(
+                    String::from_utf8_lossy(&o.stdout)
+                        .lines()
+                        .map(str::trim)
+                        .filter(|l| !l.is_empty())
+                        .map(PathBuf::from),
+                );
             }
         }
     }
-    for base in [env_path("ProgramFiles"), env_path("ProgramFiles(x86)")].into_iter().flatten() {
+    for base in [env_path("ProgramFiles"), env_path("ProgramFiles(x86)")]
+        .into_iter()
+        .flatten()
+    {
         let vs = base.join("Microsoft Visual Studio");
         for year in std::fs::read_dir(&vs).into_iter().flatten().flatten() {
-            for edition in std::fs::read_dir(year.path()).into_iter().flatten().flatten() {
+            for edition in std::fs::read_dir(year.path())
+                .into_iter()
+                .flatten()
+                .flatten()
+            {
                 roots.push(edition.path());
             }
         }
@@ -91,7 +113,14 @@ fn msvc_installed() -> bool {
             .into_iter()
             .flatten()
             .flatten()
-            .any(|v| v.path().join("bin").join("Hostx64").join("x64").join("link.exe").is_file())
+            .any(|v| {
+                v.path()
+                    .join("bin")
+                    .join("Hostx64")
+                    .join("x64")
+                    .join("link.exe")
+                    .is_file()
+            })
     })
 }
 
@@ -104,19 +133,28 @@ pub fn detect() -> Tools {
     let git = find(
         "git",
         &[
-            pf.as_ref().map(|p| p.join("Git").join("cmd").join("git.exe")),
-            pf86.as_ref().map(|p| p.join("Git").join("cmd").join("git.exe")),
-            local.as_ref().map(|p| p.join("Programs").join("Git").join("cmd").join("git.exe")),
+            pf.as_ref()
+                .map(|p| p.join("Git").join("cmd").join("git.exe")),
+            pf86.as_ref()
+                .map(|p| p.join("Git").join("cmd").join("git.exe")),
+            local
+                .as_ref()
+                .map(|p| p.join("Programs").join("Git").join("cmd").join("git.exe")),
         ],
     );
     let cargo = find(
         "cargo",
         &[
             env_path("CARGO_HOME").map(|p| p.join("bin").join("cargo.exe")),
-            home.as_ref().map(|p| p.join(".cargo").join("bin").join("cargo.exe")),
+            home.as_ref()
+                .map(|p| p.join(".cargo").join("bin").join("cargo.exe")),
         ],
     );
-    let t = Tools { git, cargo, msvc: msvc_installed() };
+    let t = Tools {
+        git,
+        cargo,
+        msvc: msvc_installed(),
+    };
     *FOUND.lock().unwrap() = Some(t.clone());
     t
 }
@@ -160,7 +198,13 @@ pub fn has_winget() -> bool {
 
 /// The winget installs for what `t` lacks: (what, arguments).
 pub fn install_steps(t: &Tools) -> Vec<(&'static str, Vec<String>)> {
-    let common = ["--exact", "--source", "winget", "--accept-package-agreements", "--accept-source-agreements"];
+    let common = [
+        "--exact",
+        "--source",
+        "winget",
+        "--accept-package-agreements",
+        "--accept-source-agreements",
+    ];
     let mut steps = Vec::new();
     let mut step = |what: &'static str, id: &str, extra: &[&str]| {
         let mut a: Vec<String> = vec!["install".into(), "--id".into(), id.into()];

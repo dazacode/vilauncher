@@ -10,20 +10,26 @@ mod backgrounds;
 mod brand;
 mod build_activity;
 mod build_zip;
+mod diagnose;
 mod fullscreen;
+mod job_log;
 mod launcher;
 mod notify;
+mod patches;
+mod previous;
+mod report;
 mod rust_project;
 mod save_zip;
 mod saves;
 mod script_preset;
 mod settings_store;
+mod storage;
 mod system;
 mod tools;
 mod updater;
 
-use launcher::{Action, App};
 pub(crate) use launcher::{default_workspace, hide_window};
+use launcher::{Action, App};
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
 
@@ -48,7 +54,11 @@ fn snapshot(state: tauri::State<'_, Shared>) -> launcher::Snapshot {
 }
 
 #[tauri::command]
-fn act(action: Action, state: tauri::State<'_, Shared>, handle: tauri::AppHandle) -> Result<serde_json::Value, String> {
+fn act(
+    action: Action,
+    state: tauri::State<'_, Shared>,
+    handle: tauri::AppHandle,
+) -> Result<serde_json::Value, String> {
     let mut app = state.app.lock().unwrap();
     let outcome = app.act(action);
     state.persist(&app);
@@ -67,6 +77,42 @@ fn log(from: usize, state: tauri::State<'_, Shared>) -> launcher::LogView {
 }
 
 fn main() {
+    // Fix and verify without a window, for the agent tool (scripts\vilauncher-agent.mjs fix):
+    // `--fix <repo>` prints the job's log and a STAGE line. Debug and release builds alike.
+    // It refuses (exit 1) unless AI agent access is on, and while another launcher window runs.
+    if let Some(at) = std::env::args().position(|a| a == "--fix") {
+        let Some(repo) = std::env::args().nth(at + 1) else {
+            eprintln!("--fix needs a repo");
+            return;
+        };
+        if let Err(reason) = fix_allowed() {
+            eprintln!("refused: {reason}");
+            std::process::exit(1);
+        }
+        let mut app = App::new(notify::Ctx::new(|| {}), settings_store::load());
+        for _ in 0..100 {
+            if app.list_ready() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        if let Err(error) = app.act(Action::Fix { repo }) {
+            eprintln!("could not start the fix: {error}");
+            return;
+        }
+        loop {
+            let _ = app.snapshot();
+            let (running, stage) = app.job_running();
+            if !running {
+                let _ = app.snapshot();
+                settings_store::save(&app.saved, &mut String::new());
+                println!("STAGE: {stage}");
+                println!("{}", app.log_from(0).lines.join("\n"));
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+    }
     // Development check without a window: the launcher's first snapshot, as JSON.
     #[cfg(debug_assertions)]
     if std::env::args().any(|a| a == "--dump-snapshot") {
@@ -75,7 +121,9 @@ fn main() {
             std::thread::sleep(std::time::Duration::from_millis(250));
             let snapshot = serde_json::to_value(app.snapshot()).unwrap();
             // The list, and the PC's look unless it takes almost all the time.
-            if snapshot["list"]["status"] != "loading" && (!snapshot["system"].is_null() || tries >= 36) {
+            if snapshot["list"]["status"] != "loading"
+                && (!snapshot["system"].is_null() || tries >= 36)
+            {
                 println!("{}", serde_json::to_string_pretty(&snapshot).unwrap());
                 return;
             }
@@ -95,7 +143,10 @@ fn main() {
                 let _ = handle.emit("launcher://changed", ());
             });
             let app = App::new(ctx, settings_store::load());
-            tauri_app.manage(Shared { app: Mutex::new(app), written: Mutex::new(String::new()) });
+            tauri_app.manage(Shared {
+                app: Mutex::new(app),
+                written: Mutex::new(String::new()),
+            });
             if let Some(window) = tauri_app.get_webview_window("main") {
                 glass(&window);
             }
@@ -115,6 +166,43 @@ fn main() {
         .expect("VILauncher could not start");
 }
 
+/// Why `--fix` may not run now, or `Ok` when it may: AI agent access must be on in
+/// settings.json, and no other VILauncher.exe (the window) may be running.
+fn fix_allowed() -> Result<(), String> {
+    let text = std::fs::read_to_string(settings_store::file()).unwrap_or_default();
+    let settings: serde_json::Value =
+        serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
+    if settings.get("agent_access") != Some(&serde_json::Value::Bool(true)) {
+        return Err("AI agent access is off. Ask the player to turn on 'AI agent access' in VILauncher Settings. Nothing was changed.".into());
+    }
+    if other_launcher_running()? {
+        return Err(
+            "VILauncher is running. Close it first: Fix may need the files it holds.".into(),
+        );
+    }
+    Ok(())
+}
+
+/// Whether a VILauncher.exe other than this process runs (checked with tasklist, CSV: "name","pid",...).
+fn other_launcher_running() -> Result<bool, String> {
+    let mut command = std::process::Command::new("tasklist");
+    command.args(["/FI", "IMAGENAME eq VILauncher.exe", "/FO", "CSV", "/NH"]);
+    hide_window(&mut command);
+    let output = command
+        .output()
+        .map_err(|_| "could not check whether VILauncher is running (tasklist failed), so Fix was not started".to_string())?;
+    if !output.status.success() {
+        return Err("could not check whether VILauncher is running (tasklist failed), so Fix was not started".into());
+    }
+    let me = std::process::id();
+    let text = String::from_utf8_lossy(&output.stdout);
+    Ok(text
+        .lines()
+        .filter_map(|line| line.split(',').nth(1))
+        .filter_map(|pid| pid.trim().trim_matches('"').parse::<u32>().ok())
+        .any(|pid| pid != me))
+}
+
 /// The system's own glass behind the window: Mica on Windows 11 (Acrylic on
 /// Windows 10), the sidebar material on macOS. The UI keeps its own dark
 /// ground where none is available.
@@ -127,7 +215,12 @@ fn glass(window: &tauri::WebviewWindow) {
     }
     #[cfg(target_os = "macos")]
     {
-        let _ = window_vibrancy::apply_vibrancy(window, window_vibrancy::NSVisualEffectMaterial::HudWindow, None, Some(12.0));
+        let _ = window_vibrancy::apply_vibrancy(
+            window,
+            window_vibrancy::NSVisualEffectMaterial::HudWindow,
+            None,
+            Some(12.0),
+        );
     }
     let _ = window;
 }

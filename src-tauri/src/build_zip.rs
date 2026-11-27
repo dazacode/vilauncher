@@ -154,7 +154,8 @@ mod tests {
 
     #[test]
     fn imports_nested_victory_with_support_files_and_rejects_traversal() {
-        let root = std::env::temp_dir().join(format!("vilauncher-build-zip-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("vilauncher-build-zip-{}", std::process::id()));
         fs::create_dir(&root).unwrap();
         let archive = root.join("build.zip");
         let mut writer = zip::ZipWriter::new(File::create(&archive).unwrap());

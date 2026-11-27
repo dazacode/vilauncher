@@ -1,6 +1,7 @@
 //! The player's PC, looked at once in the background when the launcher
-//! starts: the graphics cards (with their video memory) and the system
-//! memory, so the window can say whether a project is likely to run here.
+//! starts: the processor, the graphics cards (with their video memory) and
+//! the system memory, so the window can say whether a build is likely to run
+//! here and which builds to recommend.
 //!
 //! On Windows one hidden PowerShell call answers everything; elsewhere
 //! (development only) the memory is read and the graphics list stays short.
@@ -12,6 +13,10 @@ use serde::Serialize;
 pub(crate) struct SystemInfo {
     pub gpus: Vec<Gpu>,
     pub ram_gb: Option<f64>,
+    /// The processor's name, as Windows writes it ("AMD Ryzen 7 5800X 8-Core Processor").
+    pub cpu: Option<String>,
+    /// Logical processors (threads), summed over every socket.
+    pub cpu_cores: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -35,9 +40,14 @@ pub(crate) enum Vendor {
 /// The maker, from a graphics card's name.
 pub(crate) fn vendor(name: &str) -> Vendor {
     let lower = name.to_lowercase();
-    let words: Vec<&str> = lower.split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
     let has = |list: &[&str]| words.iter().any(|w| list.contains(w));
-    if has(&["nvidia", "geforce", "rtx", "gtx", "quadro", "tesla", "titan"]) {
+    if has(&[
+        "nvidia", "geforce", "rtx", "gtx", "quadro", "tesla", "titan",
+    ]) {
         Vendor::Nvidia
     } else if has(&["amd", "radeon", "ati"]) {
         Vendor::Amd
@@ -76,9 +86,17 @@ pub(crate) fn vram_gb(bytes: f64) -> Option<f64> {
 /// virtual displays, and Windows' stand-in when no driver is installed.
 fn not_a_card(name: &str) -> bool {
     let l = name.to_lowercase();
-    ["virtual", "indirect display", "remote display", "basic display", "basic render", "hyper-v", "mirror driver"]
-        .iter()
-        .any(|w| l.contains(w))
+    [
+        "virtual",
+        "indirect display",
+        "remote display",
+        "basic display",
+        "basic render",
+        "hyper-v",
+        "mirror driver",
+    ]
+    .iter()
+    .any(|w| l.contains(w))
 }
 
 /// The cards, matched with the video memory the drivers wrote down (by name).
@@ -89,12 +107,23 @@ fn cards(names: &[String], adapters: &[(String, f64)]) -> Vec<Gpu> {
         .map(|n| n.trim())
         .filter(|n| !n.is_empty() && !not_a_card(n))
         .map(|name| {
-            let bytes = adapters.iter().find(|(desc, _)| key(desc) == key(name)).map(|a| a.1);
-            Gpu { name: name.to_owned(), vendor: vendor(name), vram_gb: bytes.and_then(vram_gb) }
+            let bytes = adapters
+                .iter()
+                .find(|(desc, _)| key(desc) == key(name))
+                .map(|a| a.1);
+            Gpu {
+                name: name.to_owned(),
+                vendor: vendor(name),
+                vram_gb: bytes.and_then(vram_gb),
+            }
         })
         .collect();
     // The biggest card first: that is the one games use.
-    gpus.sort_by(|a, b| b.vram_gb.unwrap_or(0.0).total_cmp(&a.vram_gb.unwrap_or(0.0)));
+    gpus.sort_by(|a, b| {
+        b.vram_gb
+            .unwrap_or(0.0)
+            .total_cmp(&a.vram_gb.unwrap_or(0.0))
+    });
     gpus
 }
 
@@ -111,22 +140,52 @@ fn detect_inner() -> SystemInfo {
 #[cfg(target_os = "macos")]
 fn detect_inner() -> SystemInfo {
     let sysctl = |key: &str| -> Option<String> {
-        let out = std::process::Command::new("/usr/sbin/sysctl").args(["-n", key]).output().ok()?;
-        out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+        let out = std::process::Command::new("/usr/sbin/sysctl")
+            .args(["-n", key])
+            .output()
+            .ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
     };
-    let ram_gb = sysctl("hw.memsize").and_then(|s| s.parse::<f64>().ok()).and_then(ram_gb);
+    let ram_gb = sysctl("hw.memsize")
+        .and_then(|s| s.parse::<f64>().ok())
+        .and_then(ram_gb);
     // Apple silicon: the graphics are part of the chip and share its memory.
-    let gpus = sysctl("machdep.cpu.brand_string")
+    let cpu = sysctl("machdep.cpu.brand_string");
+    let gpus = cpu
+        .clone()
         .filter(|chip| chip.starts_with("Apple"))
-        .map(|chip| vec![Gpu { vendor: vendor(&chip), name: chip, vram_gb: None }])
+        .map(|chip| {
+            vec![Gpu {
+                vendor: vendor(&chip),
+                name: chip,
+                vram_gb: None,
+            }]
+        })
         .unwrap_or_default();
-    SystemInfo { gpus, ram_gb }
+    let cpu_cores = sysctl("hw.logicalcpu")
+        .and_then(|s| s.parse::<u32>().ok())
+        .filter(|n| *n >= 1);
+    SystemInfo {
+        gpus,
+        ram_gb,
+        cpu,
+        cpu_cores,
+    }
 }
 
 #[cfg(all(not(windows), not(target_os = "macos")))]
 fn detect_inner() -> SystemInfo {
-    let ram_gb = std::fs::read_to_string("/proc/meminfo").ok().and_then(|text| meminfo_bytes(&text)).and_then(ram_gb);
-    SystemInfo { gpus: Vec::new(), ram_gb }
+    let ram_gb = std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|text| meminfo_bytes(&text))
+        .and_then(ram_gb);
+    SystemInfo {
+        gpus: Vec::new(),
+        ram_gb,
+        ..SystemInfo::default()
+    }
 }
 
 /// `MemTotal` from /proc/meminfo, in bytes.
@@ -140,7 +199,8 @@ fn meminfo_bytes(text: &str) -> Option<f64> {
 /// What the PowerShell script prints, as JSON.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn parse_report(json: &str) -> Option<SystemInfo> {
-    let v: serde_json::Value = serde_json::from_str(json.trim().trim_start_matches('\u{feff}')).ok()?;
+    let v: serde_json::Value =
+        serde_json::from_str(json.trim().trim_start_matches('\u{feff}')).ok()?;
     // PowerShell writes a list of one as the item itself, and none as null.
     let list = |v: &serde_json::Value| -> Vec<serde_json::Value> {
         match v {
@@ -149,15 +209,36 @@ fn parse_report(json: &str) -> Option<SystemInfo> {
             other => vec![other.clone()],
         }
     };
-    let number = |v: &serde_json::Value| v.as_f64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()));
-    let names: Vec<String> = list(&v["gpus"]).iter().filter_map(|n| n.as_str().map(str::to_owned)).collect();
+    let number = |v: &serde_json::Value| {
+        v.as_f64()
+            .or_else(|| v.as_str().and_then(|s| s.trim().parse().ok()))
+    };
+    let names: Vec<String> = list(&v["gpus"])
+        .iter()
+        .filter_map(|n| n.as_str().map(str::to_owned))
+        .collect();
     let adapters: Vec<(String, f64)> = list(&v["adapters"])
         .iter()
         .filter_map(|a| Some((a["desc"].as_str()?.to_owned(), number(&a["bytes"])?)))
         .collect();
     // The memory modules' total, else what Windows can use (a little less).
-    let ram = number(&v["installed"]).filter(|b| *b > 0.0).or_else(|| number(&v["ram"]));
-    Some(SystemInfo { gpus: cards(&names, &adapters), ram_gb: ram.and_then(ram_gb) })
+    let ram = number(&v["installed"])
+        .filter(|b| *b > 0.0)
+        .or_else(|| number(&v["ram"]));
+    let cpu = v["cpu"]
+        .as_str()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
+    let cpu_cores = number(&v["cpu_cores"])
+        .filter(|n| *n >= 1.0)
+        .map(|n| n.round() as u32);
+    Some(SystemInfo {
+        gpus: cards(&names, &adapters),
+        ram_gb: ram.and_then(ram_gb),
+        cpu,
+        cpu_cores,
+    })
 }
 
 #[cfg(windows)]
@@ -189,7 +270,9 @@ foreach ($key in @(Get-ItemProperty 'HKLM:\SYSTEM\ControlSet001\Control\Class\{4
 $gpus = @(Get-CimInstance Win32_VideoController | ForEach-Object { [string]$_.Name })
 $ram = [double](Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
 $installed = [double]((Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum).Sum)
-[pscustomobject]@{ gpus = $gpus; adapters = $adapters; ram = $ram; installed = $installed } | ConvertTo-Json -Compress -Depth 4
+$cpuName = [string](Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name)
+$cores = [int]((Get-CimInstance Win32_Processor | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum)
+[pscustomobject]@{ gpus = $gpus; adapters = $adapters; ram = $ram; installed = $installed; cpu = $cpuName; cpu_cores = $cores } | ConvertTo-Json -Compress -Depth 4
 "#;
 
     const TIMEOUT: Duration = Duration::from_secs(8);
@@ -199,19 +282,35 @@ $installed = [double]((Get-CimInstance Win32_PhysicalMemory | Measure-Object -Pr
     }
 
     fn powershell() -> std::path::PathBuf {
-        let root = std::env::var_os("SystemRoot").map(std::path::PathBuf::from).unwrap_or_else(|| "C:\\Windows".into());
-        let full = root.join("System32").join("WindowsPowerShell").join("v1.0").join("powershell.exe");
-        if full.is_file() { full } else { "powershell.exe".into() }
+        let root = std::env::var_os("SystemRoot")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| "C:\\Windows".into());
+        let full = root
+            .join("System32")
+            .join("WindowsPowerShell")
+            .join("v1.0")
+            .join("powershell.exe");
+        if full.is_file() {
+            full
+        } else {
+            "powershell.exe".into()
+        }
     }
 
     fn run() -> Option<String> {
         let utf16: Vec<u8> = SCRIPT.encode_utf16().flat_map(u16::to_le_bytes).collect();
         let encoded = base64(&utf16);
         let mut c = Command::new(powershell());
-        c.args(["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded.as_str()])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null());
+        c.args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-EncodedCommand",
+            encoded.as_str(),
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
         crate::hide_window(&mut c);
         let mut child = c.spawn().ok()?;
         let mut stdout = child.stdout.take()?;
@@ -224,7 +323,9 @@ $installed = [double]((Get-CimInstance Win32_PhysicalMemory | Measure-Object -Pr
         loop {
             match child.try_wait() {
                 Ok(Some(_)) => break,
-                Ok(None) if start.elapsed() < TIMEOUT => std::thread::sleep(Duration::from_millis(50)),
+                Ok(None) if start.elapsed() < TIMEOUT => {
+                    std::thread::sleep(Duration::from_millis(50))
+                }
                 _ => {
                     let _ = child.kill();
                     let _ = child.wait();
@@ -239,7 +340,9 @@ $installed = [double]((Get-CimInstance Win32_PhysicalMemory | Measure-Object -Pr
         const ABC: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
         let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
         for chunk in bytes.chunks(3) {
-            let n = (chunk[0] as u32) << 16 | (*chunk.get(1).unwrap_or(&0) as u32) << 8 | *chunk.get(2).unwrap_or(&0) as u32;
+            let n = (chunk[0] as u32) << 16
+                | (*chunk.get(1).unwrap_or(&0) as u32) << 8
+                | *chunk.get(2).unwrap_or(&0) as u32;
             for i in 0..4 {
                 if i <= chunk.len() {
                     out.push(ABC[(n >> (18 - 6 * i) & 63) as usize] as char);
@@ -304,28 +407,65 @@ mod tests {
     fn the_powershell_report_is_read_with_its_quirks() {
         let report = r#"{"gpus":["NVIDIA GeForce RTX 4070","Intel(R) UHD Graphics 770","Parsec Virtual Display Adapter"],
             "adapters":[{"desc":"Intel(R) UHD Graphics 770","bytes":134217728},{"desc":"NVIDIA GeForce RTX 4070","bytes":12884901888}],
-            "ram":34225520640,"installed":34359738368}"#;
+            "ram":34225520640,"installed":34359738368,
+            "cpu":"  AMD Ryzen 7 5800X 8-Core Processor  ","cpu_cores":16}"#;
         let info = parse_report(report).unwrap();
         assert_eq!(info.ram_gb, Some(32.0));
+        assert_eq!(
+            info.cpu.as_deref(),
+            Some("AMD Ryzen 7 5800X 8-Core Processor")
+        );
+        assert_eq!(info.cpu_cores, Some(16));
         assert_eq!(info.gpus.len(), 2);
-        assert_eq!(info.gpus[0], Gpu { name: "NVIDIA GeForce RTX 4070".into(), vendor: Vendor::Nvidia, vram_gb: Some(12.0) });
+        assert_eq!(
+            info.gpus[0],
+            Gpu {
+                name: "NVIDIA GeForce RTX 4070".into(),
+                vendor: Vendor::Nvidia,
+                vram_gb: Some(12.0)
+            }
+        );
         assert_eq!(info.gpus[1].vendor, Vendor::Intel);
         // One card comes as the item itself; no registry match leaves the memory unknown.
-        let one = parse_report("\u{feff}{\"gpus\":\"AMD Radeon RX 6600\",\"adapters\":null,\"ram\":17179869184,\"installed\":0}").unwrap();
-        assert_eq!(one.gpus, vec![Gpu { name: "AMD Radeon RX 6600".into(), vendor: Vendor::Amd, vram_gb: None }]);
+        let one = parse_report("\u{feff}{\"gpus\":\"AMD Radeon RX 6600\",\"adapters\":null,\"ram\":17179869184,\"installed\":0,\"cpu\":\"\",\"cpu_cores\":0}").unwrap();
+        assert_eq!(
+            one.gpus,
+            vec![Gpu {
+                name: "AMD Radeon RX 6600".into(),
+                vendor: Vendor::Amd,
+                vram_gb: None
+            }]
+        );
         assert_eq!(one.ram_gb, Some(16.0));
+        // An empty processor name and a zero core count are no answer at all.
+        assert_eq!((one.cpu, one.cpu_cores), (None, None));
         assert!(parse_report("not json").is_none());
     }
 
     #[test]
     fn meminfo_total_is_read() {
-        assert_eq!(meminfo_bytes("MemTotal:       16303428 kB\nMemFree: 1 kB\n"), Some(16_694_710_272.0));
+        assert_eq!(
+            meminfo_bytes("MemTotal:       16303428 kB\nMemFree: 1 kB\n"),
+            Some(16_694_710_272.0)
+        );
         assert_eq!(meminfo_bytes("nothing"), None);
     }
 
     #[test]
     fn serializes_as_the_window_expects() {
-        let info = SystemInfo { gpus: vec![Gpu { name: "X".into(), vendor: Vendor::Nvidia, vram_gb: None }], ram_gb: Some(16.0) };
-        assert_eq!(serde_json::to_string(&info).unwrap(), r#"{"gpus":[{"name":"X","vendor":"NVIDIA","vram_gb":null}],"ram_gb":16.0}"#);
+        let info = SystemInfo {
+            gpus: vec![Gpu {
+                name: "X".into(),
+                vendor: Vendor::Nvidia,
+                vram_gb: None,
+            }],
+            ram_gb: Some(16.0),
+            cpu: Some("Y".into()),
+            cpu_cores: Some(8),
+        };
+        assert_eq!(
+            serde_json::to_string(&info).unwrap(),
+            r#"{"gpus":[{"name":"X","vendor":"NVIDIA","vram_gb":null}],"ram_gb":16.0,"cpu":"Y","cpu_cores":8}"#
+        );
     }
 }

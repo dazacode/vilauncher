@@ -1,12 +1,16 @@
-import { BadgeCheck, LayoutGrid, Plus, Search, Settings2 } from "lucide-react"
+import { BadgeCheck, LayoutGrid, Plus, Search, Settings2, SlidersHorizontal } from "lucide-react"
 import { motion } from "motion/react"
 import { useEffect, useId, useRef, useState } from "react"
+import { Popover } from "radix-ui"
 import { ProjectAvatar } from "@/components/art/project-avatar"
 import { Button } from "@/components/ui/button"
 import { Segmented } from "@/components/ui/segmented"
+import { Select } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
+import { Switch } from "@/components/ui/switch"
 import { Tooltip } from "@/components/ui/tooltip"
-import { matchesCard } from "@/lib/compat"
+import { assess, mainGpu, recommendRank, SORTS, sortProjects, withSpec } from "@/lib/compat"
+import { openUrl } from "@/lib/api"
 import { fps, gpuText, shortStage } from "@/lib/format"
 import { run, useAlias, useStore } from "@/lib/store"
 import type { Project, Snapshot } from "@/lib/types"
@@ -86,9 +90,9 @@ export function Sidebar() {
         <NavItem icon={<LayoutGrid />} label="Library" active={view === "library"} onClick={() => setView("library")} />
         <NavItem icon={<Settings2 />} label="Settings" active={view === "settings"} onClick={() => setView("settings")} />
       </nav>
-      <div className="space-y-2 px-2 pt-4">
-        <label className="relative block">
-          <Search className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-fg-3" />
+      <div className="flex items-center gap-1.5 px-2 pt-4">
+        <label className="relative block min-w-0 flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-fg-3" />
           <input
             ref={searchRef}
             value={screenshot ? "" : search}
@@ -101,18 +105,7 @@ export function Sidebar() {
             className="h-8 w-full rounded-md border border-line bg-fill-1 pr-3 pl-9 text-secondary text-fg placeholder:text-fg-3 transition-colors hover:border-line-2 focus-visible:border-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25"
           />
         </label>
-        {snap ? (
-          <Segmented
-            label="Graphics cards"
-            size="sm"
-            className="flex w-full"
-            value={String(filter) as "0" | "1" | "2"}
-            options={FILTERS}
-            onChange={(v) => void run({ type: "set_gpu_filter", value: Number(v) })}
-          />
-        ) : (
-          <Bone className="h-8 w-full rounded-md" />
-        )}
+        {snap ? <FilterMenu snap={snap} /> : <Bone className="size-8 shrink-0 rounded-md" />}
       </div>
       <div
         ref={listRef}
@@ -163,25 +156,203 @@ export function Sidebar() {
 }
 
 /**
- * The sidebar's groups. Recommended: the first three not-installed projects
- * (in VIPortLive's order) made for the player's card, else simply the first three.
+ * The sidebar's groups. Recommended: the three not-installed builds that fit the
+ * player's PC best (a good fit, then close, then nothing known yet), in VIPortLive's
+ * order within each. A build that doesn't fit is never recommended; its row warns.
  */
 function group(snap: Snapshot, query: string, filter: number) {
+  const s = snap.settings
+  const system = withSpec(snap.system, s)
   const keep = (p: Project) => {
     const text = !query || p.name.toLowerCase().includes(query) || p.repo.toLowerCase().includes(query)
     const card = (name: string) => p.custom || p.gpu.some((g) => g.toLowerCase() === name)
-    return text && (filter === 1 ? card("nvidia") : filter === 2 ? card("amd") : true)
+    const tier = p.custom || s.list_tier === 0 || p.listing.tier === (s.list_tier === 1 ? "tracked" : "watchlist")
+    // Taken-down projects are hidden unless the player turns them on.
+    const taken = s.show_nuked || !p.listing.nuked
+    return text && tier && taken && (filter === 1 ? card("nvidia") : filter === 2 ? card("amd") : true)
   }
-  const listed = snap.list.items.filter(keep)
+  const listed = sortProjects(snap.list.items.filter(keep), s.list_sort)
   const rest = listed.filter((p) => !p.installed)
-  const suited = rest.filter((p) => matchesCard(p, snap.system) === true)
-  const recommended = (suited.length ? suited : rest).slice(0, 3)
+  // Recommended never includes a taken-down project, whatever the filter shows.
+  const fits = rest
+    .flatMap((p) => {
+      const rank = p.listing.nuked ? null : recommendRank(assess(p, system).level)
+      return rank === null ? [] : [{ p, rank }]
+    })
+    .sort((a, b) => a.rank - b.rank)
+    .map((x) => x.p)
+  const recommended = fits.slice(0, 3)
   return [
-    { title: "Your repos", rows: snap.custom.filter(keep) },
+    { title: "Your repos", rows: sortProjects(snap.custom.filter(keep), s.list_sort) },
     { title: "Installed", rows: listed.filter((p) => p.installed) },
     { title: "Recommended", rows: recommended },
     { title: "All projects", rows: rest.filter((p) => !recommended.includes(p)) },
   ].filter((s) => s.rows.length > 0)
+}
+
+const TIERS = [
+  { value: "0", label: "All" },
+  { value: "1", label: "Tracked" },
+  { value: "2", label: "Watchlist" },
+] as const
+
+/** Filter, sort and the list's options, in one menu. Every choice is kept in the launcher's settings. */
+function FilterMenu({ snap }: { snap: Snapshot }) {
+  const s = snap.settings
+  const [open, setOpen] = useState(false)
+  const [advanced, setAdvanced] = useState(false)
+  const changed = [s.gpu_filter !== 0, s.show_nuked, s.list_sort !== 0, s.list_tier !== 0, s.spec_ram_gb != null || s.spec_vram_gb != null].filter(Boolean).length
+  const setList = (next: { show_nuked?: boolean; sort?: number; tier?: number }) =>
+    void run({
+      type: "set_list_options",
+      show_nuked: next.show_nuked ?? s.show_nuked,
+      sort: next.sort ?? s.list_sort,
+      tier: next.tier ?? s.list_tier,
+    })
+  return (
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          aria-label={changed ? `Filter and sort, ${changed} on` : "Filter and sort"}
+          title="Filter and sort"
+          className={cn(
+            "relative grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-line bg-fill-1 text-fg-2 transition-colors hover:border-line-2 hover:bg-fill-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25",
+            open && "border-line-2 bg-fill-3 text-fg",
+          )}
+        >
+          <SlidersHorizontal className="size-4" />
+          {changed > 0 && (
+            <span className="absolute -top-1 -right-1 grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] leading-none font-semibold text-white">
+              {changed}
+            </span>
+          )}
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          align="start"
+          sideOffset={6}
+          collisionPadding={12}
+          className="z-50 max-h-[min(640px,80vh)] w-[248px] space-y-4 overflow-y-auto rounded-xl border border-line-2 bg-[#1d1b23] p-3.5 text-body text-fg shadow-[0_12px_36px_rgb(0_0_0/0.5)] outline-none"
+        >
+          <label className="flex items-center justify-between gap-3">
+            <span>Show taken-down projects</span>
+            <Switch checked={s.show_nuked} onCheckedChange={(v) => setList({ show_nuked: v })} aria-label="Show taken-down projects" />
+          </label>
+          <div className="space-y-1.5">
+            <span className="text-caption font-semibold text-fg-2">Sort</span>
+            <Select
+              label="Sort"
+              value={String(s.list_sort)}
+              options={SORTS.map((name, i) => ({ value: String(i), label: name }))}
+              onChange={(v) => setList({ sort: Number(v) })}
+              className="w-full"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <span className="text-caption font-semibold text-fg-2">Tier</span>
+            <Segmented
+              label="Tier"
+              size="sm"
+              className="flex w-full"
+              value={String(s.list_tier) as "0" | "1" | "2"}
+              options={TIERS}
+              onChange={(v) => setList({ tier: Number(v) })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <span className="text-caption font-semibold text-fg-2">Graphics cards</span>
+            <Segmented
+              label="Graphics cards"
+              size="sm"
+              className="flex w-full"
+              value={String(s.gpu_filter) as "0" | "1" | "2"}
+              options={FILTERS}
+              onChange={(v) => void run({ type: "set_gpu_filter", value: Number(v) })}
+            />
+          </div>
+          <div className="space-y-2 border-t border-line pt-3">
+            <button
+              type="button"
+              aria-expanded={advanced}
+              onClick={() => setAdvanced(!advanced)}
+              className="flex w-full items-center justify-between text-caption font-semibold text-fg-2 hover:text-fg"
+            >
+              Advanced: by PC spec
+              <span aria-hidden>{advanced ? "−" : "+"}</span>
+            </button>
+            {advanced && <SpecFields snap={snap} />}
+          </div>
+          {changed > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full"
+              onClick={() => {
+                void run({ type: "set_list_options", show_nuked: false, sort: 0, tier: 0 })
+                void run({ type: "set_gpu_filter", value: 0 })
+                void run({ type: "set_spec", ram_gb: null, vram_gb: null })
+              }}
+            >
+              Reset filters
+            </Button>
+          )}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  )
+}
+
+/** The player's RAM and video memory, for judging builds by hand. Empty: what the launcher found. */
+function SpecFields({ snap }: { snap: Snapshot }) {
+  const s = snap.settings
+  const ram = snap.system?.ram_gb ?? null
+  const vram = mainGpu(snap.system)?.vram_gb ?? null
+  const save = (ram_gb: number | null, vram_gb: number | null) => void run({ type: "set_spec", ram_gb, vram_gb })
+  return (
+    <div className="space-y-2">
+      <p className="text-caption text-fg-3">Builds are judged against these numbers. Leave a box empty to use what the launcher found.</p>
+      <SpecInput label="System memory (GB)" value={s.spec_ram_gb} detected={ram} onCommit={(v) => save(v, s.spec_vram_gb)} />
+      <SpecInput label="Video memory (GB)" value={s.spec_vram_gb} detected={vram} onCommit={(v) => save(s.spec_ram_gb, v)} />
+    </div>
+  )
+}
+
+function SpecInput({
+  label,
+  value,
+  detected,
+  onCommit,
+}: {
+  label: string
+  value: number | null
+  detected: number | null
+  onCommit(value: number | null): void
+}) {
+  const [text, setText] = useState(value == null ? "" : String(value))
+  useEffect(() => setText(value == null ? "" : String(value)), [value])
+  const commit = () => {
+    const n = Number(text.replace(",", "."))
+    onCommit(text.trim() !== "" && n > 0 ? n : null)
+  }
+  return (
+    <label className="flex items-center justify-between gap-3">
+      <span>{label}</span>
+      <input
+        inputMode="decimal"
+        value={text}
+        placeholder={detected != null ? String(detected) : "Unknown"}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit()
+        }}
+        aria-label={label}
+        className="h-8 w-24 rounded-md border border-line bg-fill-1 px-2 text-right text-secondary text-fg placeholder:text-fg-3 focus-visible:border-accent/60 focus-visible:outline-none"
+      />
+    </label>
+  )
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -223,6 +394,9 @@ function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: 
   if (working) {
     line = <><Spinner className="size-3 text-accent-fg" /> {shortStage(snap.job.stage)}</>
     tone = "text-accent-fg"
+  } else if (p.listing.nuked) {
+    line = "Taken down · open on VIPortLive"
+    tone = "text-warn"
   } else if (p.update) {
     line = "Update available"
     tone = "text-warn"
@@ -232,9 +406,11 @@ function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: 
     line = p.installed ? "Installed · added by link" : "Added by link"
   } else {
     const f = fps(p)
-    // A build made for another card says so, quietly, where its cards would be.
-    const card = matchesCard(p, snap.system) === false ? `Made for ${p.gpu.join(" and ")}` : p.gpu.length ? gpuText(p.gpu) : null
-    line = [f != null ? `${f} fps` : null, card].filter(Boolean).join(" · ") || "Not measured yet"
+    // Where a build doesn't fit the PC, its warning takes the place of the cards it runs on.
+    const verdict = assess(p, withSpec(snap.system, snap.settings))
+    if (verdict.level === "concern") tone = "text-warn"
+    const detail = verdict.warning ?? (p.gpu.length ? gpuText(p.gpu) : null)
+    line = [f != null ? `${f} fps` : null, detail].filter(Boolean).join(" · ") || "Not measured yet"
   }
   return (
     <button
@@ -244,6 +420,11 @@ function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: 
       onFocus={onFocus}
       aria-current={selected ? "true" : undefined}
       onClick={() => {
+        // A taken-down project has nothing to install: its page on VIPortLive explains it.
+        if (p.listing.nuked) {
+          void openUrl(p.listing.id ? `${snap.brand.site}/projects/${p.listing.id}` : snap.brand.site)
+          return
+        }
         setView("library")
         void run({ type: "select", repo: p.repo })
       }}

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Segmented } from "@/components/ui/segmented"
 import { Spinner } from "@/components/ui/spinner"
 import { startPlay } from "@/features/library/primary-action"
+import { ResponsibilityDialog } from "@/features/shared/responsibility"
 import { pickFile, pickFolder, saveFile } from "@/lib/api"
 import { allProjects, run, useAlias, useStore } from "@/lib/store"
 import type { PlayChoice, PlayNext, SaveOption, SavesList } from "@/lib/types"
@@ -45,6 +46,8 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose(): void }) {
       setError(null)
     }
   }, [open])
+  const acknowledged = useStore((s) => s.snap!.settings.acknowledged)
+  const [askImport, setAskImport] = useState(false)
   const add = async () => {
     try {
       const { act } = await import("@/lib/api")
@@ -55,7 +58,15 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose(): void }) {
       setError(String(e))
     }
   }
+  // The first repo import asks the player to take responsibility; later ones go straight through.
+  const submit = () => (acknowledged.includes("import-repo") ? void add() : setAskImport(true))
+  const [zipPath, setZipPath] = useState<string | null>(null)
+  const importZip = (path: string) => {
+    void run({ type: "import_build_zip", path })
+    onClose()
+  }
   return (
+    <>
     <Dialog
       open={open}
       onOpenChange={(o) => !o && onClose()}
@@ -64,7 +75,7 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose(): void }) {
       footer={
         mode === "link" ? (
           <>
-            <Button variant="primary" disabled={!link.trim()} onClick={() => void add()}><Plus /> Add to library</Button>
+            <Button variant="primary" disabled={!link.trim()} onClick={submit}><Plus /> Add to library</Button>
             <Button variant="ghost" onClick={onClose}>Cancel</Button>
           </>
         ) : (
@@ -74,9 +85,12 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose(): void }) {
               disabled={busy}
               onClick={async () => {
                 const path = await pickFile("Import a build ZIP", [{ name: "Build ZIP", extensions: ["zip"] }])
-                if (path) {
-                  void run({ type: "import_build_zip", path })
-                  onClose()
+                if (!path) return
+                // A ZIP holds a program that runs on this PC, so it gets the same warning as a repo.
+                if (acknowledged.includes("import-repo")) importZip(path)
+                else {
+                  setZipPath(path)
+                  setAskImport(true)
                 }
               }}
             >
@@ -105,7 +119,7 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose(): void }) {
                 setLink(e.target.value)
                 setError(null)
               }}
-              onKeyDown={(e) => e.key === "Enter" && link.trim() && void add()}
+              onKeyDown={(e) => e.key === "Enter" && link.trim() && submit()}
               placeholder="https://github.com/owner/project"
               aria-label="Git link"
               className="h-10 pl-9"
@@ -122,6 +136,21 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose(): void }) {
         <p className="text-secondary text-fg-2">VILauncher builds and runs this code on your PC. Add only projects from people you trust: fake repos with malware exist.</p>
       </div>
     </Dialog>
+    <ResponsibilityDialog
+      open={askImport}
+      onOpenChange={(open) => {
+        setAskImport(open)
+        if (!open) setZipPath(null)
+      }}
+      id="import-repo"
+      onAccept={() => {
+        const pending = zipPath
+        setZipPath(null)
+        if (pending) importZip(pending)
+        else void add()
+      }}
+    />
+    </>
   )
 }
 
@@ -242,7 +271,7 @@ function SetupDialog({ repo, onClose }: { repo: string; onClose(): void }) {
             n={needTools ? 2 : 1}
             done={filesOk}
             title="Your game files"
-            detail={snap.files.ok ? "Found in your game folder." : snap.files.find_error ?? (snap.files.chosen ? `Missing ${snap.files.missing.join(", ")}` : "The folder with game_scarlett_master.exe from your own copy of the game.")}
+            detail={snap.files.ok ? "Found in your game folder." : snap.files.unplugged ? "The drive with your game files is not connected. Plug it in, or choose the folder again." : snap.files.find_error ?? (snap.files.chosen ? `Missing ${snap.files.missing.join(", ")}` : "The folder with game_scarlett_master.exe from your own copy of the game.")}
           >
             {!filesOk && (
               <>

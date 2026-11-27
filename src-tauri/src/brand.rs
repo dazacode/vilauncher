@@ -31,18 +31,24 @@ pub const LEGACY_FOLDERS: &[&str] = &["Mandyhub", "VI Launcher"];
 /// %LOCALAPPDATA% (projects, pictures): on other systems, while developing,
 /// the platform's own data folder.
 pub fn local_base() -> std::path::PathBuf {
-    std::env::var_os("LOCALAPPDATA").map(Into::into).unwrap_or_else(data_base)
+    std::env::var_os("LOCALAPPDATA")
+        .map(Into::into)
+        .unwrap_or_else(data_base)
 }
 
 /// %APPDATA% (settings): on other systems, the platform's own data folder.
 pub fn roaming_base() -> std::path::PathBuf {
-    std::env::var_os("APPDATA").map(Into::into).unwrap_or_else(data_base)
+    std::env::var_os("APPDATA")
+        .map(Into::into)
+        .unwrap_or_else(data_base)
 }
 
 fn data_base() -> std::path::PathBuf {
     let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
     if cfg!(target_os = "macos") {
-        return home.map(|h| h.join("Library").join("Application Support")).unwrap_or_else(|| ".".into());
+        return home
+            .map(|h| h.join("Library").join("Application Support"))
+            .unwrap_or_else(|| ".".into());
     }
     std::env::var_os("XDG_DATA_HOME")
         .map(Into::into)

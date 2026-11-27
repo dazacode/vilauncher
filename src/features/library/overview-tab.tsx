@@ -1,10 +1,12 @@
 import { AlertTriangle, Check, ExternalLink, Minus, RefreshCw } from "lucide-react"
+import { useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Group, Row } from "@/components/ui/group"
 import { openUrl } from "@/lib/api"
-import { assess, type Check as CompatCheck, type Level, mainGpu, matchesCard } from "@/lib/compat"
+import { assess, type Check as CompatCheck, type Level, mainGpu, matchesCard, withSpec } from "@/lib/compat"
 import { shortCommit } from "@/lib/format"
 import { leadSentence } from "./hero"
+import { UpdateButton } from "./update-button"
 import { run, useAlias, useStore } from "@/lib/store"
 import type { Project } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -24,7 +26,7 @@ export function OverviewTab({ project: p }: { project: Project }) {
               <p className="text-caption text-fg-3">{screenshot ? "Version hidden" : `Version ${shortCommit(p.update)} · you have ${shortCommit(p.built) ?? "an older one"}`}</p>
             </div>
             <Button size="sm" variant="ghost" onClick={() => void run({ type: "later", repo: p.repo, remote: p.update! })}>Later</Button>
-            <Button size="sm" variant="primary" disabled={busy} onClick={() => void run({ type: "install", repo: p.repo })}>Update now</Button>
+            <UpdateButton repo={p.repo} size="sm" variant="primary" disabled={busy}>Update now</UpdateButton>
           </div>
         )}
         {p.custom && p.kind === "git" && (
@@ -86,15 +88,27 @@ function List({ title, items, mark }: { title: string; items: string[]; mark: Re
 
 const MARK: Record<Level, React.ReactNode> = {
   good: <Check className="size-4 text-ok" strokeWidth={2.25} aria-label="Fine" />,
+  close: <Minus className="size-4 text-warn" aria-label="Close to the limit" />,
   concern: <AlertTriangle className="size-4 text-warn" aria-label="Check this" />,
   unknown: <Minus className="size-4 text-fg-4" aria-label="Not known" />,
 }
 
 /** How this build suits the player's PC, from the author's report and the launcher's look at the hardware. */
 function YourPc({ project: p }: { project: Project }) {
-  const system = useStore((s) => s.snap?.system ?? null)
+  const detected = useStore((s) => s.snap?.system ?? null)
+  const spec = useStore((s) => s.snap?.settings)
+  const system = useMemo(() => withSpec(detected, spec), [detected, spec])
   const filter = useStore((s) => s.snap?.settings.gpu_filter ?? 0)
   const a = assess(p, system)
+  // Builds don't say which processor they need, so the processor is shown, not compared.
+  const cpu: CompatCheck = {
+    label: "Processor",
+    value: system?.cpu ?? "Unknown",
+    level: "unknown",
+    note: system?.cpu_cores
+      ? `${system.cpu_cores} threads. Builds don't say which processor they need`
+      : "Builds don't say which processor they need",
+  }
   const vendor = mainGpu(system)?.vendor
   const target = vendor === "NVIDIA" ? 1 : 2
   const offerFilter = system && a.level === "concern" && matchesCard(p, system) === false && filter !== target
@@ -119,7 +133,7 @@ function YourPc({ project: p }: { project: Project }) {
       ) : (
         <div className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-fill-1">
           <p className="px-4 py-3 text-body text-fg">{a.headline}</p>
-          {[a.gpu, a.ram, a.vram].map((c) => (
+          {[a.gpu, a.ram, a.vram, cpu].map((c) => (
             <CheckRow key={c.label} check={c} />
           ))}
           {offerFilter && (

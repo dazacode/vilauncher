@@ -1,19 +1,26 @@
-import { ExternalLink, FolderOpen, Search } from "lucide-react"
+import { Fragment, useCallback, useEffect, useState } from "react"
+import { ExternalLink, FolderOpen, RefreshCw, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Group, Row } from "@/components/ui/group"
 import { Input, Textarea } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { GraphicsGroups } from "@/features/library/graphics-tab"
+import { ResponsibilityDialog } from "@/features/shared/responsibility"
 import { openUrl, pickFolder } from "@/lib/api"
 import { useDraft } from "@/lib/hooks"
 import { run, useStore } from "@/lib/store"
+import type { StorageView } from "@/lib/types"
 
 export function SettingsView() {
   const snap = useStore((s) => s.snap)!
   const screenshot = useStore((s) => s.screenshot)
   const setScreenshot = useStore((s) => s.setScreenshot)
   const s = snap.settings
+  const [askAgents, setAskAgents] = useState(false)
+  // Turning agents on needs the warning once; the switch only moves after Continue.
+  const turnOnAgents = () =>
+    s.acknowledged.includes("agent-access") ? void run({ type: "set_agent_access", enabled: true }) : setAskAgents(true)
   const [gameDir, setGameDir] = useDraft(s.game_dir, (v) => void run({ type: "set_game_dir", path: v }), 600)
   const [args, setArgs] = useDraft(s.launch_args, (v) => void run({ type: "set_settings", patch: { launch_args: v } }))
   const [env, setEnv] = useDraft(s.extra_env, (v) => void run({ type: "set_settings", patch: { extra_env: v } }))
@@ -92,8 +99,26 @@ export function SettingsView() {
                 <Button size="sm" onClick={() => void run({ type: "open", what: "backgrounds" })}><FolderOpen /> Open folder</Button>
               </Row>
             </Group>
+
+            <DiskSpace />
           </>
         )}
+
+        <Group title="AI agents">
+          <Row label="Let AI agents help with builds" hint="Off by default. Agents can read logs and, when you confirm, apply patches. See the README section 'Agent tools'.">
+            <Switch
+              checked={snap.settings.agent_access}
+              onCheckedChange={(v) => (v ? turnOnAgents() : void run({ type: "set_agent_access", enabled: false }))}
+              aria-label="Let AI agents help with builds"
+            />
+          </Row>
+          <ResponsibilityDialog
+            open={askAgents}
+            onOpenChange={setAskAgents}
+            id="agent-access"
+            onAccept={() => void run({ type: "set_agent_access", enabled: true })}
+          />
+        </Group>
 
         <Group title="Updates">
           <Row
@@ -105,6 +130,13 @@ export function SettingsView() {
             {(u.state === "checking" || u.state === "downloading") && <Spinner />}
             {!["available", "downloaded", "checking", "downloading"].includes(u.state) && <Button size="sm" onClick={() => void run({ type: "check_update" })}>Check now</Button>}
             <Button size="sm" variant="ghost" onClick={() => void openUrl(u.releases)}>Release notes</Button>
+          </Row>
+          <Row label="Warn before updating a project" hint="Shows what an update replaces, and that the previous build can be restored once.">
+            <Switch
+              checked={!snap.settings.skip_update_warning}
+              onCheckedChange={(v) => void run({ type: "set_update_warning", show: v })}
+              aria-label="Warn before updating a project"
+            />
           </Row>
         </Group>
 
@@ -124,6 +156,114 @@ export function SettingsView() {
   )
 }
 
+/** Sizes in KB, MB, GB or TB with one decimal. */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  const units = ["KB", "MB", "GB", "TB"]
+  let value = bytes / 1024
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit++
+  }
+  return `${value.toFixed(1)} ${units[unit]}`
+}
+
+/** What each project takes on disk, and the safe parts to clear. Saves are never offered. */
+function DiskSpace() {
+  const busy = useStore((s) => s.snap!.job.running)
+  const [view, setView] = useState<StorageView | null>(null)
+  const [scanning, setScanning] = useState(false)
+  // The button waiting for its second click, as "cache:<slug>" or "previous:<slug>".
+  const [armed, setArmed] = useState<string | null>(null)
+
+  const scan = useCallback(async () => {
+    setScanning(true)
+    const next = await run<StorageView>({ type: "storage_scan" })
+    if (next) setView(next)
+    setScanning(false)
+  }, [])
+
+  useEffect(() => {
+    void scan()
+  }, [scan])
+
+  const clear = async (kind: "cache" | "previous", repo: string, key: string) => {
+    if (armed !== key) {
+      setArmed(key)
+      return
+    }
+    setArmed(null)
+    await run(
+      kind === "cache" ? { type: "clear_cache", repo } : { type: "clear_previous", repo },
+      kind === "cache" ? "Shader cache cleared" : "Previous build cleared",
+    )
+    await scan()
+  }
+
+  return (
+    <Group
+      title="Disk space"
+      description="What VILauncher keeps on this PC. Saves are always kept. Clearing a shader cache makes its next Play slow again while it is rebuilt."
+    >
+      <Row
+        label={view ? `${formatBytes(view.total_bytes)} in use` : "Measuring…"}
+        hint={view && `${formatBytes(view.other_bytes)} outside the projects (checkpoints, logs)${view.free_bytes != null ? `. ${formatBytes(view.free_bytes)} free on the drive` : ""}.`}
+      >
+        <Button size="sm" variant="ghost" disabled={scanning} onClick={() => void scan()}>
+          {scanning ? <Spinner /> : <RefreshCw />} Refresh
+        </Button>
+      </Row>
+      {view && (
+        <div className="overflow-x-auto px-4 py-3">
+          <table className="w-full min-w-[560px] text-secondary">
+            <thead>
+              <tr className="text-left text-fg-3">
+                <th className="pb-2 font-normal">Project</th>
+                <th className="pb-2 text-right font-normal">Sources</th>
+                <th className="pb-2 text-right font-normal">Builds</th>
+                <th className="pb-2 text-right font-normal">Previous build</th>
+                <th className="pb-2 text-right font-normal">Shader cache</th>
+                <th className="pb-2 text-right font-normal">Saves (kept)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {view.projects.map((row) => {
+                const cacheKey = `cache:${row.slug}`
+                const previousKey = `previous:${row.slug}`
+                return (
+                  <Fragment key={row.slug}>
+                    <tr className="text-fg-2">
+                      <td className="py-1.5 text-body text-fg">{row.label}</td>
+                      <td className="py-1.5 text-right tabular-nums">{formatBytes(row.sources)}</td>
+                      <td className="py-1.5 text-right tabular-nums">{formatBytes(row.builds)}</td>
+                      <td className="py-1.5 text-right tabular-nums">{formatBytes(row.previous)}</td>
+                      <td className="py-1.5 text-right tabular-nums">{formatBytes(row.cache)}</td>
+                      <td className="py-1.5 text-right tabular-nums">{formatBytes(row.saves)}</td>
+                    </tr>
+                    <tr>
+                      <td colSpan={6} className="pb-3">
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <Button size="sm" variant="ghost" disabled={busy || scanning || row.previous === 0} onClick={() => void clear("previous", row.repo, previousKey)}>
+                            {armed === previousKey ? "Confirm" : "Clear previous build"}
+                          </Button>
+                          <Button size="sm" variant="ghost" disabled={busy || scanning || row.cache === 0} onClick={() => void clear("cache", row.repo, cacheKey)}>
+                            {armed === cacheKey ? "Confirm" : "Clear shader cache"}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  </Fragment>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Group>
+  )
+}
+
 function Dot({ ok }: { ok: boolean }) {
   return <span className={ok ? "size-2 rounded-full bg-ok" : "size-2 rounded-full bg-bad"} aria-hidden />
 }
@@ -132,6 +272,7 @@ function FilesStatus() {
   const f = useStore((s) => s.snap!.files)
   if (!f.chosen) return <span className="text-secondary text-fg-3">No folder chosen</span>
   if (f.ok) return <span className="flex items-center gap-2 text-secondary text-ok"><Dot ok /> All game files found</span>
+  if (f.unplugged) return <span className="flex items-center gap-2 text-secondary text-bad"><Dot ok={false} /> The drive with your game files is not connected</span>
   if (f.empty) return <span className="flex items-center gap-2 text-secondary text-bad"><Dot ok={false} /> This folder is empty</span>
   return (
     <span className="flex max-w-80 flex-wrap items-center justify-end gap-x-2 text-secondary text-bad">

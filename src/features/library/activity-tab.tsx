@@ -1,12 +1,73 @@
-import { AlertCircle, CheckCircle2, Copy, Download, Square } from "lucide-react"
+import { AlertCircle, CheckCircle2, Copy, Download, Square, Wrench } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
-import { copyText, getBackend, saveFile } from "@/lib/api"
+import { copyText, getBackend, openUrl, saveFile } from "@/lib/api"
 import { run, useStore } from "@/lib/store"
+import type { Project, ReportView } from "@/lib/types"
 
-export function ActivityTab() {
+/**
+ * After a failed job: a GitHub issue for the launcher or the build's repo, with the log filled in.
+ * Nothing is sent by the launcher; the player reads and submits the issue on GitHub.
+ */
+function ReportBar({ project }: { project: Project }) {
+  const [busy, setBusy] = useState(false)
+  const fetchReport = async () => {
+    setBusy(true)
+    try {
+      return await run<ReportView>({ type: "report", repo: project.repo })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="space-y-2 rounded-lg border border-line bg-fill-1 p-3">
+      <p className="text-caption text-fg-2">
+        Report this to GitHub. The issue opens with the log filled in. Names and folders are removed, but read it before you submit: nothing is sent until you do.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy}
+          onClick={async () => {
+            const r = await fetchReport()
+            if (r) void openUrl(r.launcher_url)
+          }}
+        >
+          Report to VILauncher
+        </Button>
+        {project.repo.split("/").length === 2 && !project.repo.includes("://") && (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={async () => {
+              const r = await fetchReport()
+              if (r?.build_url) void openUrl(r.build_url)
+            }}
+          >
+            Report to {project.name}
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy}
+          onClick={async () => {
+            const r = await fetchReport()
+            if (r) void copyText(r.text).then(() => toast.success("Report copied"))
+          }}
+        >
+          <Copy /> Copy report
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+export function ActivityTab({ project }: { project: Project }) {
   const job = useStore((s) => s.snap!.job)
   const [lines, setLines] = useState<string[]>([])
   const [omitted, setOmitted] = useState(0)
@@ -37,6 +98,11 @@ export function ActivityTab() {
         {job.running ? <Spinner className="text-accent-fg" /> : job.failed ? <AlertCircle className="size-4 text-bad" /> : job.stage ? <CheckCircle2 className="size-4 text-ok" /> : null}
         <p className={job.failed ? "text-body text-bad" : "text-body text-fg-2"}>{status}</p>
         <div className="ml-auto flex gap-1">
+          {!job.running && project.installed && (
+            <Button size="sm" variant="ghost" title="Check every known problem, fix it and verify the result" onClick={() => void run({ type: "fix", repo: project.repo })}>
+              <Wrench /> Fix and verify
+            </Button>
+          )}
           {job.stoppable && (
             <Button size="sm" variant="danger" onClick={() => void run({ type: "stop" })}><Square /> Stop</Button>
           )}
@@ -54,7 +120,11 @@ export function ActivityTab() {
           </Button>
         </div>
       </div>
+      {job.failed && !job.running && <ReportBar project={project} />}
       {omitted > 0 && <p className="text-caption text-fg-3">{omitted} earlier lines scrolled out of the log.</p>}
+      <p className="text-caption text-fg-3">
+        Fix and verify checks every known problem, fixes the ones it can and checks each result. It reads the project's own notes for the switches it recommends, and can rebuild the program, install missing tools or lower settings; rendering and frame rate are not tuned beyond that.
+      </p>
       <pre
         ref={box}
         data-selectable

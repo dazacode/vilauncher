@@ -30,6 +30,8 @@ export interface LaunchPreset {
 export interface SystemInfo {
   gpus: { name: string; vendor: "NVIDIA" | "AMD" | "Intel" | "Apple" | "Other"; vram_gb: number | null }[]
   ram_gb: number | null
+  cpu: string | null
+  cpu_cores: number | null
 }
 
 export interface Project {
@@ -45,6 +47,14 @@ export interface Project {
   highlights: string[]
   /** What still stops it, from the tracker. */
   blockers: string[]
+  listing: {
+    id: string | null
+    /** Why VIPortLive took it down, when it did. */
+    nuked: string | null
+    tier: string | null
+    stars: number | null
+    commits7d: number | null
+  }
   /** Memory the author reported it using, read from the summary; null when not said. */
   reported: { ram_gb: number | null; vram_gb: number | null }
   custom: boolean
@@ -54,6 +64,8 @@ export interface Project {
   checking: boolean
   built: string | null
   update: string | null
+  /** The build before the last update, when it can be restored: its commit ("" if not recorded). */
+  previous_build: string | null
   standalone: boolean
   runnable: boolean
   activity: {
@@ -91,12 +103,25 @@ export interface Snapshot {
     extra_env: string
     graphics: Graphics
     gpu_filter: number
+    show_nuked: boolean
+    /** 0 VIPortLive's order, 1 name, 2 frame rate, 3 stars, 4 recent commits. */
+    list_sort: number
+    /** 0 all, 1 tracked, 2 watchlist. */
+    list_tier: number
+    spec_ram_gb: number | null
+    spec_vram_gb: number | null
     backgrounds_dir: string
+    skip_update_warning: boolean
+    /** Off by default. Turning it on needs the "agent-access" warning first. */
+    agent_access: boolean
+    /** Warnings the player accepted. */
+    acknowledged: ResponsibilityId[]
   }
   files: {
     chosen: boolean
     ok: boolean
     empty: boolean
+    unplugged: boolean
     missing: string[]
     searching: boolean
     find_error: string | null
@@ -156,10 +181,43 @@ export type PlayNext = { next: "presets"; choice: PlayChoice } | { next: "saves"
 export type SaveChoice = { kind: "continue" } | { kind: "fresh" } | { kind: "copy"; path: string }
 
 /** Everything the window can ask the launcher to do (src-tauri/src/launcher/actions.rs). */
+/** A problem report: the GitHub issue links and the full text (src-tauri/src/report.rs). */
+export interface ReportView {
+  title: string
+  text: string
+  launcher_url: string
+  build_url: string | null
+}
+
+/** Disk use of the workspace (src-tauri/src/storage.rs). Sizes are in bytes. */
+export interface StorageView {
+  total_bytes: number
+  other_bytes: number
+  free_bytes: number | null
+  projects: {
+    slug: string
+    /** The repo to pass back to clear_cache / clear_previous. */
+    repo: string
+    label: string
+    sources: number
+    builds: number
+    previous: number
+    cache: number
+    /** Saves and profiles: kept, never cleared. */
+    saves: number
+  }[]
+}
+
+/** The warnings a player must accept before a risky step. Mirrors the Rust whitelist. */
+export type ResponsibilityId = "import-repo" | "agent-access" | "agent-patch"
+
 export type Action =
   | { type: "select"; repo: string | null }
   | { type: "refresh_projects" }
   | { type: "set_gpu_filter"; value: number }
+  | { type: "set_list_options"; show_nuked: boolean; sort: number; tier: number }
+  | { type: "report"; repo: string }
+  | { type: "set_spec"; ram_gb: number | null; vram_gb: number | null }
   | { type: "check_repo"; repo: string }
   | { type: "install"; repo: string }
   | { type: "later"; repo: string; remote: string }
@@ -167,6 +225,11 @@ export type Action =
   | { type: "confirm_preset"; repo: string; index: number | null }
   | { type: "start_with_save"; repo: string; choice: SaveChoice }
   | { type: "warm"; repo: string }
+  | { type: "fix"; repo: string }
+  | { type: "rollback"; repo: string }
+  | { type: "set_update_warning"; show: boolean }
+  | { type: "set_agent_access"; enabled: boolean }
+  | { type: "acknowledge"; id: ResponsibilityId }
   | { type: "uninstall"; repo: string }
   | { type: "stop" }
   | { type: "remove_custom"; repo: string }
@@ -208,3 +271,6 @@ export type Action =
   | { type: "export_save"; source: string; path: string }
   | { type: "delete_save"; path: string }
   | { type: "accept_notice" }
+  | { type: "storage_scan" }
+  | { type: "clear_cache"; repo: string }
+  | { type: "clear_previous"; repo: string }

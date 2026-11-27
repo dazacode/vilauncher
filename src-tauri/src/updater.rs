@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
-use crate::brand::{REPOSITORY, RELEASE_ASSET as ASSET};
+use crate::brand::{RELEASE_ASSET as ASSET, REPOSITORY};
 
 pub const RELEASES: &str = "https://github.com/dazacode/vilauncher/releases";
 const MAX_BYTES: u64 = 64 * 1024 * 1024;
@@ -255,7 +255,10 @@ fn matches_asset(bytes: &[u8], size: u64, sha256: &str) -> bool {
 #[cfg(test)]
 #[test]
 fn release_links_follow_the_brand() {
-    assert_eq!(RELEASES, format!("https://github.com/{REPOSITORY}/releases"));
+    assert_eq!(
+        RELEASES,
+        format!("https://github.com/{REPOSITORY}/releases")
+    );
     assert_eq!(RELEASES, format!("{}/releases", crate::brand::SOURCE_URL));
 }
 

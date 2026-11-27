@@ -17,7 +17,11 @@ pub fn keep_borderless(pid: u32) {
                 // The window went: the game ended.
                 return;
             }
-            std::thread::sleep(std::time::Duration::from_millis(if done_once { 2000 } else { 400 }));
+            std::thread::sleep(std::time::Duration::from_millis(if done_once {
+                2000
+            } else {
+                400
+            }));
         }
     });
 }
@@ -43,7 +47,12 @@ fn find_window(pid: u32) -> Option<HWND> {
         // SAFETY: a window handle from the enumeration.
         unsafe { GetWindowThreadProcessId(hwnd, &mut owner) };
         if owner == s.pid && unsafe { IsWindowVisible(hwnd) } != 0 {
-            let mut r = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+            let mut r = RECT {
+                left: 0,
+                top: 0,
+                right: 0,
+                bottom: 0,
+            };
             // SAFETY: as above, and an out pointer.
             unsafe { GetWindowRect(hwnd, &mut r) };
             let area = i64::from(r.right - r.left) * i64::from(r.bottom - r.top);
@@ -54,7 +63,11 @@ fn find_window(pid: u32) -> Option<HWND> {
         }
         1
     }
-    let mut s = Search { pid, best: std::ptr::null_mut(), area: 0 };
+    let mut s = Search {
+        pid,
+        best: std::ptr::null_mut(),
+        area: 0,
+    };
     // SAFETY: the callback reads `s` only during this call.
     unsafe { EnumWindows(Some(each), &mut s as *mut Search as LPARAM) };
     (!s.best.is_null() && s.area > 200 * 200).then_some(s.best)
@@ -73,7 +86,11 @@ fn make_borderless(hwnd: HWND) {
     unsafe {
         let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
         let frame = WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU;
-        SetWindowLongPtrW(hwnd, GWL_STYLE, ((style & !frame) | WS_POPUP | WS_VISIBLE) as isize);
+        SetWindowLongPtrW(
+            hwnd,
+            GWL_STYLE,
+            ((style & !frame) | WS_POPUP | WS_VISIBLE) as isize,
+        );
         let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
         let edges = WS_EX_DLGMODALFRAME | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE | WS_EX_WINDOWEDGE;
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, (ex & !edges) as isize);
@@ -82,7 +99,15 @@ fn make_borderless(hwnd: HWND) {
         info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
         if GetMonitorInfoW(monitor, &mut info) != 0 {
             let r = info.rcMonitor;
-            SetWindowPos(hwnd, HWND_TOP, r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+            SetWindowPos(
+                hwnd,
+                HWND_TOP,
+                r.left,
+                r.top,
+                r.right - r.left,
+                r.bottom - r.top,
+                SWP_FRAMECHANGED | SWP_SHOWWINDOW,
+            );
         }
         SetForegroundWindow(hwnd);
     }

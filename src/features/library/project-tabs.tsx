@@ -82,7 +82,7 @@ export function ProjectTabs({ project }: { project: Project }) {
         ) : tab === "notes" ? (
           <NotesTab project={project} />
         ) : (
-          <ActivityTab />
+          <ActivityTab project={project} />
         )}
       </motion.div>
     </div>
