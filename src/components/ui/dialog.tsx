@@ -2,6 +2,7 @@ import { X } from "lucide-react"
 import { motion } from "motion/react"
 import { Dialog as D } from "radix-ui"
 import type * as React from "react"
+import { useT } from "@/i18n"
 import { cn } from "@/lib/utils"
 
 interface Props {
@@ -19,6 +20,7 @@ interface Props {
 
 /** A dialog over the dimmed window: glass, 16 px corners, Escape or a click outside closes it. */
 export function Dialog({ open, onOpenChange, title, description, eyebrow, children, footer, className, dismissable = true }: Props) {
+  const t = useT()
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
       <D.Portal>
@@ -51,7 +53,7 @@ export function Dialog({ open, onOpenChange, title, description, eyebrow, childr
               </div>
               {dismissable && <D.Close className="-mt-1 -mr-2 grid size-8 shrink-0 cursor-pointer place-items-center rounded-md text-fg-3 transition-colors hover:bg-fill-2 hover:text-fg">
                 <X className="size-4" />
-                <span className="sr-only">Close</span>
+                <span className="sr-only">{t("common.close")}</span>
               </D.Close>}
             </header>
             {children && <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-5 pb-1">{children}</div>}

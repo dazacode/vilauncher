@@ -17,8 +17,8 @@
  * Motion: 150-250 ms, ease-out; nothing moves for reduced-motion users.
  */
 @theme {
-  --font-sans: "Inter Variable", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-display: "Schibsted Grotesk Variable", "Inter Variable", "Segoe UI Variable Display", system-ui, sans-serif;
+  --font-sans: "Inter Variable", "Segoe UI Variable Text", "Segoe UI", var(--font-cjk), system-ui, sans-serif;
+  --font-display: "Schibsted Grotesk Variable", "Inter Variable", "Segoe UI Variable Display", var(--font-cjk), system-ui, sans-serif;
   --font-script: "Yellowtail", cursive;
   --font-mono: "Cascadia Mono", "SF Mono", ui-monospace, Consolas, monospace;
 
@@ -71,6 +71,18 @@
 
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --shadow-float: 0 1px 0 rgb(255 255 255 / 0.06) inset, 0 12px 40px -12px rgb(0 0 0 / 0.6);
+}
+
+/*
+ * Chinese text: the Latin faces above have no Chinese glyphs, so each language
+ * names its own system faces next (Traditional and Simplified draw some
+ * characters differently). The <html lang> attribute follows the window's language.
+ */
+:root {
+  --font-cjk: "Microsoft JhengHei UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans CJK TC", "Noto Sans TC";
+}
+:root:lang(zh-CN) {
+  --font-cjk: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Noto Sans SC";
 }
 
 @layer base {

@@ -161,6 +161,8 @@ pub(crate) struct Saved {
     agent_access: bool,
     /// Ids of the responsibility warnings the player accepted ("import-repo", "agent-access", "agent-patch").
     acknowledged: Vec<String>,
+    /// The window's language as a tag ("en", "zh-TW", "zh-CN"); none: the system's.
+    pub(crate) language: Option<String>,
 }
 
 /// The legal notice's version: raised when its text changes in a way that needs a new yes.
@@ -476,6 +478,8 @@ pub(crate) struct App {
     installed_cache: Mutex<std::collections::HashMap<String, (Instant, bool)>>,
     /// The player's PC, once it was looked at (in the background at start).
     pub(crate) system: Arc<Mutex<Option<crate::system::SystemInfo>>>,
+    /// The system's languages in order of preference, as the window reported them.
+    pub(crate) system_languages: Vec<String>,
 }
 
 /// How often installed projects are checked for updates: every 15 minutes.
@@ -805,7 +809,7 @@ fn search_drives() -> Result<String, String> {
             return Ok(found.display().to_string());
         }
     }
-    Err("The game was not found on any drive. Choose its folder with Browse.".into())
+    Err(msg_str!("The game was not found on any drive. Choose its folder with Browse.").into())
 }
 
 /// Where the launcher keeps repos it downloads: `%LOCALAPPDATA%\VILauncher` unless moved.
@@ -1057,7 +1061,8 @@ fn fetch_projects() -> Result<Vec<Project>, String> {
             Err(e) => errors.push(e),
         }
     }
-    Err(errors.join(" "))
+    // One per line, so the window can show each in the player's language.
+    Err(errors.join("\n"))
 }
 
 /// A list of strings from the tracker, without the game's name and blanks.
@@ -1080,12 +1085,12 @@ fn fetch_list(name: &str, url: &str) -> Result<Vec<Project>, String> {
         .set("User-Agent", brand::USER_AGENT)
         .timeout(std::time::Duration::from_secs(20))
         .call()
-        .map_err(|e| format!("{name} could not be reached: {e}."))?
+        .map_err(|error| msg!("{name} could not be reached: {error}."))?
         .into_json()
-        .map_err(|e| format!("{name} sent something unreadable: {e}."))?;
+        .map_err(|error| msg!("{name} sent something unreadable: {error}."))?;
     let efforts = body["efforts"]
         .as_array()
-        .ok_or_else(|| format!("{name}'s list has no projects."))?;
+        .ok_or_else(|| msg!("{name}'s list has no projects."))?;
     // PortWatch keeps each project's scores under a field named after the game.
     let field = hidden(&[FIELD]).remove(0);
     let mut out: Vec<Project> = efforts
@@ -1167,7 +1172,7 @@ impl App {
             }
             *state = Job {
                 running: true,
-                stage: "Extracting build ZIP".into(),
+                stage: msg_str!("Extracting build ZIP").into(),
                 ..Job::default()
             };
         }
@@ -1177,7 +1182,7 @@ impl App {
                 let mut id = [0; 16];
                 SystemRandom::new()
                     .fill(&mut id)
-                    .map_err(|_| "Could not create a build ID.")?;
+                    .map_err(|_| msg_str!("Could not create a build ID."))?;
                 let hex: String = id.iter().map(|byte| format!("{byte:02x}")).collect();
                 let repo = format!("archive://{hex}");
                 std::fs::create_dir_all(workspace().join("repos"))
@@ -1215,11 +1220,11 @@ impl App {
             state.running = false;
             match result {
                 Ok(project) => {
-                    state.stage = "Build imported".into();
+                    state.stage = msg_str!("Build imported").into();
                     state.imported_project = Some(project);
                 }
                 Err(error) => {
-                    state.stage = "Build import failed".into();
+                    state.stage = msg_str!("Build import failed").into();
                     state.failed = true;
                     state.log.push(format!("ERROR: {error}"));
                     state.import_error = Some(error);
@@ -1252,7 +1257,9 @@ impl App {
             ctx: ctx.clone(),
             installed_cache: Mutex::new(std::collections::HashMap::new()),
             system: Arc::new(Mutex::new(None)),
+            system_languages: Vec::new(),
         };
+        app.apply_language();
         if !app.saved.defaults_set {
             app.saved.defaults_set = true;
             app.saved.fix_8gb = true;
@@ -1433,7 +1440,7 @@ impl App {
             };
             *j = Job {
                 running: true,
-                stage: "Starting".into(),
+                stage: msg_str!("Starting").into(),
                 repo: Some(p.repo.clone()),
                 last_log: last,
                 ..Default::default()
@@ -1492,41 +1499,44 @@ impl App {
                 j.pid = None;
                 j.stoppable = false;
                 match r {
-                    _ if j.stopped => j.stage = "Stopped".into(),
+                    _ if j.stopped => j.stage = msg_str!("Stopped").into(),
                     Ok(()) => {
                         if kind == Kind::Uninstall && p.archive_exe.is_some() {
                             j.removed_archive = Some(p.repo.clone());
                         }
                         j.stage = match kind {
-                            Kind::Install if updating => "Updated: ready to play".into(),
-                            Kind::Install => "Installed: ready to play".into(),
+                            Kind::Install if updating => msg_str!("Updated: ready to play").into(),
+                            Kind::Install => msg_str!("Installed: ready to play").into(),
                             Kind::Play(_) => {
                                 if p.runs_standalone() {
-                                    "Program closed".into()
+                                    msg_str!("Program closed").into()
                                 } else {
-                                    "Game closed".into()
+                                    msg_str!("Game closed").into()
                                 }
                             }
-                            Kind::Uninstall => "Uninstalled".into(),
-                            Kind::Warm => "Shaders warmed up: ready to play".into(),
+                            Kind::Uninstall => msg_str!("Uninstalled").into(),
+                            Kind::Warm => msg_str!("Shaders warmed up: ready to play").into(),
                             Kind::Fix => {
-                                "Checked: everything a known fix covers is in place".into()
+                                msg_str!("Checked: everything a known fix covers is in place")
+                                    .into()
                             }
-                            Kind::Rollback => "Restored the previous build: ready to play".into(),
+                            Kind::Rollback => {
+                                msg_str!("Restored the previous build: ready to play").into()
+                            }
                         }
                     }
                     Err(e) => {
                         j.failed = true;
                         j.stage = match kind {
-                            Kind::Install if updating => {
+                            Kind::Install if updating => msg_str!(
                                 "Update failed: the old version is still installed (see the log)"
-                                    .into()
-                            }
-                            Kind::Install => "Install failed (see the log)".into(),
-                            Kind::Warm => "Warm-up failed (see the log)".into(),
-                            Kind::Fix => "Fix and verify failed (see the log)".into(),
-                            Kind::Rollback => "Restore failed (see the log)".into(),
-                            _ => "Failed".into(),
+                            )
+                            .into(),
+                            Kind::Install => msg_str!("Install failed (see the log)").into(),
+                            Kind::Warm => msg_str!("Warm-up failed (see the log)").into(),
+                            Kind::Fix => msg_str!("Fix and verify failed (see the log)").into(),
+                            Kind::Rollback => msg_str!("Restore failed (see the log)").into(),
+                            _ => msg_str!("Failed").into(),
                         };
                         j.log.push(format!("ERROR: {e}"));
                     }
@@ -1575,7 +1585,7 @@ fn install(
     let dir = repo_dir(&p.repo);
     let url = p.clone_url();
     if dir.join(".git").is_dir() {
-        stage(job, ctx, "Downloading the new version");
+        stage(job, ctx, msg_str!("Downloading the new version"));
         let refspec = p.branch.clone().unwrap_or_else(|| "HEAD".into());
         run(
             job,
@@ -1615,7 +1625,7 @@ fn install(
                 .current_dir(&dir),
         )?;
     } else {
-        stage(job, ctx, "Downloading the project");
+        stage(job, ctx, msg_str!("Downloading the project"));
         let mut c = tools::git();
         c.args(["clone", "--depth", "1"]);
         if let Some(b) = &p.branch {
@@ -1624,7 +1634,7 @@ fn install(
         c.arg("--").arg(&url).arg(&dir);
         run(job, ctx, &mut c)?;
     }
-    stage(job, ctx, "Building (the first time takes several minutes)");
+    stage(job, ctx, msg_str!("Building (the first time takes several minutes)"));
     let target = target_dir(&p.repo);
     // An update keeps the build it replaces, so a failed build can be put back (previous.rs).
     let previous = previous_dir(&p.repo);
@@ -1775,7 +1785,7 @@ fn build_project(
 /// Deletes `p`'s download and build (and its shader cache); its saves stay.
 /// Swaps the installed build with the previous one (the one before the last update).
 fn rollback(job: &Arc<Mutex<Job>>, ctx: &Ctx, p: &Project) -> Result<(), String> {
-    stage(job, ctx, "Restoring the previous build");
+    stage(job, ctx, msg_str!("Restoring the previous build"));
     previous::swap(&previous_dir(&p.repo), &built_file(&p.repo))
 }
 
@@ -1783,7 +1793,7 @@ fn uninstall(job: &Arc<Mutex<Job>>, ctx: &Ctx, p: &Project) -> Result<(), String
     if p.local_exe.is_some() {
         return Err("this build was not installed by VILauncher".into());
     }
-    stage(job, ctx, "Uninstalling");
+    stage(job, ctx, msg_str!("Uninstalling"));
     let ws = workspace();
     for dir in [
         repo_dir(&p.repo),
@@ -1819,10 +1829,11 @@ fn remove_tree_forcibly(dir: &Path, log: &dyn Fn(String)) -> Result<(), String> 
             }
         }
     }
-    Err(format!(
-        "could not remove {}: {}",
-        dir.display(),
-        last.map(|e| e.to_string()).unwrap_or_default()
+    // Also the answer to Clear in Settings: Storage, so the window shows it translated.
+    Err(msg!(
+        "could not remove {path}: {error}",
+        path = dir.display(),
+        error = last.map(|e| e.to_string()).unwrap_or_default()
     ))
 }
 
@@ -2179,9 +2190,9 @@ fn warm(job: &Arc<Mutex<Job>>, ctx: &Ctx, p: &Project, l: &Launch) -> Result<(),
         job,
         ctx,
         if l.pipelines {
-            "Warming up shaders and pipelines (this can take hours)"
+            msg_str!("Warming up shaders and pipelines (this can take hours)")
         } else {
-            "Warming up shaders (the first time takes minutes)"
+            msg_str!("Warming up shaders (the first time takes minutes)")
         },
     );
     for mut command in commands {
@@ -2257,11 +2268,7 @@ fn install_missing_tools(job: &Arc<Mutex<Job>>, ctx: &Ctx) -> Result<(), String>
         return Err("winget (the Windows package manager) is not on this PC. Install them by hand: git-scm.com, rustup.rs and the Visual Studio Build Tools (Desktop development with C++).".into());
     }
     for (what, args) in tools::install_steps(&have) {
-        stage(
-            job,
-            ctx,
-            &format!("Installing {what} (this can take a while)"),
-        );
+        stage(job, ctx, &msg!("Installing {what} (this can take a while)"));
         let mut c = Command::new("winget");
         c.args(&args);
         run(job, ctx, &mut c).map_err(|error| format!("{what}: {error}"))?;
@@ -2291,7 +2298,7 @@ fn fix_build(
     if project_exe(p).is_ok() {
         return Ok("The build and its program are still there.".into());
     }
-    stage(job, ctx, "Rebuilding the missing program");
+    stage(job, ctx, msg_str!("Rebuilding the missing program"));
     install(job, ctx, p, project_installed(&p.repo), l)?;
     let exe = project_exe(p)?;
     let mut c = Command::new(&exe);
@@ -2671,7 +2678,7 @@ fn fix_known_problems(
     p: &Project,
     l: &mut Launch,
 ) -> Result<(), String> {
-    stage(job, ctx, "Checking every known problem");
+    stage(job, ctx, msg_str!("Checking every known problem"));
     if project_exe(p).is_err() {
         let done = fix_build(job, ctx, p, l)?;
         job.lock()
@@ -2708,9 +2715,9 @@ fn play(
         };
         let mut command = Command::new(exe);
         command.current_dir(dir).args(&l.program_args);
-        stage(job, ctx, "Checking known problems");
+        stage(job, ctx, msg_str!("Checking known problems"));
         run_fixes(job, ctx, p, l, false)?;
-        stage(job, ctx, "Playing");
+        stage(job, ctx, msg_str!("Playing"));
         job.lock().unwrap().stoppable = true;
         job.lock().unwrap().last_log.clear();
         let _ = std::fs::remove_file(
@@ -2739,7 +2746,7 @@ fn play(
     // Quick known problems are repaired and checked before the game starts; one that cannot
     // be repaired stops the launch here, rather than starting a game that will fail. Heavy ones
     // (a tool install, a rebuild) are left to Fix and verify.
-    stage(job, ctx, "Checking known problems");
+    stage(job, ctx, msg_str!("Checking known problems"));
     run_fixes(job, ctx, p, l, false)?;
     if l.warm_first {
         if let Err(e) = warm(job, ctx, p, l) {
@@ -2752,7 +2759,7 @@ fn play(
                 .push(format!("Warm-up failed: {e}. Starting the game anyway."));
         }
     }
-    stage(job, ctx, "Playing");
+    stage(job, ctx, msg_str!("Playing"));
     let mut c = Command::new(&exe);
     c.arg("run").arg(l.game_dir.join(EXE_NAME)).arg("--execute");
     let explicit_console = l
@@ -2915,7 +2922,7 @@ impl App {
             }
             *j = Job {
                 running: true,
-                stage: "Installing tools (Windows will ask for permission)".into(),
+                stage: msg_str!("Installing tools (Windows will ask for permission)").into(),
                 ..Default::default()
             };
         }
@@ -2927,18 +2934,18 @@ impl App {
             j.running = false;
             match result {
                 Ok(()) if now.ready() => {
-                    j.stage = "Tools installed: ready to install projects".into()
+                    j.stage = msg_str!("Tools installed: ready to install projects").into()
                 }
                 Ok(()) => {
                     j.failed = true;
-                    j.stage = format!(
-                        "Still missing: {}. A restart of Windows can help.",
-                        now.missing().join(", ")
+                    j.stage = msg!(
+                        "Still missing: {tools}. A restart of Windows can help.",
+                        tools = now.missing().join(", ")
                     );
                 }
                 Err(e) => {
                     j.failed = true;
-                    j.stage = "Tools not installed (see the log)".into();
+                    j.stage = msg_str!("Tools not installed (see the log)").into();
                     j.log.push(format!("ERROR: {e}"));
                 }
             }
@@ -2981,7 +2988,7 @@ impl App {
             }
             *j = Job {
                 running: true,
-                stage: "Moving installed projects".into(),
+                stage: msg_str!("Moving installed projects").into(),
                 ..Default::default()
             };
         }
@@ -3002,10 +3009,10 @@ impl App {
             let mut j = job.lock().unwrap();
             j.running = false;
             match result {
-                Ok(()) => j.stage = "Moved: projects are in the new folder".into(),
+                Ok(()) => j.stage = msg_str!("Moved: projects are in the new folder").into(),
                 Err(e) => {
                     j.failed = true;
-                    j.stage = "Failed".into();
+                    j.stage = msg_str!("Failed").into();
                     j.log.push(format!("ERROR: {e}"));
                 }
             }

@@ -1,0 +1,16 @@
+{
+  "Unknown language: {tag}": "不支持的语言：{tag}",
+  "Installed {when}": "{when}安装",
+  "Updated {when}": "{when}更新",
+  "just now": "刚刚",
+  "1 minute ago": "1 分钟前",
+  "{minutes} minutes ago": "{minutes} 分钟前",
+  "1 hour ago": "1 小时前",
+  "{hours} hours ago": "{hours} 小时前",
+  "1 day ago": "1 天前",
+  "{days} days ago": "{days} 天前",
+  "New install · Not run yet": "全新安装 · 尚未运行",
+  "Updated · Not run yet": "已更新 · 尚未运行",
+  "C++ build tools": "C++ 构建工具",
+  "VIPortLive team": "VIPortLive 团队"
+}

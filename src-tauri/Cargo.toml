@@ -1,6 +1,6 @@
 [package]
 name = "vilauncher"
-version = "1.0.1"
+version = "1.1.0"
 edition = "2021"
 rust-version = "1.82"
 description = "VILauncher by the VIPortLive team: a community launcher for VIctory-based projects. Pick a project from VIPortLive or a custom link, check the game files, build and play. Forked from Mandyhub."

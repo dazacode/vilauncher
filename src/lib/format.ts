@@ -1,13 +1,20 @@
-import type { Graphics, OutputResolution, Project } from "./types"
+import { t } from "@/i18n"
+import type { Graphics, OutputResolution, Project, StageKind } from "./types"
 
-/** The graphics modes: Series S profile and render scale. */
+/** The graphics modes: Series S profile and render scale. Labels: `modeLabel`, `modeDetail`. */
 export const MODES = [
-  { id: "fast", label: "Fast", seriesS: true, scale: 0.5, detail: "Half resolution, scaled up" },
-  { id: "balanced", label: "Balanced", seriesS: true, scale: 0.75, detail: "Three quarters, scaled up" },
-  { id: "best", label: "Best quality", seriesS: false, scale: 1, detail: "Full resolution" },
+  { id: "fast", seriesS: true, scale: 0.5 },
+  { id: "balanced", seriesS: true, scale: 0.75 },
+  { id: "best", seriesS: false, scale: 1 },
 ] as const
 
 export type ModeId = (typeof MODES)[number]["id"]
+
+/** A mode's name in the current language ("Best quality"). */
+export const modeLabel = (id: ModeId) => t(`format.mode.${id}.label`)
+
+/** What a mode does, in the current language ("Full resolution"). */
+export const modeDetail = (id: ModeId) => t(`format.mode.${id}.detail`)
 
 export function graphicsMode(g: Graphics): ModeId | null {
   const m = MODES.find((m) => g.series_s === m.seriesS && (!m.seriesS || Math.abs(g.render_scale - m.scale) < 0.01))
@@ -19,14 +26,14 @@ export function withMode(g: Graphics, id: ModeId): Graphics {
   return { ...g, series_s: m.seriesS, render_scale: m.scale }
 }
 
-export const OUTPUTS: { id: OutputResolution; label: string }[] = [
-  { id: "Default", label: "Game default" },
-  { id: "P720", label: "720p" },
-  { id: "P936", label: "936p" },
-  { id: "P1080", label: "1080p" },
-  { id: "P1440", label: "1440p" },
-  { id: "P2160", label: "2160p (4K)" },
-]
+/** The output resolutions, in order. Labels: `outputLabel`. */
+export const OUTPUTS: readonly OutputResolution[] = ["Default", "P720", "P936", "P1080", "P1440", "P2160"]
+
+/** An output resolution as the player reads it: "Game default", "1080p", "2160p (4K)". */
+export function outputLabel(id: OutputResolution): string {
+  if (id === "Default") return t("format.output.default")
+  return id === "P2160" ? "2160p (4K)" : `${id.slice(1)}p`
+}
 
 export const gpuText = (gpu: string[]) => gpu.join(" · ")
 
@@ -38,15 +45,22 @@ export function shortCommit(c: string | null | undefined) {
   return c ? c.slice(0, 7) : null
 }
 
-/** A short stage for small places ("Building" for "Building (the first time…)"). */
-export function shortStage(stage: string) {
-  if (stage.startsWith("Downloading")) return "Downloading"
-  if (stage.startsWith("Building")) return "Building"
-  if (stage.startsWith("Warming")) return "Warming up"
-  if (stage.startsWith("Installing")) return "Installing tools"
-  if (stage.startsWith("Uninstalling")) return "Uninstalling"
-  if (stage.startsWith("Moving")) return "Moving"
-  if (stage.startsWith("Extracting")) return "Importing"
-  if (stage === "Playing") return "Playing"
-  return stage
+/**
+ * A short stage for small places ("Building" for "Building (the first time…)"), from the
+ * stage's kind; other stages are shown as the launcher wrote them (already translated).
+ */
+export function shortStage(kind: StageKind, stage: string) {
+  switch (kind) {
+    case "downloading":
+    case "building":
+    case "warming":
+    case "installing_tools":
+    case "uninstalling":
+    case "moving":
+    case "importing":
+    case "playing":
+      return t(`format.stage.${kind}`)
+    default:
+      return stage
+  }
 }

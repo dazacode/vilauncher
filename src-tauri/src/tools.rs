@@ -30,7 +30,7 @@ impl Tools {
             m.push("Rust");
         }
         if !self.msvc {
-            m.push("C++ build tools");
+            m.push(msg_str!("C++ build tools"));
         }
         m
     }
@@ -217,7 +217,7 @@ pub fn install_steps(t: &Tools) -> Vec<(&'static str, Vec<String>)> {
     }
     if !t.msvc {
         step(
-            "C++ build tools",
+            msg_str!("C++ build tools"),
             "Microsoft.VisualStudio.2022.BuildTools",
             &["--override", "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"],
         );

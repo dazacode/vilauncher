@@ -3,6 +3,7 @@
 
 use super::presets::{self, PlayPresetPicker};
 use super::*;
+use crate::i18n::localize;
 use crate::save_zip;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -203,6 +204,14 @@ pub(crate) enum Action {
     },
     /// The player agreed to the legal notice.
     AcceptNotice,
+    /// The window's language: a tag ("en", "zh-TW", "zh-CN"), or none to follow the system.
+    SetLanguage {
+        language: Option<String>,
+    },
+    /// The system's languages in order of preference (the window's `navigator.languages`).
+    SetSystemLanguages {
+        languages: Vec<String>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -320,7 +329,7 @@ impl App {
             Action::ConfirmPreset { repo, index } => {
                 let p = self.project(&repo)?;
                 if self.job.lock().unwrap().running {
-                    return Err("Wait for the current job to finish.".into());
+                    return Err(msg_str!("Wait for the current job to finish.").into());
                 }
                 let launch = self.saved.project_launch.get(&project_key(&p.repo));
                 let preset = PlayPresetPicker::for_project(&p, &self.saved.launch_presets, launch)
@@ -329,7 +338,7 @@ impl App {
                 let launch = self.saved.project_launch.entry(key.clone()).or_default();
                 if let Some(preset) = preset {
                     presets::apply_to_profile(&mut self.saved.launch_presets, launch, &key, preset)
-                        .map_err(|e| format!("Could not apply the launch preset: {e}"))?;
+                        .map_err(|error| msg!("Could not apply the launch preset: {error}"))?;
                 }
                 launch.preset_choice_confirmed = true;
                 self.continue_play(&p)
@@ -341,9 +350,9 @@ impl App {
                 self.check_files();
                 if !self.files_ok() {
                     if self.unplugged {
-                        return Err("The drive with your game files is not connected. Plug it in and press Play again.".into());
+                        return Err(msg_str!("The drive with your game files is not connected. Plug it in and press Play again.").into());
                     }
-                    return Err("Choose the folder with your game files first.".into());
+                    return Err(msg_str!("Choose the folder with your game files first.").into());
                 }
                 let choice = match choice {
                     SaveChoice::Continue => saves::LaunchSave::Continue,
@@ -361,10 +370,12 @@ impl App {
             Action::Rollback { repo } => {
                 let p = self.project(&repo)?;
                 if self.job.lock().unwrap().running {
-                    return Err("Wait for the current job to finish.".into());
+                    return Err(msg_str!("Wait for the current job to finish.").into());
                 }
                 if previous::previous_commit(&previous_dir(&p.repo)).is_none() {
-                    return Err("There is no previous build to restore for this project.".into());
+                    return Err(
+                        msg_str!("There is no previous build to restore for this project.").into(),
+                    );
                 }
                 self.start(&ctx, p, Kind::Rollback);
                 Value::Null
@@ -379,7 +390,7 @@ impl App {
             }
             Action::Acknowledge { id } => {
                 let id =
-                    known_responsibility(&id).ok_or_else(|| format!("Unknown warning: {id}"))?;
+                    known_responsibility(&id).ok_or_else(|| msg!("Unknown warning: {id}"))?;
                 if !self.saved.acknowledged.iter().any(|a| a == id) {
                     self.saved.acknowledged.push(id.to_string());
                 }
@@ -429,9 +440,9 @@ impl App {
                 Value::Null
             }
             Action::AddRepoLink { link } => {
-                let repo = parse_git_repo(&link).ok_or(
-                    "Enter an HTTPS, HTTP, SSH or Git clone link without a password in it.",
-                )?;
+                let repo = parse_git_repo(&link).ok_or(msg_str!(
+                    "Enter an HTTPS, HTTP, SSH or Git clone link without a password in it."
+                ))?;
                 self.add_custom(repo.clone());
                 json!(repo)
             }
@@ -524,7 +535,7 @@ impl App {
                     }
                     "probe_rays" => set_enabled(&mut switches, PROBE_RAYS, enabled),
                     "hooks" => set_enabled(&mut switches, HOOKS, enabled),
-                    _ => return Err(format!("Unknown switch {option}.")),
+                    _ => return Err(msg!("Unknown switch {option}.")),
                 }
                 launch.switches = Some(switches);
                 Value::Null
@@ -583,7 +594,7 @@ impl App {
                         .cloned(),
                     None => presets::detected_preset(&p),
                 }
-                .ok_or("That preset is gone.")?;
+                .ok_or(msg_str!("That preset is gone."))?;
                 let key = project_key(&repo);
                 let launch = self.saved.project_launch.entry(key.clone()).or_default();
                 let applied = presets::apply_to_profile(
@@ -619,10 +630,10 @@ impl App {
                     .launch_presets
                     .iter()
                     .find(|p| p.name == name)
-                    .ok_or("That preset is gone.")?;
+                    .ok_or(msg_str!("That preset is gone."))?;
                 let json = presets::encode(preset)?;
                 std::fs::write(&path, json)
-                    .map_err(|e| format!("Could not export the preset: {e}"))?;
+                    .map_err(|error| msg!("Could not export the preset: {error}"))?;
                 Value::Null
             }
             Action::PresetText { name } => {
@@ -631,7 +642,7 @@ impl App {
                     .launch_presets
                     .iter()
                     .find(|p| p.name == name)
-                    .ok_or("That preset is gone.")?;
+                    .ok_or(msg_str!("That preset is gone."))?;
                 json!(presets::encode(preset)?)
             }
             Action::DetectedPreset { repo } => {
@@ -685,10 +696,10 @@ impl App {
                             .path
                             .parent()
                             .map(Path::to_path_buf)
-                            .ok_or("No update folder.")?,
-                        _ => return Err("No update has been downloaded.".into()),
+                            .ok_or(msg_str!("No update folder."))?,
+                        _ => return Err(msg_str!("No update has been downloaded.").into()),
                     },
-                    _ => return Err(format!("Nothing to open for {what}.")),
+                    _ => return Err(msg!("Nothing to open for {what}.")),
                 };
                 let _ = std::fs::create_dir_all(&path);
                 open_folder(&path)?;
@@ -696,7 +707,7 @@ impl App {
             }
             Action::ExportLog { path } => {
                 std::fs::write(&path, self.whole_log())
-                    .map_err(|e| format!("Could not export the log: {e}"))?;
+                    .map_err(|error| msg!("Could not export the log: {error}"))?;
                 Value::Null
             }
             Action::CheckUpdate => {
@@ -709,10 +720,10 @@ impl App {
             }
             Action::RestartToUpdate => {
                 if self.job.lock().unwrap().running {
-                    return Err("Wait for the current job to finish first.".into());
+                    return Err(msg_str!("Wait for the current job to finish first.").into());
                 }
                 let updater::State::Downloaded(update) = &self.updater.state else {
-                    return Err("No update is ready.".into());
+                    return Err(msg_str!("No update is ready.").into());
                 };
                 match updater::restart_with(update) {
                     Ok(()) => return Ok(Outcome::Exit),
@@ -729,13 +740,13 @@ impl App {
             Action::Checkpoint { name, source } => {
                 let root = workspace().join("checkpoints");
                 saves::checkpoint(&root, &name, Path::new(&source))
-                    .map_err(|e| format!("Could not save the checkpoint: {e}"))?;
+                    .map_err(|error| msg!("Could not save the checkpoint: {error}"))?;
                 Value::Null
             }
             Action::ImportSaveZip { path } => {
                 let root = workspace().join("checkpoints");
                 let (name, _) = save_zip::import(&root, Path::new(&path))
-                    .map_err(|e| format!("Could not import the save: {e}"))?;
+                    .map_err(|error| msg!("Could not import the save: {error}"))?;
                 json!(name)
             }
             Action::ExportSave { source, path } => {
@@ -746,16 +757,32 @@ impl App {
                     destination
                 };
                 save_zip::export(Path::new(&source), &destination)
-                    .map_err(|e| format!("Could not export the save: {e}"))?;
+                    .map_err(|error| msg!("Could not export the save: {error}"))?;
                 json!(destination.display().to_string())
             }
             Action::AcceptNotice => {
                 self.saved.notice_accepted = NOTICE_VERSION;
                 Value::Null
             }
+            Action::SetLanguage { language } => {
+                if let Some(tag) = &language {
+                    let locale = crate::i18n::Locale::from_tag(tag)
+                        .ok_or_else(|| msg!("Unknown language: {tag}"))?;
+                    self.saved.language = Some(locale.tag().to_owned());
+                } else {
+                    self.saved.language = None;
+                }
+                self.apply_language();
+                Value::Null
+            }
+            Action::SetSystemLanguages { languages } => {
+                self.system_languages = languages.into_iter().take(16).collect();
+                self.apply_language();
+                Value::Null
+            }
             Action::DeleteSave { path } => {
                 saves::delete_save(&workspace(), Path::new(&path))
-                    .map_err(|e| format!("Could not delete the save: {e}"))?;
+                    .map_err(|error| msg!("Could not delete the save: {error}"))?;
                 Value::Null
             }
         };
@@ -763,22 +790,30 @@ impl App {
         Ok(Outcome::Value(value))
     }
 
+    /// Shows the window in the player's language: their choice, else the system's.
+    pub(crate) fn apply_language(&self) {
+        crate::i18n::set_current(crate::i18n::resolve(
+            self.saved.language.as_deref(),
+            &self.system_languages,
+        ));
+    }
+
     /// Deletes `p`'s folder under the workspace's `part` folder (`cache` or `previous`).
     /// Saves (`data`) and sources are never touched.
     fn clear_folder(&self, p: &Project, part: &str) -> Result<(), String> {
         if self.job_running().0 {
-            return Err("Wait until the current job finishes.".into());
+            return Err(msg_str!("Wait until the current job finishes.").into());
         }
         let ws = workspace();
         let dir = ws.join(part).join(slug(&p.repo));
         if !crate::storage::may_clear(&ws, &dir) {
-            return Err("That folder is outside the install folder.".into());
+            return Err(msg_str!("That folder is outside the install folder.").into());
         }
         if !dir.exists() {
             return Ok(());
         }
         remove_tree_forcibly(&dir, &|_: String| {})
-            .map_err(|error| format!("Could not clear it: {error}"))
+            .map_err(|error| msg!("Could not clear it: {error}"))
     }
 
     /// The project with this repo, listed or added.
@@ -786,7 +821,7 @@ impl App {
         self.all_projects()
             .into_iter()
             .find(|p| p.repo == repo)
-            .ok_or_else(|| "That project is no longer in the list.".to_owned())
+            .ok_or_else(|| msg_str!("That project is no longer in the list.").to_owned())
     }
 
     fn launch_mut(&mut self, repo: &str) -> &mut ProjectLaunch {
@@ -914,13 +949,13 @@ fn open_link(url: &str) -> Result<(), String> {
         && url.starts_with("https://")
         && !url.chars().any(|c| c.is_control() || c.is_whitespace());
     if !plain {
-        return Err("Only https links can be opened from the launcher.".into());
+        return Err(msg_str!("Only https links can be opened from the launcher.").into());
     }
     std::process::Command::new("explorer.exe")
         .arg(url)
         .spawn()
         .map(|_| ())
-        .map_err(|error| format!("Could not open the link: {error}"))
+        .map_err(|error| msg!("Could not open the link: {error}"))
 }
 
 fn open_folder(path: &Path) -> Result<(), String> {
@@ -935,7 +970,7 @@ fn open_folder(path: &Path) -> Result<(), String> {
         .arg(path)
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("Could not open {}: {e}", path.display()))
+        .map_err(|error| msg!("Could not open {path}: {error}", path = path.display()))
 }
 
 /// The saves a project can start from: this build's, other builds' and the favourites.
@@ -945,11 +980,13 @@ fn saves_list(project: &Project) -> Value {
     let project_data = data.join(slug(&project.repo));
     let checkpoint_root = ws.join("checkpoints");
     let current = saves::save_folder(&project_data);
+    // The details, and the titles the launcher makes itself, in the player's language.
+    // Other builds' and checkpoints' names are shown as they are.
     let option =
         |title: String, detail: &str, kind: &str, path: Option<&Path>, source: Option<&Path>| {
             json!({
                 "title": title,
-                "detail": detail,
+                "detail": localize(detail),
                 "kind": kind,
                 "path": path.map(|p| p.display().to_string()),
                 "source": source.map(|p| p.display().to_string()),
@@ -957,15 +994,15 @@ fn saves_list(project: &Project) -> Value {
         };
     let mut this_build = vec![
         option(
-            "Continue".into(),
-            "Use this build's active save.",
+            localize(msg_str!("Continue")),
+            msg_str!("Use this build's active save."),
             "continue",
             None,
             current.as_deref(),
         ),
         option(
-            "Start fresh".into(),
-            "Begin a new game in a separate save profile.",
+            localize(msg_str!("Start fresh")),
+            msg_str!("Begin a new game in a separate save profile."),
             "fresh",
             None,
             None,
@@ -973,8 +1010,8 @@ fn saves_list(project: &Project) -> Value {
     ];
     for (name, path) in saves::previous_saves(&project_data) {
         this_build.push(option(
-            name,
-            "Starts from a copy of an earlier save.",
+            localize(&name),
+            msg_str!("Starts from a copy of an earlier save."),
             "copy",
             Some(&path),
             Some(&path),
@@ -1010,8 +1047,8 @@ fn saves_list(project: &Project) -> Value {
     json!({
         "has_current": current.is_some(),
         "this_build": this_build,
-        "other_builds": other_builds.iter().map(|(n, p)| option(n.clone(), "Copies this build's active save.", "copy", Some(p), Some(p))).collect::<Vec<_>>(),
-        "favorites": favorites.iter().map(|(n, p)| option(n.clone(), "Starts from a copy of this checkpoint.", "copy", Some(p), None)).collect::<Vec<_>>(),
+        "other_builds": other_builds.iter().map(|(n, p)| option(n.clone(), msg_str!("Copies this build's active save."), "copy", Some(p), Some(p))).collect::<Vec<_>>(),
+        "favorites": favorites.iter().map(|(n, p)| option(n.clone(), msg_str!("Starts from a copy of this checkpoint."), "copy", Some(p), None)).collect::<Vec<_>>(),
     })
 }
 

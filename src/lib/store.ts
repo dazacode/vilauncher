@@ -1,5 +1,6 @@
 import { toast } from "sonner"
 import { create } from "zustand"
+import { setLocale, useT } from "@/i18n"
 import { act as send, getBackend } from "./api"
 import type { Action, PlayChoice, Project, Snapshot } from "./types"
 
@@ -44,6 +45,8 @@ export const useStore = create<State>((set) => ({
   open: (dialog) => set({ dialog }),
   refresh: async () => {
     const snap = await (await getBackend()).snapshot()
+    // The launcher's messages in the snapshot are in its language: the window follows it.
+    setLocale(snap.locale)
     set({ snap })
   },
 }))
@@ -87,12 +90,13 @@ export function useSelected(): Project | null {
 
 /** In Screenshot mode, names and links are examples and private text is hidden. */
 export function useAlias() {
+  const t = useT()
   const screenshot = useStore((s) => s.screenshot)
   const snap = useStore((s) => s.snap)
   return (p: Project) => {
     if (!screenshot || !snap) return { name: p.name, repo: p.repo, owner: p.owner }
     const index = allProjects(snap).findIndex((q) => q.repo === p.repo) + 1
     const n = String(index).padStart(2, "0")
-    return { name: `Example project ${n}`, repo: `example/project-${n}`, owner: null }
+    return { name: t("common.exampleProject", { n }), repo: `example/project-${n}`, owner: null }
   }
 }
