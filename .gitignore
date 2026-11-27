@@ -5,6 +5,10 @@
 /dist
 *.log
 *.pfx
+# Build output beside the tree (macOS bundles, digests, staged updates)
+*.dmg
+*.app.tar.gz
+*.sha256
 .DS_Store
 .ci/
 tsconfig.tsbuildinfo

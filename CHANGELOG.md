@@ -2,6 +2,16 @@
 
 The release notes for each tag are taken from the section for that version.
 
+## Unreleased
+
+### New
+- **macOS:** the launcher runs natively on Apple silicon and Intel, as one universal app with a `.dmg` on each release. It finds the tools when started from Finder, installs Xcode Command Line Tools, Git (with Homebrew) and Rust, keeps its folders in Application Support, has the standard app menu (Cmd+C, Cmd+V, Cmd+Q), clears the quarantine flag on unpacked builds and offers Fix and verify when Gatekeeper still blocks one, and updates itself by replacing the whole app. See [docs/MACOS.md](docs/MACOS.md).
+- **One place for what differs between systems:** opening links and folders, stopping programs, free space, finding the game on other drives and volumes, and the build tools now live in `src-tauri/src/platform/`, with Linux's code beside Windows' and macOS's.
+- The agent tool (`pnpm agent`) finds the launcher's settings and builds on macOS and Linux.
+
+### Thanks
+- **@Dolo22**: the macOS port (Dolo22/vilauncher-for-MAC-OS).
+
 ## 1.1.0
 
 ### New

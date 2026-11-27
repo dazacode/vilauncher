@@ -38,6 +38,9 @@ struct BrandView {
     site: &'static str,
     site_label: &'static str,
     source: &'static str,
+    /// "windows", "macos" or the system's own name: the UI follows it for
+    /// labels, shortcuts and window chrome.
+    platform: &'static str,
 }
 
 #[derive(Serialize)]
@@ -98,6 +101,9 @@ pub(crate) struct ProjectView {
     custom: bool,
     /// "git", "zip" or "local".
     kind: &'static str,
+    /// The program's format: "windows", "native", "script" or "unknown". A
+    /// Windows program needs a compatibility runner on a Mac.
+    binary: Option<&'static str>,
     web_url: Option<String>,
     listing: super::Listing,
     installed: bool,
@@ -239,15 +245,9 @@ pub(crate) fn stage_kind(stage: &str) -> &'static str {
     }
 }
 
-/// A time as the player's clock shows it (Windows only; elsewhere none).
+/// A time as the player's clock shows it (none where the system cannot say).
 fn local_time(seconds: u64) -> Option<String> {
-    #[cfg(windows)]
-    return build_activity::local_time(seconds);
-    #[cfg(not(windows))]
-    {
-        let _ = seconds;
-        None
-    }
+    crate::platform::local_time(seconds)
 }
 
 impl App {
@@ -292,6 +292,7 @@ impl App {
                 site: brand::SITE,
                 site_label: brand::SITE_LABEL,
                 source: brand::SOURCE_URL,
+                platform: std::env::consts::OS,
             },
             list: ListView {
                 status,
@@ -417,6 +418,15 @@ impl App {
             probe_rays: script_preset::enabled(&effective, script_preset::PROBE_RAYS),
             hooks: script_preset::enabled(&effective, script_preset::HOOKS),
         };
+        let binary = p
+            .archive_program()
+            .or_else(|| p.local_exe.as_deref().map(PathBuf::from))
+            .map(|path| match crate::platform::binary_kind(&path) {
+                crate::platform::Binary::Windows => "windows",
+                crate::platform::Binary::Native => "native",
+                crate::platform::Binary::Script => "script",
+                crate::platform::Binary::Unknown => "unknown",
+            });
         let kind = if p.archive_exe.is_some() {
             "zip"
         } else if p.local_exe.is_some() {
@@ -444,6 +454,7 @@ impl App {
             ),
             custom: p.custom,
             kind,
+            binary,
             web_url: (kind == "git" && (web.starts_with("https://") || web.starts_with("http://")))
                 .then_some(web),
             listing: p.listing.clone(),
@@ -482,7 +493,9 @@ impl App {
                 return *installed;
             }
         }
-        let installed = p.archive_program().is_some_and(|exe| exe.is_file())
+        let installed = p
+            .archive_program()
+            .is_some_and(|exe| crate::platform::is_program(&exe))
             || p.local_exe
                 .as_deref()
                 .is_some_and(|exe| Path::new(exe).is_file())

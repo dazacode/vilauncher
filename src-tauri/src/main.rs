@@ -21,6 +21,7 @@ mod job_log;
 mod launcher;
 mod notify;
 mod patches;
+mod platform;
 mod previous;
 mod report;
 mod rust_project;
@@ -82,37 +83,10 @@ fn log(from: usize, state: tauri::State<'_, Shared>) -> launcher::LogView {
     state.app.lock().unwrap().log_from(from)
 }
 
-/// An AppImage puts its own libraries first in LD_LIBRARY_PATH. The programs the launcher
-/// starts (git, cargo, the compiler) then load those copies, which do not match the
-/// system's. The window's own libraries are already loaded, so the folders can go.
-#[cfg(target_os = "linux")]
-fn keep_child_programs_out_of_the_appimage() {
-    let Some(appdir) = std::env::var_os("APPDIR") else {
-        return;
-    };
-    let appdir = appdir.to_string_lossy().into_owned();
-    if let Some(path) = std::env::var_os("LD_LIBRARY_PATH") {
-        let cleaned = without_folder(&path.to_string_lossy(), &appdir);
-        if cleaned.is_empty() {
-            std::env::remove_var("LD_LIBRARY_PATH");
-        } else {
-            std::env::set_var("LD_LIBRARY_PATH", cleaned);
-        }
-    }
-}
-
-/// `path` (a ':'-separated list) without the entries inside `folder`.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn without_folder(path: &str, folder: &str) -> String {
-    path.split(':')
-        .filter(|entry| !entry.is_empty() && !entry.starts_with(folder))
-        .collect::<Vec<_>>()
-        .join(":")
-}
-
 fn main() {
-    #[cfg(target_os = "linux")]
-    keep_child_programs_out_of_the_appimage();
+    // Before anything else: Finder and the Dock give an app a bare PATH, and an
+    // AppImage's libraries must not reach the programs the launcher starts.
+    platform::init_environment();
     // Fix and verify without a window, for the agent tool (scripts\vilauncher-agent.mjs fix):
     // `--fix <repo>` prints the job's log and a STAGE line. Debug and release builds alike.
     // It refuses (exit 1) unless AI agent access is on, and while another launcher window runs.
@@ -149,8 +123,7 @@ fn main() {
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
     }
-    // Development check without a window: the launcher's first snapshot, as JSON.
-    #[cfg(debug_assertions)]
+    // Check without a window: the launcher's first snapshot, as JSON.
     if std::env::args().any(|a| a == "--dump-snapshot") {
         let mut app = App::new(notify::Ctx::new(|| {}), settings_store::load());
         for tries in 0..40 {
@@ -174,6 +147,10 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|tauri_app| {
+            // WKWebView has no edit shortcuts of its own: Cmd+C/V/X/A/Z and
+            // Cmd+Q/H/W only work through a native menu with these items.
+            #[cfg(target_os = "macos")]
+            install_macos_menu(&tauri_app.handle().clone())?;
             let handle = tauri_app.handle().clone();
             let ctx = notify::Ctx::new(move || {
                 let _ = handle.emit("launcher://changed", ());
@@ -219,45 +196,72 @@ fn fix_allowed() -> Result<(), String> {
     Ok(())
 }
 
-/// Whether a VILauncher other than this process runs (Linux: from /proc).
-#[cfg(target_os = "linux")]
-fn other_launcher_running() -> Result<bool, String> {
-    let me = std::process::id();
-    let entries = std::fs::read_dir("/proc")
-        .map_err(|_| "could not check whether VILauncher is running (/proc unreadable), so Fix was not started".to_string())?;
-    Ok(entries.flatten().any(|entry| {
-        let Some(pid) = entry
-            .file_name()
-            .to_str()
-            .and_then(|n| n.parse::<u32>().ok())
-        else {
-            return false;
-        };
-        pid != me
-            && std::fs::read_to_string(entry.path().join("comm"))
-                .is_ok_and(|name| name.trim() == "VILauncher")
-    }))
+/// The macOS application menu: App (about, services, hide, quit), Edit
+/// (undo, redo, cut, copy, paste, select all) and Window (minimise, zoom,
+/// close). Without it, the standard keyboard shortcuts do nothing.
+#[cfg(target_os = "macos")]
+fn install_macos_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
+    use tauri::menu::{AboutMetadata, Menu, PredefinedMenuItem, Submenu};
+
+    let name = brand::NAME;
+    let app_menu = Submenu::with_items(
+        app,
+        name,
+        true,
+        &[
+            &PredefinedMenuItem::about(
+                app,
+                Some(&format!("About {name}")),
+                Some(AboutMetadata::default()),
+            )?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::services(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, Some(&format!("Hide {name}")))?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, Some(&format!("Quit {name}")))?,
+        ],
+    )?;
+    let edit = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+    let window = Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, Some("Zoom"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )?;
+    let menu = Menu::with_items(app, &[&app_menu, &edit, &window])?;
+    app.set_menu(menu)?;
+    Ok(())
 }
 
-/// Whether a VILauncher.exe other than this process runs (checked with tasklist, CSV: "name","pid",...).
-#[cfg(not(target_os = "linux"))]
+/// Whether another launcher runs besides this process (tasklist on Windows, ps on macOS,
+/// /proc on Linux).
+/// A `--dump-snapshot` run is a check, not a window, so it never counts as one.
 fn other_launcher_running() -> Result<bool, String> {
-    let mut command = std::process::Command::new("tasklist");
-    command.args(["/FI", "IMAGENAME eq VILauncher.exe", "/FO", "CSV", "/NH"]);
-    hide_window(&mut command);
-    let output = command
-        .output()
-        .map_err(|_| "could not check whether VILauncher is running (tasklist failed), so Fix was not started".to_string())?;
-    if !output.status.success() {
-        return Err("could not check whether VILauncher is running (tasklist failed), so Fix was not started".into());
+    if std::env::args().any(|a| a == "--dump-snapshot") {
+        return Ok(false);
     }
-    let me = std::process::id();
-    let text = String::from_utf8_lossy(&output.stdout);
-    Ok(text
-        .lines()
-        .filter_map(|line| line.split(',').nth(1))
-        .filter_map(|pid| pid.trim().trim_matches('"').parse::<u32>().ok())
-        .any(|pid| pid != me))
+    platform::other_launcher_running(std::process::id())
 }
 
 /// The system's own glass behind the window: Mica on Windows 11 (Acrylic on
@@ -280,16 +284,4 @@ fn glass(window: &tauri::WebviewWindow) {
         );
     }
     let _ = window;
-}
-
-#[cfg(test)]
-mod appimage_path_tests {
-    use super::without_folder;
-
-    #[test]
-    fn appimage_folders_are_taken_out_and_the_rest_kept() {
-        let path = "/tmp/.mount_X/usr/lib:/usr/local/lib::/tmp/.mount_X/usr/lib64:/opt/x";
-        assert_eq!(without_folder(path, "/tmp/.mount_X"), "/usr/local/lib:/opt/x");
-        assert_eq!(without_folder("/tmp/.mount_X/usr/lib", "/tmp/.mount_X"), "");
-    }
 }

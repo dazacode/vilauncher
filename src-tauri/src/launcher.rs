@@ -655,14 +655,29 @@ fn built_exe(repo: &str) -> PathBuf {
     let dir = repo_dir(repo);
     let workspace = cargo_workspace(&dir).unwrap_or_else(|_| dir.clone());
     let target = target_dir(repo);
-    let executable = target
-        .join(detect_build_profile(&workspace))
-        .join("victory.exe");
-    let previous = target.join("release").join("victory.exe");
+    let executable = victory_program(&target.join(detect_build_profile(&workspace)));
+    let previous = victory_program(&target.join("release"));
     if workspace != dir && !executable.is_file() && previous.is_file() {
         return previous;
     }
     executable
+}
+
+/// The program a victory build leaves in `dir`: the native name (`victory`),
+/// else the `.exe` a Windows build made, else the native name for the error.
+fn victory_program(dir: &Path) -> PathBuf {
+    let native = dir.join(crate::platform::exe_name("victory"));
+    if native.is_file() {
+        return native;
+    }
+    #[cfg(not(windows))]
+    {
+        let windows = dir.join("victory.exe");
+        if windows.is_file() {
+            return windows;
+        }
+    }
+    native
 }
 
 /// Most projects build at the root. Some wrap a Cargo workspace one level down.
@@ -798,7 +813,7 @@ fn remote_head(p: &Project) -> Option<String> {
 fn repo_state(p: &Project) -> RepoState {
     if let Some(exe) = p.archive_program() {
         return RepoState {
-            installed: exe.is_file(),
+            installed: crate::platform::is_program(&exe),
             activity: build_activity::BuildActivity::read(&target_dir(&p.repo)),
             ..RepoState::default()
         };
@@ -852,6 +867,12 @@ fn find_game_in(dir: &Path, depth: u32) -> Option<PathBuf> {
             "program files (x86)",
             "programdata",
             "appdata",
+            // macOS
+            "library",
+            "system",
+            "private",
+            "applications",
+            "volumes",
         ];
         if name.starts_with('$') || name.starts_with('.') || skip.contains(&name.as_str()) {
             continue;
@@ -874,32 +895,23 @@ fn folder_tail(saved: &Path) -> Option<PathBuf> {
     (!tail.as_os_str().is_empty()).then_some(tail)
 }
 
-/// The same folder on another connected drive that holds the game, for when the
-/// drive letter changed (an external SSD that came back as F: instead of E:).
+/// The same folder on another connected drive or volume that holds the game,
+/// for when the drive letter or volume name changed (an external SSD that
+/// came back as F: instead of E:, a volume that remounted under another name).
 fn find_moved_game(saved: &Path) -> Option<PathBuf> {
     let tail = folder_tail(saved)?;
-    ('A'..='Z')
-        .map(|letter| PathBuf::from(format!("{letter}:\\")))
-        .filter(|root| root.is_dir())
-        .map(|root| root.join(&tail))
+    crate::platform::moved_folder_candidates(saved, &tail)
+        .into_iter()
         .find(|candidate| candidate.join(EXE_NAME).is_file())
 }
 
-/// Whether the drive a folder is on is connected. A folder without a drive letter counts as connected.
 fn drive_connected(dir: &Path) -> bool {
-    match dir.components().next() {
-        Some(Component::Prefix(_)) => dir.components().take(2).collect::<PathBuf>().exists(),
-        _ => true,
-    }
+    crate::platform::drive_connected(dir)
 }
 
-/// Every drive's folders, three levels down, for the game's exe.
+/// Every drive's or volume's folders, three levels down, for the game's exe.
 fn search_drives() -> Result<String, String> {
-    for letter in b'C'..=b'Z' {
-        let root = PathBuf::from(format!("{}:\\", letter as char));
-        if !root.is_dir() {
-            continue;
-        }
+    for root in crate::platform::game_search_roots() {
         if let Some(found) = find_game_in(&root, 3) {
             return Ok(found.display().to_string());
         }
@@ -1242,14 +1254,10 @@ fn fetch_list(name: &str, url: &str) -> Result<Vec<Project>, String> {
     Ok(out)
 }
 
-#[cfg(windows)]
+/// Runs a spawned program without a console window opening (Windows).
 pub(crate) fn hide_window(c: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    c.creation_flags(CREATE_NO_WINDOW);
+    crate::platform::configure_background_command(c);
 }
-#[cfg(not(windows))]
-pub(crate) fn hide_window(_: &mut Command) {}
 
 impl App {
     fn import_build_zip(&mut self, ctx: &Ctx, input: PathBuf) {
@@ -1858,7 +1866,7 @@ fn build_project(
     if victory {
         cargo.args(["-p", "victory"]);
         run(job, ctx, &mut cargo)?;
-        let executable = target.join(profile).join("victory.exe");
+        let executable = victory_program(&target.join(profile));
         if !executable.is_file() {
             return Err(format!("the build made no {}", executable.display()));
         }
@@ -2121,49 +2129,53 @@ fn clear_read_only(dir: &Path) {
     }
 }
 
-/// Ends every process whose program lives under `dir` (the game and the victory.exe that runs it).
+/// Ends every process whose program lives under `dir` (the game and the runner).
 fn stop_programs_under(dir: &Path) {
-    #[cfg(windows)]
-    {
-        let folder = dir.display().to_string().replace('\'', "''");
-        let script = format!(
-            "Get-Process | Where-Object {{ $_.Path -and $_.Path.StartsWith('{folder}', [StringComparison]::OrdinalIgnoreCase) }} | Stop-Process -Force -ErrorAction SilentlyContinue"
-        );
-        let mut c = Command::new("powershell");
-        c.args(["-NoProfile", "-NonInteractive", "-Command", &script]);
-        hide_window(&mut c);
-        let _ = c.status();
+    crate::platform::stop_programs_under(dir);
+}
+
+/// Checks a program can run here: a native or script file, with its execute
+/// bit, not under quarantine. Fixes what it can and says what the player can
+/// do when it cannot. A macOS `.app` bundle is handed back as it is.
+fn runnable(path: PathBuf) -> Result<PathBuf, String> {
+    let bundle = path.extension().is_some_and(|ext| ext == "app") && path.is_dir();
+    if !bundle && !path.is_file() {
+        return Err(format!(
+            "{} is missing: install the build again.",
+            path.display()
+        ));
     }
-    #[cfg(target_os = "linux")]
-    {
-        let me = std::process::id();
-        for entry in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
-            let Some(pid) = entry
-                .file_name()
-                .to_str()
-                .and_then(|n| n.parse::<u32>().ok())
-            else {
-                continue;
-            };
-            if pid != me
-                && std::fs::read_link(entry.path().join("exe"))
-                    .is_ok_and(|exe| exe.starts_with(dir))
-            {
-                let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
+    if !bundle {
+        if crate::platform::binary_kind(&path) == crate::platform::Binary::Windows
+            && cfg!(target_os = "macos")
+        {
+            return Err(format!(
+                "{} is a Windows program and this Mac cannot run it directly. Build the project from source on macOS, or run it with a compatibility runner such as CrossOver or Whisky.",
+                path.display()
+            ));
+        }
+        crate::platform::make_executable(&path);
+        if crate::platform::is_quarantined(&path) {
+            crate::platform::clear_quarantine(&path);
+            if crate::platform::is_quarantined(&path) {
+                return Err(format!(
+                    "macOS still holds {} in quarantine. Allow it in System Settings > Privacy & Security, or run: xattr -dr com.apple.quarantine \"{}\"",
+                    path.display(),
+                    path.display()
+                ));
             }
         }
     }
-    #[cfg(not(any(windows, target_os = "linux")))]
-    let _ = dir;
+    Ok(path)
 }
 
-/// The victory.exe `p` runs with: its build, or a build already on this PC.
+/// The victory program `p` runs with: its build, or a build already on this PC.
 fn project_exe(p: &Project) -> Result<PathBuf, String> {
     let exe = p
         .archive_program()
         .or_else(|| p.local_exe.as_ref().map(PathBuf::from))
         .unwrap_or_else(|| built_exe(&p.repo));
-    if exe.is_file() {
+    if crate::platform::is_program(&exe) {
         Ok(exe)
     } else {
         Err("this project is not installed yet: press Install".into())
@@ -2283,7 +2295,7 @@ fn a_moved_game_folder_keeps_its_path_under_the_drive() {
 
 /// Fills the same shader cache as Play, using the commands the installed fork exposes.
 fn warm(job: &Arc<Mutex<Job>>, ctx: &Ctx, p: &Project, l: &Launch) -> Result<(), String> {
-    let exe = project_exe(p)?;
+    let (exe, _) = crate::platform::program_for(&runnable(project_exe(p)?)?);
     let files: Vec<PathBuf> = WARM_FILES
         .iter()
         .map(|f| l.game_dir.join(f))
@@ -2394,11 +2406,8 @@ fn fix_game_files(l: &mut Launch, log: &dyn Fn(String)) -> Result<String, String
         candidates.extend(find_game_in(&chosen, 3));
     }
     candidates.extend(find_moved_game(&chosen));
-    for letter in b'C'..=b'Z' {
-        let root = PathBuf::from(format!("{}:\\", letter as char));
-        if root.is_dir() {
-            candidates.extend(find_game_in(&root, 3));
-        }
+    for root in crate::platform::game_search_roots() {
+        candidates.extend(find_game_in(&root, 3));
     }
     for candidate in candidates {
         if game_files_ok(&candidate) {
@@ -2416,50 +2425,37 @@ fn fix_game_files(l: &mut Launch, log: &dyn Fn(String)) -> Result<String, String
     Err("No folder with every required game file was found. Choose it with Browse.".into())
 }
 
-/// Installs the missing build tools and looks again.
+/// Installs the missing build tools with the system's own installer and looks again.
 fn install_missing_tools(job: &Arc<Mutex<Job>>, ctx: &Ctx) -> Result<(), String> {
     let have = tools::detect();
     if have.ready() {
         return Ok(());
     }
-    if !tools::has_winget() {
-        return Err("winget (the Windows package manager) is not on this PC. Install them by hand: git-scm.com, rustup.rs and the Visual Studio Build Tools (Desktop development with C++).".into());
+    if !tools::has_manager() {
+        return Err(install_by_hand());
     }
-    for (what, args) in tools::install_steps(&have) {
+    for step in tools::install_steps(&have) {
+        let what = step.what;
         stage(job, ctx, &msg!("Installing {what} (this can take a while)"));
-        let mut c = Command::new("winget");
-        c.args(&args);
-        match run(job, ctx, &mut c) {
-            Ok(()) => {}
-            // Already installed with nothing newer: not a failure. The look-again below decides.
-            Err(error) if tools::winget_already_installed(&error) => {
-                job.lock()
-                    .unwrap()
-                    .log
-                    .push(format!("{what} is already installed; checking it."));
-            }
-            Err(error) => {
-                // winget can fail on a damaged package list. Reset it and try this step once more.
-                job.lock()
-                    .unwrap()
-                    .log
-                    .push(format!("{what}: winget failed ({error}); retrying once."));
-                stage(job, ctx, "Resetting winget's package list, then trying again");
-                let mut reset = Command::new("winget");
-                reset.args(["source", "reset", "--force"]);
-                let _ = run(job, ctx, &mut reset);
-                let mut again = Command::new("winget");
-                again.args(&args);
-                match run(job, ctx, &mut again) {
-                    Ok(()) => {}
-                    Err(error) if tools::winget_already_installed(&error) => {}
-                    Err(error) => {
-                        return Err(format!(
-                            "{what}: {error}. Install {what} by hand from {} and press Fix again.",
-                            tools::manual_install_page(what)
-                        ))
-                    }
-                }
+        if step.program == "winget" {
+            install_with_winget(job, ctx, what, &step.args)?;
+            continue;
+        }
+        let mut c = Command::new(step.program);
+        c.args(&step.args);
+        run(job, ctx, &mut c).map_err(|error| format!("{what}: {error}"))?;
+        if step.opens_installer {
+            // Apple's installer returns at once and asks the player in its own window;
+            // wait for the tools to answer rather than for the command.
+            stage(
+                job,
+                ctx,
+                msg_str!("Waiting for the Command Line Tools installer"),
+            );
+            if !tools::wait_until_installed(what, 900) {
+                return Err(msg!(
+                    "the {what} installer was not finished (its window may still be open). Run Install missing tools again when it is."
+                ));
             }
         }
     }
@@ -2475,11 +2471,78 @@ fn install_missing_tools(job: &Arc<Mutex<Job>>, ctx: &Ctx) -> Result<(), String>
     Ok(())
 }
 
+/// One winget install. "Already installed" is not a failure (the look-again decides), and
+/// a damaged package list is reset and the install tried once more.
+fn install_with_winget(
+    job: &Arc<Mutex<Job>>,
+    ctx: &Ctx,
+    what: &str,
+    args: &[String],
+) -> Result<(), String> {
+    let mut c = Command::new("winget");
+    c.args(args);
+    match run(job, ctx, &mut c) {
+        Ok(()) => Ok(()),
+        Err(error) if tools::winget_already_installed(&error) => {
+            job.lock()
+                .unwrap()
+                .log
+                .push(format!("{what} is already installed; checking it."));
+            Ok(())
+        }
+        Err(error) => {
+            job.lock()
+                .unwrap()
+                .log
+                .push(format!("{what}: winget failed ({error}); retrying once."));
+            stage(
+                job,
+                ctx,
+                "Resetting winget's package list, then trying again",
+            );
+            let mut reset = Command::new("winget");
+            reset.args(["source", "reset", "--force"]);
+            let _ = run(job, ctx, &mut reset);
+            let mut again = Command::new("winget");
+            again.args(args);
+            match run(job, ctx, &mut again) {
+                Ok(()) => Ok(()),
+                Err(error) if tools::winget_already_installed(&error) => Ok(()),
+                Err(error) => Err(format!(
+                    "{what}: {error}. Install {what} by hand from {} and press Fix again.",
+                    tools::manual_install_page(what)
+                )),
+            }
+        }
+    }
+}
+
+/// What to install by hand, on this system.
+fn install_by_hand() -> String {
+    #[cfg(windows)]
+    {
+        "winget (the Windows package manager) is not on this PC. Install them by hand: git-scm.com, rustup.rs and the Visual Studio Build Tools (Desktop development with C++).".into()
+    }
+    #[cfg(target_os = "macos")]
+    {
+        "Install them by hand: `xcode-select --install` in Terminal, then GitHub Desktop or Homebrew's git, then rustup from rustup.rs.".into()
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        "Install git, Rust and a C++ toolchain with the system's package manager.".into()
+    }
+}
+
 fn fix_tools(job: &Arc<Mutex<Job>>, ctx: &Ctx) -> Result<String, String> {
     install_missing_tools(job, ctx)?;
     let have = tools::detect();
     if have.ready() {
-        Ok("Git, Rust and the C++ build tools are installed and answer.".into())
+        Ok(format!(
+            "Git, Rust and the {} are installed and answer{}. The installed git is {}.",
+            tools::BUILD_TOOLS,
+            if cfg!(windows) { "" } else { " on this Mac" },
+            tools::git_version().unwrap_or_else(|| "git".into())
+        ))
     } else {
         Err(format!(
             "these tools still do not answer: {}.",
@@ -2499,7 +2562,7 @@ fn fix_build(
     }
     stage(job, ctx, msg_str!("Rebuilding the missing program"));
     install(job, ctx, p, project_installed(&p.repo), l)?;
-    let exe = project_exe(p)?;
+    let (exe, _) = crate::platform::program_for(&project_exe(p)?);
     let mut c = Command::new(&exe);
     c.arg("--version");
     hide_window(&mut c);
@@ -2531,6 +2594,54 @@ fn fix_cache(p: &Project, job: &Arc<Mutex<Job>>) -> Result<String, String> {
     ))
 }
 
+/// Clears macOS's quarantine flag from the build and checks it is gone.
+fn fix_quarantine(exe: &Path) -> Result<String, String> {
+    if !crate::platform::is_quarantined(exe) {
+        return Ok(format!("{} is no longer in quarantine.", exe.display()));
+    }
+    crate::platform::clear_quarantine(exe);
+    if crate::platform::is_quarantined(exe) {
+        return Err(format!(
+            "{} is still in quarantine. Allow it in System Settings > Privacy & Security, or run: xattr -dr com.apple.quarantine \"{}\"",
+            exe.display(),
+            exe.display()
+        ));
+    }
+    Ok(format!(
+        "Cleared the quarantine flag from {} and checked it.",
+        exe.display()
+    ))
+}
+
+/// Sets the execute bit on the build and checks the system sees it.
+fn fix_exec_bit(exe: &Path) -> Result<String, String> {
+    #[cfg(unix)]
+    {
+        crate::platform::make_executable(exe);
+        use std::os::unix::fs::PermissionsExt;
+        let mode = exe
+            .metadata()
+            .map_err(|error| error.to_string())?
+            .permissions()
+            .mode();
+        if mode & 0o111 == 0 {
+            return Err(format!(
+                "{} still is not executable (mode {mode:o}).",
+                exe.display()
+            ));
+        }
+        Ok(format!(
+            "Set the execute bit on {} and checked it.",
+            exe.display()
+        ))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = exe;
+        Ok("The system has no execute bit.".into())
+    }
+}
+
 /// Clears read-only flags and proves both folders can be written.
 fn fix_permissions(p: &Project) -> Result<String, String> {
     let ws = workspace();
@@ -2551,32 +2662,8 @@ fn fix_permissions(p: &Project) -> Result<String, String> {
     ))
 }
 
-#[cfg(windows)]
 fn free_bytes(dir: &Path) -> Option<u64> {
-    let drive: String = dir
-        .components()
-        .take(2)
-        .collect::<PathBuf>()
-        .display()
-        .to_string();
-    let mut c = Command::new("fsutil");
-    c.args(["volume", "diskfree", &drive]);
-    hide_window(&mut c);
-    let output = c.output().ok()?;
-    let text = String::from_utf8_lossy(&output.stdout);
-    let after = text.lines().next()?.split(':').nth(1)?;
-    let digits: String = after
-        .split('(')
-        .next()?
-        .chars()
-        .filter(|c| c.is_ascii_digit())
-        .collect();
-    digits.parse().ok()
-}
-
-#[cfg(not(windows))]
-fn free_bytes(_dir: &Path) -> Option<u64> {
-    None
+    crate::platform::free_bytes(dir)
 }
 
 fn fix_disk(p: &Project, job: &Arc<Mutex<Job>>) -> Result<String, String> {
@@ -2734,12 +2821,7 @@ fn open_driver_page(vendor: Option<&str>) -> Result<String, String> {
 }
 
 fn open_url(url: &str) -> Result<(), String> {
-    let mut c = Command::new("cmd");
-    c.args(["/C", "start", "", url]);
-    hide_window(&mut c);
-    c.status()
-        .map(|_| ())
-        .map_err(|error| format!("Could not open {url}: {error}"))
+    crate::platform::open_url(url)
 }
 
 /// Runs one finding's fix with every check logged. `Ok(None)` is a finding with no automatic fix.
@@ -2785,6 +2867,8 @@ fn apply_finding(
         diagnose::FIX_GRAPHICS_DEVICE => fix_graphics(job, p, l, false),
         diagnose::FIX_DRIVER_PAGE => open_driver_page(l.gpu_vendor),
         diagnose::FIX_REPO_SWITCH => fix_repo_switch(job, p, l, finding.data.as_deref()),
+        diagnose::FIX_QUARANTINE => fix_quarantine(exe),
+        diagnose::FIX_EXEC_BIT => fix_exec_bit(exe),
         _ => Err(format!("There is no fix called {id}.")),
     }
     .map(Some)
@@ -2897,23 +2981,21 @@ fn play(
     choice: &saves::LaunchSave,
 ) -> Result<(), String> {
     if p.runs_standalone() {
-        let (exe, dir) = if let Some(exe) = p.archive_program() {
-            let dir = exe
-                .parent()
-                .ok_or("The archive executable has no parent folder.")?
-                .to_owned();
-            (exe, dir)
+        let raw = if let Some(exe) = p.archive_program() {
+            exe
         } else {
             let exe = rust_install(&p.repo)
                 .and_then(|install| install.executable)
                 .ok_or("This Rust workspace has no runnable binary.")?;
-            (
-                target_dir(&p.repo).join(exe),
-                cargo_workspace(&repo_dir(&p.repo))?,
-            )
+            target_dir(&p.repo).join(exe)
         };
+        // A `.app` runs its own program; anything else is checked first.
+        let (exe, dir) = crate::platform::program_for(&runnable(raw)?);
         let mut command = Command::new(exe);
-        command.current_dir(dir).args(&l.program_args);
+        if let Some(dir) = dir {
+            command.current_dir(dir);
+        }
+        command.args(&l.program_args);
         stage(job, ctx, msg_str!("Checking known problems"));
         run_fixes(job, ctx, p, l, false)?;
         stage(job, ctx, msg_str!("Playing"));
@@ -2941,7 +3023,7 @@ fn play(
         }
         return result;
     }
-    let exe = project_exe(p)?;
+    let (exe, _) = crate::platform::program_for(&runnable(project_exe(p)?)?);
     // Quick known problems are repaired and checked before the game starts; one that cannot
     // be repaired stops the launch here, rather than starting a game that will fail. Heavy ones
     // (a tool install, a rebuild) are left to Fix and verify.

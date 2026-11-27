@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- The launcher starts programs it did not build (a user's own game build,
+       the Git and Cargo tools). Those are unsigned or signed by others, so the
+       hardened runtime must not demand a matching Team ID for them. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <!-- Some game builds and JIT-based tooling map writable, unsigned pages. -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <!-- Cloning projects and checking for updates over the network. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+</dict>
+</plist>

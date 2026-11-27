@@ -17,6 +17,9 @@ pub(crate) struct SystemInfo {
     pub cpu: Option<String>,
     /// Logical processors (threads), summed over every socket.
     pub cpu_cores: Option<u32>,
+    /// Running under Rosetta 2 on Apple silicon (a translated process).
+    #[serde(default)]
+    pub translated: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -94,6 +97,7 @@ fn not_a_card(name: &str) -> bool {
         "basic render",
         "hyper-v",
         "mirror driver",
+        "paravirtual",
     ]
     .iter()
     .any(|w| l.contains(w))
@@ -139,40 +143,20 @@ fn detect_inner() -> SystemInfo {
 
 #[cfg(target_os = "macos")]
 fn detect_inner() -> SystemInfo {
-    let sysctl = |key: &str| -> Option<String> {
-        let out = std::process::Command::new("/usr/sbin/sysctl")
-            .args(["-n", key])
-            .output()
-            .ok()?;
-        out.status
-            .success()
-            .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
-    };
-    let ram_gb = sysctl("hw.memsize")
-        .and_then(|s| s.parse::<f64>().ok())
-        .and_then(ram_gb);
-    // Apple silicon: the graphics are part of the chip and share its memory.
-    let cpu = sysctl("machdep.cpu.brand_string");
-    let gpus = cpu
-        .clone()
-        .filter(|chip| chip.starts_with("Apple"))
-        .map(|chip| {
-            vec![Gpu {
-                vendor: vendor(&chip),
-                name: chip,
-                vram_gb: None,
-            }]
-        })
-        .unwrap_or_default();
-    let cpu_cores = sysctl("hw.logicalcpu")
-        .and_then(|s| s.parse::<u32>().ok())
-        .filter(|n| *n >= 1);
-    SystemInfo {
-        gpus,
-        ram_gb,
-        cpu,
-        cpu_cores,
-    }
+    macos::detect()
+}
+
+/// The share of unified memory a game can sensibly use: Apple's own
+/// `recommendedMaxWorkingSetSize` is about three quarters, and the rest of
+/// the system needs the remainder. Kept shy of it so a Fit warning is not
+/// given to a build that fits.
+const UNIFIED_SHARE: f64 = 0.7;
+
+/// The graphics memory budget to report for a chip with unified memory.
+fn unified_budget(ram_gb: Option<f64>) -> Option<f64> {
+    let ram = ram_gb?;
+    // Half-gigabyte steps, never less than one.
+    Some(((ram * UNIFIED_SHARE * 2.0).round() / 2.0).max(1.0))
 }
 
 #[cfg(all(not(windows), not(target_os = "macos")))]
@@ -294,6 +278,7 @@ fn parse_report(json: &str) -> Option<SystemInfo> {
         ram_gb: ram.and_then(ram_gb),
         cpu,
         cpu_cores,
+        translated: false,
     })
 }
 
@@ -417,6 +402,212 @@ $cores = [int]((Get-CimInstance Win32_Processor | Measure-Object -Property Numbe
         assert_eq!(base64(b"fo"), "Zm8=");
         assert_eq!(base64(b"foo"), "Zm9v");
         assert_eq!(base64(b"foobar"), "Zm9vYmFy");
+    }
+}
+
+#[cfg(target_os = "macos")]
+mod macos {
+    use super::*;
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    /// One `sysctl` value, trimmed; `None` when the key is unknown.
+    fn sysctl(key: &str) -> Option<String> {
+        let out = Command::new("/usr/sbin/sysctl")
+            .args(["-n", key])
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+            .filter(|value| !value.is_empty())
+    }
+
+    /// A "4 GB" / "1536 MB" memory figure in bytes.
+    fn bytes_from_text(text: &str) -> Option<f64> {
+        let number: f64 = text
+            .split_whitespace()
+            .find(|word| word.chars().next().is_some_and(|c| c.is_ascii_digit()))?
+            .trim_end_matches(|c: char| !c.is_ascii_digit())
+            .parse()
+            .ok()?;
+        let unit = text.to_lowercase();
+        let factor = if unit.contains("gb") {
+            GIB
+        } else if unit.contains("mb") {
+            GIB / 1024.0
+        } else {
+            return None;
+        };
+        Some(number * factor)
+    }
+
+    /// The displays `system_profiler` reports: (name, video memory when given).
+    fn parse_displays(json: &str) -> Vec<(String, Option<f64>)> {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+            return Vec::new();
+        };
+        let list = value["SPDisplaysDataType"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        list.iter()
+            .filter_map(|entry| {
+                let name = entry["sppci_model"]
+                    .as_str()
+                    .or_else(|| entry["_name"].as_str())?
+                    .trim()
+                    .to_owned();
+                if name.is_empty() {
+                    return None;
+                }
+                let memory = [
+                    "spdisplays_vram",
+                    "spdisplays_vram_shared",
+                    "_spdisplays_vram",
+                ]
+                .iter()
+                .find_map(|key| entry[*key].as_str().and_then(bytes_from_text));
+                Some((name, memory))
+            })
+            .collect()
+    }
+
+    /// The graphics cards `system_profiler` lists (a couple of seconds; gives
+    /// up after three so a wedged profiler never holds the start).
+    fn displays() -> Vec<(String, Option<f64>)> {
+        let mut c = Command::new("/usr/sbin/system_profiler");
+        c.args(["SPDisplaysDataType", "-json"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        let Ok(mut child) = c.spawn() else {
+            return Vec::new();
+        };
+        let mut stdout = child.stdout.take().expect("piped");
+        let reader = std::thread::spawn(move || {
+            let mut out = String::new();
+            let _ = stdout.read_to_string(&mut out);
+            out
+        });
+        let start = Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) if start.elapsed() < Duration::from_secs(3) => {
+                    std::thread::sleep(Duration::from_millis(50))
+                }
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Vec::new();
+                }
+            }
+        }
+        reader
+            .join()
+            .ok()
+            .map(|out| parse_displays(&out))
+            .unwrap_or_default()
+    }
+
+    pub(super) fn detect() -> SystemInfo {
+        let cpu = sysctl("machdep.cpu.brand_string");
+        let ram = sysctl("hw.memsize")
+            .and_then(|value| value.parse::<f64>().ok())
+            .and_then(ram_gb);
+        let translated = sysctl("sysctl.proc_translated").as_deref() == Some("1");
+        let cpu_cores = sysctl("hw.logicalcpu")
+            .or_else(|| sysctl("hw.ncpu"))
+            .and_then(|value| value.parse::<u32>().ok())
+            .filter(|n| *n >= 1);
+        // A whole-chip Apple GPU shares the system's memory; a discrete or
+        // Intel Mac card has its own and is read from `system_profiler`.
+        let gpus = match cpu.clone().filter(|chip| chip.starts_with("Apple")) {
+            Some(chip) => vec![Gpu {
+                name: format!("{chip} (Unified Memory)"),
+                vendor: Vendor::Apple,
+                vram_gb: unified_budget(ram),
+            }],
+            None => {
+                let found: Vec<Gpu> = displays()
+                    .into_iter()
+                    .filter(|(name, _)| !not_a_card(name))
+                    .map(|(name, bytes)| Gpu {
+                        vendor: vendor(&name),
+                        name,
+                        vram_gb: bytes.and_then(vram_gb),
+                    })
+                    .collect();
+                // No answer (killed, or a profiler that failed): name the
+                // machine's chip so the fit check still has something to go on.
+                if found.is_empty() {
+                    chip_gpu(&sysctl("hw.model")).into_iter().collect()
+                } else {
+                    found
+                }
+            }
+        };
+        SystemInfo {
+            gpus,
+            ram_gb: ram,
+            cpu,
+            cpu_cores,
+            translated,
+        }
+    }
+
+    /// The card a fallback can name when `system_profiler` gave nothing: an
+    /// Intel Mac's integrated-graphics family from the model identifier.
+    fn chip_gpu(model: &Option<String>) -> Option<Gpu> {
+        let model = model.as_ref()?;
+        let name = if model.starts_with("MacBookPro1") || model.starts_with("MacBookAir1") {
+            "Intel integrated graphics"
+        } else if model.starts_with("MacPro") || model.starts_with("iMac") {
+            "Graphics"
+        } else {
+            "Unknown graphics"
+        };
+        Some(Gpu {
+            name: name.to_owned(),
+            vendor: Vendor::Other,
+            vram_gb: None,
+        })
+    }
+
+    #[test]
+    fn displays_are_read_from_the_profiler_report() {
+        let report = r#"{"SPDisplaysDataType":[{"sppci_model":"Apple M3 Pro","spdisplays_vram_shared":"18 GB"},
+            {"_name":"Apple Paravirtual device","spdisplays_vram":"0 MB"},
+            {"sppci_model":"AMD Radeon Pro 5500M","spdisplays_vram":"4 GB"}]}"#;
+        let found = parse_displays(report);
+        assert_eq!(found.len(), 3);
+        assert_eq!(found[0].0, "Apple M3 Pro");
+        assert_eq!(found[0].1, Some(18.0 * GIB));
+        assert_eq!(found[2].1, Some(4.0 * GIB));
+        assert!(parse_displays("not json").is_empty());
+        assert!(parse_displays("{}").is_empty());
+    }
+
+    #[test]
+    fn a_missing_profiler_answer_still_names_the_graphics() {
+        let Some(gpu) = chip_gpu(&Some("MacBookPro16,1".to_string())) else {
+            panic!("a model identifier names a card")
+        };
+        assert_eq!(gpu.name, "Intel integrated graphics");
+        assert!(chip_gpu(&None).is_none());
+    }
+
+    #[test]
+    fn the_unified_budget_is_a_share_of_memory_in_half_gigabyte_steps() {
+        assert_eq!(unified_budget(Some(16.0)), Some(11.0)); // 11.2, shy of Apple's 75%
+        assert_eq!(unified_budget(Some(8.0)), Some(5.5));
+        assert_eq!(unified_budget(Some(64.0)), Some(45.0));
+        assert_eq!(unified_budget(None), None);
+        assert!(unified_budget(Some(1.0)).unwrap() >= 1.0);
     }
 }
 
@@ -553,10 +744,11 @@ mod tests {
             ram_gb: Some(16.0),
             cpu: Some("Y".into()),
             cpu_cores: Some(8),
+            translated: false,
         };
         assert_eq!(
             serde_json::to_string(&info).unwrap(),
-            r#"{"gpus":[{"name":"X","vendor":"NVIDIA","vram_gb":null}],"ram_gb":16.0,"cpu":"Y","cpu_cores":8}"#
+            r#"{"gpus":[{"name":"X","vendor":"NVIDIA","vram_gb":null}],"ram_gb":16.0,"cpu":"Y","cpu_cores":8,"translated":false}"#
         );
     }
 }

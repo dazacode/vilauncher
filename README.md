@@ -8,7 +8,7 @@
   <a href="https://github.com/dazacode/vilauncher/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/dazacode/vilauncher?color=ff4fa8&cacheSeconds=300"></a>
 </p>
 
-A Windows launcher for community game projects. It lists projects from [VIPortLive](https://viportlive.com), downloads and builds them with Git and Cargo, and starts them with **your own copy of the game files**.
+A launcher for community game projects, for Windows, macOS and Linux. It lists projects from [VIPortLive](https://viportlive.com), downloads and builds them with Git and Cargo, and starts them with **your own copy of the game files**.
 
 ![VILauncher library: recommended builds, filters and a project's overview](assets/screenshots/library.png)
 
@@ -18,7 +18,7 @@ A Windows launcher for community game projects. It lists projects from [VIPortLi
 
 VILauncher is a fork of [Mandyhub](https://github.com/TheGameOnAddict/mandyhub-sinkfinger) by Zettrox, redesigned and extended by the VIPortLive team. It has grown well past what Mandyhub did:
 
-- Its project library is not limited to VIctory builds. Any Rust project with a Git URL, any prebuilt Windows ZIP, and any build already on your PC can be added and managed the same way.
+- Its project library is not limited to VIctory builds. Any Rust project with a Git URL, any prebuilt ZIP, and any build already on your PC can be added and managed the same way.
 - It checks a project's own notes and reports for known problems, and can fix and verify many of them (see [Features](#features)).
 - It has a one-level rollback for updates, a disk-space manager, a problem-report button that opens a GitHub issue, and an optional AI-agent interface for developers.
 
@@ -44,7 +44,15 @@ The newest release, its notes and its downloads are always at [Releases](https:/
 
 ## Download
 
-Get `VILauncher.exe` (portable) or the installer from [Releases](https://github.com/dazacode/vilauncher/releases/latest). The launcher checks for its own updates at start and replaces itself after verifying the download's SHA-256 digest.
+Get these from [Releases](https://github.com/dazacode/vilauncher/releases/latest):
+
+- **Windows:** `VILauncher.exe` (portable) or the installer.
+- **macOS:** the `.dmg` (universal: Apple silicon and Intel). Drag VILauncher to Applications. Gatekeeper and checking the download: [docs/MACOS.md](docs/MACOS.md).
+- **Linux:** the AppImage or the `.deb`.
+
+On Windows and macOS the launcher checks for its own updates at start and replaces itself (the portable exe, or the whole app on macOS) after verifying the download's SHA-256 digest. On Linux, update from Releases.
+
+Prebuilt builds in the list are Windows programs. On macOS and Linux you can install them, but running one needs a compatibility runner; Rust projects build and run natively.
 
 ### Antivirus flags
 
@@ -55,7 +63,7 @@ A signed release verifies with `Get-AuthenticodeSignature` (signer: VIPortLive t
 - **Library.** Projects from VIPortLive, your own Git repos, and prebuilt ZIPs. Each shows its reported frame rate, the graphics cards it was made for, and whether it is verified. Projects VIPortLive has taken down are hidden by default; you can show them, and they open VIPortLive's page.
 - **Fit warnings.** The launcher reads your graphics card, memory and processor, and compares them with what each build's author reported. A build that doesn't fit shows a warning; this is usage the author saw, not a minimum. You can set your own RAM and video memory under *Advanced: by PC spec*. There is no "recommended" list: these projects are too new for their reports to rank them.
 - **Filter and sort.** Sort by name, frame rate, stars or recent commits; filter by tier and graphics card.
-- **Tool setup.** Finds Git, Rust and the C++ build tools, and installs missing ones with winget (Windows asks for permission).
+- **Tool setup.** Finds Git, Rust and the build tools Rust links with, and installs missing ones: with winget on Windows (the C++ build tools), with Apple's installer and rustup on macOS (Xcode Command Line Tools). The system asks for permission.
 - **Install, update, play.** Downloaded and built once, then kept. Updates save any uncommitted edits as a patch file, keep the previous build for one-step rollback, and show a warning first.
 - **Known-problem fixes.** Before Play, and from the Activity tab, the launcher checks the project's own notes and build for known problems and fixes what it can. Agility SDK files are fetched from Microsoft's NuGet package and checked against pinned SHA-256 hashes; missing files are searched for; tools are installed; caches are cleared; graphics settings are lowered after out-of-memory or lost-device crashes. Every result is read back.
 - **Report a problem.** After a failed job, one click opens a GitHub issue with the log filled in. Names and folders are removed first. Nothing is sent until you press Submit on GitHub.
@@ -76,17 +84,18 @@ The screenshots use example data from the browser mock, not a real PC or account
 
 ## Requirements
 
-- Windows 10 or 11, 64-bit
-- WebView2, which ships with Windows 10 and 11 (the installer fetches it if missing)
+- Windows 10 or 11, 64-bit, with WebView2 (it ships with Windows; the installer fetches it if missing)
+- or macOS 13 or later, Apple silicon or Intel
+- or a 64-bit Linux desktop with WebKitGTK 4.1
 - Your own copy of any game a project needs
-- To build Rust projects: Git, Rust and the C++ build tools (VILauncher can install them)
+- To build Rust projects: Git, Rust and the build tools: the C++ build tools on Windows, Xcode Command Line Tools on macOS, a C compiler on Linux (VILauncher can install them on Windows and macOS)
 
 ## Data folders
 
 | Path | Holds |
 | --- | --- |
-| `%LOCALAPPDATA%\VILauncher` | Repos, builds, shader caches, saves and profiles (`data`), previous builds, patches, logs. The install folder can be changed in Settings. |
-| `%APPDATA%\VILauncher\settings.json` | Settings |
+| `%LOCALAPPDATA%\VILauncher` (Windows), `~/Library/Application Support/VILauncher` (macOS), `~/.local/share/VILauncher` (Linux) | Repos, builds, shader caches, saves and profiles (`data`), previous builds, patches, logs. The install folder can be changed in Settings. |
+| `%APPDATA%\VILauncher\settings.json` (Windows); `settings.json` in the folder above on macOS and Linux | Settings |
 
 Saves live in `data` and are never touched by an update, a rollback or a cache clear.
 
@@ -102,8 +111,9 @@ pnpm tauri build   # release build
 
 Output:
 
-- `src-tauri\target\release\VILauncher.exe`
-- `src-tauri\target\release\bundle\nsis\VILauncher_<version>_x64-setup.exe`
+- Windows: `src-tauri\target\release\VILauncher.exe` and `src-tauri\target\release\bundle\nsis\VILauncher_<version>_x64-setup.exe`
+- macOS: `src-tauri/target/release/bundle/macos/VILauncher.app` and `bundle/dmg/` (one app for both processors: see [docs/MACOS.md](docs/MACOS.md#building-on-a-mac))
+- Linux: `src-tauri/target/release/bundle/appimage/` and `bundle/deb/`
 
 ### Check the build like CI
 
@@ -136,6 +146,7 @@ Problems with a *project* (its game, its code, its results) belong to that proje
 | `src/dev/mock.ts` | Mock backend for the browser |
 | `src-tauri/` | Rust launcher (Tauri 2): project list, Git and Cargo jobs, saves, presets, updates, diagnostics |
 | `src-tauri/src/brand.rs` | Names, links, folders and project list sources |
+| `src-tauri/src/platform/` | What differs between Windows, macOS and Linux |
 | `scripts/` | CI checks (`ci.mjs`) and the agent tool (`vilauncher-agent.mjs`) |
 
 The project list comes from `https://viportlive.com/api/launcher`. If that is unavailable, PortWatch's `tracker.json` is used.
@@ -150,6 +161,8 @@ The full text is in [LEGAL.md](LEGAL.md). The app shows it on first start and as
 
 - Forked from [Mandyhub](https://github.com/TheGameOnAddict/mandyhub-sinkfinger) by Zettrox, and the Mandyhub contributors
 - Launcher redesign by ellion369
+- macOS port by Dolo22
+- Linux support by karrot0
 - Save picker, checkpoints, presets and build tracking by TheGameOnAddict
 - VIctory by Marvisak and contributors
 - Project list and tracker from PortWatch, via VIPortLive
