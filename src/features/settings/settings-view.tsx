@@ -7,6 +7,7 @@ import { Input, Textarea } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { GraphicsGroups } from "@/features/library/graphics-tab"
+import { BackdropPicker } from "./backdrop-picker"
 import { ResponsibilityDialog } from "@/features/shared/responsibility"
 import { openUrl, pickFolder } from "@/lib/api"
 import { useDraft } from "@/lib/hooks"
@@ -35,7 +36,7 @@ export function SettingsView() {
   const u = snap.updater
   return (
     <div className="h-full overflow-y-auto">
-      <div className="drag h-12" />
+      <div className="h-6" />
       <div className="mx-auto max-w-[760px] space-y-10 px-10 pb-16">
         <header>
           <h1 className="font-display text-page font-bold tracking-[-0.02em] text-fg">Settings</h1>
@@ -46,6 +47,7 @@ export function SettingsView() {
           <Row label="Look" hint="Applies at once.">
             <Segmented label="Look" size="sm" value={theme} options={looks} onChange={(v) => setTheme(v as Theme)} />
           </Row>
+          <BackdropPicker />
         </Group>
 
         <Group title="Privacy">

@@ -211,6 +211,13 @@
   }
 }
 
+@keyframes sheet-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
 @utility glass {
   background: var(--color-glass);
   backdrop-filter: blur(28px) saturate(170%);
@@ -241,4 +248,20 @@
     animation-duration: 1ms !important;
     transition-duration: 1ms !important;
   }
+}
+
+/*
+ * The library's picture (src/lib/backdrops.ts). It covers the page by height, keeps the part
+ * --art-ty asks for when a very wide window crops it, and slides so its subject (--art-anchor
+ * across the file) lands --art-target across the page, never past its own edges.
+ */
+.gta-art {
+  --art-h: max(100cqh, calc(100cqw / var(--art-aspect)));
+  --art-w: calc(var(--art-h) * var(--art-aspect));
+  position: absolute;
+  max-width: none;
+  height: var(--art-h);
+  width: var(--art-w);
+  top: calc((100cqh - var(--art-h)) * var(--art-ty));
+  left: clamp(calc(100cqw - var(--art-w)), calc(var(--art-target) * 100cqw - var(--art-anchor) * var(--art-w)), 0px);
 }

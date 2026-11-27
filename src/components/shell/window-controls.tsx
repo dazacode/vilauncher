@@ -1,4 +1,3 @@
-import { Minus, Square, X } from "lucide-react"
 import { useEffect, useState } from "react"
 import { inTauri } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -8,7 +7,7 @@ async function win() {
   return getCurrentWindow()
 }
 
-/** Minimise, maximise and close, drawn the way Windows 11 draws them. */
+/** Minimise, maximise and close: thin Windows 11 glyphs over the art. */
 export function WindowControls({ className }: { className?: string }) {
   const [maximized, setMaximized] = useState(false)
   useEffect(() => {
@@ -20,24 +19,31 @@ export function WindowControls({ className }: { className?: string }) {
     })
     return () => off?.()
   }, [])
-  const button = "no-drag grid h-full w-[46px] place-items-center text-fg-2 transition-colors duration-100 hover:bg-fill-3 hover:text-fg"
+  const button = "no-drag grid h-full w-[42px] cursor-pointer place-items-center text-[#d4d2d8] transition-colors duration-100 hover:bg-white/[0.1] hover:text-white"
+  const glyph = { viewBox: "0 0 10 10", className: "size-[10px]", fill: "none", stroke: "currentColor", strokeWidth: 1, "aria-hidden": true } as const
   return (
-    <div className={cn("flex h-8 items-stretch", className)}>
+    <div className={cn("flex h-[28px] items-stretch", className)}>
       <button type="button" aria-label="Minimise" className={button} onClick={() => void win().then((w) => w.minimize())}>
-        <Minus className="size-4" strokeWidth={1.5} />
+        <svg {...glyph}>
+          <path d="M0 5.5h10" />
+        </svg>
       </button>
       <button type="button" aria-label={maximized ? "Restore" : "Maximise"} className={button} onClick={() => void win().then((w) => w.toggleMaximize())}>
         {maximized ? (
-          <svg viewBox="0 0 16 16" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden>
-            <rect x="2.5" y="4.5" width="9" height="9" rx="1.5" />
-            <path d="M5 4.5V3.5a1.5 1.5 0 0 1 1.5-1.5h6A1.5 1.5 0 0 1 14 3.5v6a1.5 1.5 0 0 1-1.5 1.5h-1" />
+          <svg {...glyph}>
+            <rect x="0.5" y="2.5" width="7" height="7" />
+            <path d="M2.5 2.5v-2h7v7h-2" />
           </svg>
         ) : (
-          <Square className="size-3.5" strokeWidth={1.5} />
+          <svg {...glyph}>
+            <rect x="0.5" y="0.5" width="9" height="9" />
+          </svg>
         )}
       </button>
       <button type="button" aria-label="Close" className={cn(button, "hover:bg-[#c42b1c] hover:text-white")} onClick={() => void win().then((w) => w.close())}>
-        <X className="size-4" strokeWidth={1.5} />
+        <svg {...glyph}>
+          <path d="M0.5 0.5l9 9M9.5 0.5l-9 9" />
+        </svg>
       </button>
     </div>
   )

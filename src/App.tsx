@@ -1,10 +1,12 @@
 import { useEffect } from "react"
 import { Toaster } from "sonner"
 import { Sidebar } from "@/components/shell/sidebar"
+import { TopNav } from "@/components/shell/top-nav"
 import { WindowControls } from "@/components/shell/window-controls"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { Dialogs } from "@/features/dialogs/dialogs"
 import { LibrarySkeleton, LibraryView } from "@/features/library/library-view"
+import { WorkshopView } from "@/features/library/workshop-view"
 import { SettingsView } from "@/features/settings/settings-view"
 import { getBackend } from "@/lib/api"
 import { scheduleRefresh, useStore } from "@/lib/store"
@@ -24,12 +26,22 @@ export function App() {
     <TooltipProvider>
       <div className="flex h-full">
         <Sidebar />
-        <main className="relative min-w-0 flex-1">
-          {/* The top of the window drags it; the controls sit over the art. */}
-          <div className="drag absolute inset-x-0 top-0 z-30 flex h-10 justify-end">
+        <main className="relative min-w-0 flex-1 overflow-hidden bg-[#0b0910]">
+          {/* The top of the window drags it; the controls and the page nav sit over the art. */}
+          <div className="drag absolute inset-x-0 top-0 z-40 flex h-[28px] justify-end">
             <WindowControls />
           </div>
-          {!snap ? view === "library" && <LibrarySkeleton /> : view === "library" ? <LibraryView /> : <SettingsView />}
+          <div className="drag absolute inset-x-0 top-[28px] z-30 flex h-[52px] items-center justify-end pr-[53px]">
+            <TopNav />
+          </div>
+          {view === "library" ? (
+            snap ? <LibraryView /> : <LibrarySkeleton />
+          ) : (
+            // Other pages scroll below the nav, not under it.
+            <div className="h-full border-t-0 pt-[80px]">
+              <div className="h-full border-t border-white/[0.06]">{!snap ? null : view === "workshop" ? <WorkshopView /> : <SettingsView />}</div>
+            </div>
+          )}
         </main>
       </div>
       <Dialogs />
