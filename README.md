@@ -42,6 +42,10 @@ Mandyhub's settings and installed projects are carried over on first start, so n
 
 Get `VILauncher.exe` (portable) or the installer from [Releases](https://github.com/dazacode/vilauncher/releases/latest). The launcher checks for its own updates at start and replaces itself after verifying the download's SHA-256 digest.
 
+### Antivirus flags
+
+A signed release verifies with `Get-AuthenticodeSignature` (signer: VIPortLive team) and a SHA-256 digest on the release page; while a release is unsigned, compare its SHA-256 instead. Machine-learning engines such as Trapmine still flag fresh builds now and then. Why, and how to report it: [docs/FALSE-POSITIVES.md](docs/FALSE-POSITIVES.md).
+
 ## Features
 
 - **Library.** Projects from VIPortLive, your own Git repos, and prebuilt ZIPs. Each shows its reported frame rate, the graphics cards it was made for, and whether it is verified. Projects VIPortLive has taken down are hidden by default; you can show them, and they open VIPortLive's page.

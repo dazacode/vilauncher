@@ -4,6 +4,7 @@
 /node_modules
 /dist
 *.log
+*.pfx
 .DS_Store
 .ci/
 tsconfig.tsbuildinfo

@@ -55,6 +55,10 @@
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
+      },
+      "signCommand": {
+        "cmd": "node",
+        "args": ["../scripts/sign-windows.mjs", "%1"]
       }
     },
     "licenseFile": "../LEGAL.md"

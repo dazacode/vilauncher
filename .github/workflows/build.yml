@@ -61,8 +61,28 @@ jobs:
         working-directory: src-tauri
         run: cargo test --locked
 
+      # Optional. Without the secret the build still runs, unsigned; the signing
+      # script in tauri.conf.json then does nothing. See docs/FALSE-POSITIVES.md.
+      - name: Import the signing certificate
+        if: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'certificate.pfx'
+          $base64 = $env:WINDOWS_CERTIFICATE -replace '\s', ''
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($base64))
+          $secure = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
+          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $secure
+          Remove-Item $pfx
+          "VILAUNCHER_SIGN_THUMBPRINT=$($cert.Thumbprint)" >> $env:GITHUB_ENV
+
       - name: Build the launcher and installer
         run: pnpm tauri build
+
+      - name: Print the SHA-256 digests
+        run: sha256sum src-tauri/target/release/VILauncher.exe src-tauri/target/release/bundle/nsis/*.exe
 
       - name: Upload VILauncher.exe
         uses: actions/upload-artifact@v4
