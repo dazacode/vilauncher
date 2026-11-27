@@ -68,6 +68,13 @@ fn find(name: &str, places: &[Option<PathBuf>]) -> Option<PathBuf> {
         .cloned()
 }
 
+/// Elsewhere Rust links with the system C compiler (`cc`), from the distribution's packages.
+#[cfg(not(windows))]
+fn msvc_installed() -> bool {
+    answers(Path::new("cc"))
+}
+
+#[cfg(windows)]
 fn msvc_installed() -> bool {
     // Every Visual Studio install (any edition, Build Tools too), from the
     // installer's own list, else the usual folders.
@@ -148,6 +155,9 @@ pub fn detect() -> Tools {
             env_path("CARGO_HOME").map(|p| p.join("bin").join("cargo.exe")),
             home.as_ref()
                 .map(|p| p.join(".cargo").join("bin").join("cargo.exe")),
+            // Linux/macOS: rustup's folder, which a desktop session's PATH often lacks.
+            env_path("CARGO_HOME").map(|p| p.join("bin").join("cargo")),
+            env_path("HOME").map(|p| p.join(".cargo").join("bin").join("cargo")),
         ],
     );
     let t = Tools {

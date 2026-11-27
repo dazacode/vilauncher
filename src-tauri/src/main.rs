@@ -183,7 +183,28 @@ fn fix_allowed() -> Result<(), String> {
     Ok(())
 }
 
+/// Whether a VILauncher other than this process runs (Linux: from /proc).
+#[cfg(target_os = "linux")]
+fn other_launcher_running() -> Result<bool, String> {
+    let me = std::process::id();
+    let entries = std::fs::read_dir("/proc")
+        .map_err(|_| "could not check whether VILauncher is running (/proc unreadable), so Fix was not started".to_string())?;
+    Ok(entries.flatten().any(|entry| {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|n| n.parse::<u32>().ok())
+        else {
+            return false;
+        };
+        pid != me
+            && std::fs::read_to_string(entry.path().join("comm"))
+                .is_ok_and(|name| name.trim() == "VILauncher")
+    }))
+}
+
 /// Whether a VILauncher.exe other than this process runs (checked with tasklist, CSV: "name","pid",...).
+#[cfg(not(target_os = "linux"))]
 fn other_launcher_running() -> Result<bool, String> {
     let mut command = std::process::Command::new("tasklist");
     command.args(["/FI", "IMAGENAME eq VILauncher.exe", "/FO", "CSV", "/NH"]);
