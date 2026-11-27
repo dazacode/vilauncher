@@ -119,6 +119,11 @@ fn version(tag: &str) -> Option<[u32; 3]> {
 }
 
 fn check_release() -> Result<State, String> {
+    // The in-app update installs VILauncher.exe, which only Windows can run. Other systems
+    // update from the Releases page, so they are never offered the Windows executable.
+    if !cfg!(windows) {
+        return Ok(State::Current);
+    }
     let url = format!("https://api.github.com/repos/{REPOSITORY}/releases/latest");
     let response = agent()
         .get(&url)
