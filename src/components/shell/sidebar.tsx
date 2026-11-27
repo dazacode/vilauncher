@@ -9,7 +9,7 @@ import { Select } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip } from "@/components/ui/tooltip"
-import { assess, mainGpu, recommendRank, SORTS, sortProjects, withSpec } from "@/lib/compat"
+import { assess, mainGpu, SORTS, sortProjects, withSpec } from "@/lib/compat"
 import { openUrl } from "@/lib/api"
 import { fps, gpuText, shortStage } from "@/lib/format"
 import { run, useAlias, useStore } from "@/lib/store"
@@ -156,13 +156,12 @@ export function Sidebar() {
 }
 
 /**
- * The sidebar's groups. Recommended: the three not-installed builds that fit the
- * player's PC best (a good fit, then close, then nothing known yet), in VIPortLive's
- * order within each. A build that doesn't fit is never recommended; its row warns.
+ * The sidebar's groups: your repos, installed builds, and every other build in the list's order.
+ * There is no "recommended" group: fit is judged from memory figures that authors report, which
+ * are too new and too uneven to rank builds on. A build that doesn't fit still shows its warning.
  */
 function group(snap: Snapshot, query: string, filter: number) {
   const s = snap.settings
-  const system = withSpec(snap.system, s)
   const keep = (p: Project) => {
     const text = !query || p.name.toLowerCase().includes(query) || p.repo.toLowerCase().includes(query)
     const card = (name: string) => p.custom || p.gpu.some((g) => g.toLowerCase() === name)
@@ -172,21 +171,10 @@ function group(snap: Snapshot, query: string, filter: number) {
     return text && tier && taken && (filter === 1 ? card("nvidia") : filter === 2 ? card("amd") : true)
   }
   const listed = sortProjects(snap.list.items.filter(keep), s.list_sort)
-  const rest = listed.filter((p) => !p.installed)
-  // Recommended never includes a taken-down project, whatever the filter shows.
-  const fits = rest
-    .flatMap((p) => {
-      const rank = p.listing.nuked ? null : recommendRank(assess(p, system).level)
-      return rank === null ? [] : [{ p, rank }]
-    })
-    .sort((a, b) => a.rank - b.rank)
-    .map((x) => x.p)
-  const recommended = fits.slice(0, 3)
   return [
     { title: "Your repos", rows: sortProjects(snap.custom.filter(keep), s.list_sort) },
     { title: "Installed", rows: listed.filter((p) => p.installed) },
-    { title: "Recommended", rows: recommended },
-    { title: "All projects", rows: rest.filter((p) => !recommended.includes(p)) },
+    { title: "All projects", rows: listed.filter((p) => !p.installed) },
   ].filter((s) => s.rows.length > 0)
 }
 

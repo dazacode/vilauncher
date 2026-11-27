@@ -45,7 +45,7 @@ Get `VILauncher.exe` (portable) or the installer from [Releases](https://github.
 ## Features
 
 - **Library.** Projects from VIPortLive, your own Git repos, and prebuilt ZIPs. Each shows its reported frame rate, the graphics cards it was made for, and whether it is verified. Projects VIPortLive has taken down are hidden by default; you can show them, and they open VIPortLive's page.
-- **Find what fits your PC.** The launcher reads your graphics card, memory and processor. Recommended builds are the ones that fit, and builds that won't fit show a warning. The fit uses the memory the author reported, which is usage, not a minimum. You can set your own RAM and video memory under *Advanced: by PC spec*.
+- **Fit warnings.** The launcher reads your graphics card, memory and processor, and compares them with what each build's author reported. A build that doesn't fit shows a warning; this is usage the author saw, not a minimum. You can set your own RAM and video memory under *Advanced: by PC spec*. There is no "recommended" list: these projects are too new for their reports to rank them.
 - **Filter and sort.** Sort by name, frame rate, stars or recent commits; filter by tier and graphics card.
 - **Tool setup.** Finds Git, Rust and the C++ build tools, and installs missing ones with winget (Windows asks for permission).
 - **Install, update, play.** Downloaded and built once, then kept. Updates save any uncommitted edits as a patch file, keep the previous build for one-step rollback, and show a warning first.

@@ -154,11 +154,3 @@ export function assess(p: Project, system: SystemInfo | null): Assessment {
             : null
   return { level, headline, warning, gpu: gpuCheck, ram, vram }
 }
-
-/**
- * Where a build sits in "recommended": a good fit first, then the close ones, then
- * builds with nothing known against the PC. null when it doesn't fit, so it is never recommended.
- */
-export function recommendRank(level: Level): number | null {
-  return level === "good" ? 0 : level === "unknown" ? 2 : level === "close" ? 1 : null
-}
