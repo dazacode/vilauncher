@@ -1,0 +1,9 @@
+# Blank issues stay on: the launcher's "Report a problem" button opens a blank issue with the text filled in.
+blank_issues_enabled: true
+contact_links:
+  - name: A problem with a project (its game, code or results)
+    url: https://viportlive.com
+    about: Report it to that project's authors. VIPortLive lists the projects.
+  - name: Security vulnerability (private)
+    url: https://github.com/dazacode/vilauncher/security/advisories/new
+    about: Please report security problems privately, not as a public issue.
