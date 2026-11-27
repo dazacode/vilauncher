@@ -39,7 +39,7 @@ export function Dialog({ open, onOpenChange, title, description, eyebrow, childr
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
             className={cn(
-              "glass fixed top-1/2 left-1/2 z-50 flex max-h-[86vh] w-[min(520px,calc(100vw-48px))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl bg-[rgb(24_22_30/0.82)] outline-none",
+              "glass fixed top-1/2 left-1/2 z-50 flex max-h-[86vh] w-[min(520px,calc(100vw-48px))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl bg-glass-solid outline-none",
               className,
             )}
           >

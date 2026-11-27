@@ -11,7 +11,7 @@ export function Tooltip({ label, children, side = "bottom" }: { label: React.Rea
         <T.Content
           side={side}
           sideOffset={8}
-          className="z-50 max-w-64 rounded-md border border-line bg-[#1d1b23]/95 px-2.5 py-1.5 text-caption text-fg shadow-[0_8px_24px_rgb(0_0_0/0.4)] backdrop-blur-xl"
+          className="z-50 max-w-64 rounded-md border border-line bg-raised/95 px-2.5 py-1.5 text-caption text-fg shadow-[0_8px_24px_rgb(0_0_0/0.4)] backdrop-blur-xl"
         >
           {label}
         </T.Content>

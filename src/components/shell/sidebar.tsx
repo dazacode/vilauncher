@@ -82,7 +82,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex w-[264px] shrink-0 flex-col border-r border-line bg-[rgb(10_9_14/0.55)]">
+    <aside className="flex w-[264px] shrink-0 flex-col border-r border-line bg-sidebar">
       <div className="drag flex h-12 shrink-0 items-center px-4">
         <Brand />
       </div>
@@ -222,7 +222,7 @@ function FilterMenu({ snap }: { snap: Snapshot }) {
           align="start"
           sideOffset={6}
           collisionPadding={12}
-          className="z-50 max-h-[min(640px,80vh)] w-[248px] space-y-4 overflow-y-auto rounded-xl border border-line-2 bg-[#1d1b23] p-3.5 text-body text-fg shadow-[0_12px_36px_rgb(0_0_0/0.5)] outline-none"
+          className="z-50 max-h-[min(640px,80vh)] w-[248px] space-y-4 overflow-y-auto rounded-xl border border-line-2 bg-raised p-3.5 text-body text-fg shadow-[0_12px_36px_rgb(0_0_0/0.5)] outline-none"
         >
           <label className="flex items-center justify-between gap-3">
             <span>Show taken-down projects</span>

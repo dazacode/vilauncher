@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from "react"
 import { ExternalLink, FolderOpen, RefreshCw, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Segmented } from "@/components/ui/segmented"
 import { Group, Row } from "@/components/ui/group"
 import { Input, Textarea } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
@@ -9,6 +10,7 @@ import { GraphicsGroups } from "@/features/library/graphics-tab"
 import { ResponsibilityDialog } from "@/features/shared/responsibility"
 import { openUrl, pickFolder } from "@/lib/api"
 import { useDraft } from "@/lib/hooks"
+import { pawsUnlocked, setTheme, THEMES, type Theme, useTheme } from "@/lib/theme"
 import { run, useStore } from "@/lib/store"
 import type { StorageView } from "@/lib/types"
 
@@ -17,6 +19,11 @@ export function SettingsView() {
   const screenshot = useStore((s) => s.screenshot)
   const setScreenshot = useStore((s) => s.setScreenshot)
   const s = snap.settings
+  const theme = useTheme()
+  const looks = [
+    ...THEMES.map((t) => ({ value: t.id as string, label: t.label })),
+    ...(pawsUnlocked() || theme === "paws" ? [{ value: "paws", label: "Paws" }] : []),
+  ]
   const [askAgents, setAskAgents] = useState(false)
   // Turning agents on needs the warning once; the switch only moves after Continue.
   const turnOnAgents = () =>
@@ -34,6 +41,12 @@ export function SettingsView() {
           <h1 className="font-display text-page font-bold tracking-[-0.02em] text-fg">Settings</h1>
           <p className="mt-1 text-body text-fg-3">{snap.brand.name} {snap.version}</p>
         </header>
+
+        <Group title="Appearance" description="Dark is the default. Light and calm are flat, with no glow. The look is remembered on this PC.">
+          <Row label="Look" hint="Applies at once.">
+            <Segmented label="Look" size="sm" value={theme} options={looks} onChange={(v) => setTheme(v as Theme)} />
+          </Row>
+        </Group>
 
         <Group title="Privacy">
           <Row label="Screenshot mode" hint="Shows example names and hides paths, notes and logs, for sharing pictures of the launcher.">

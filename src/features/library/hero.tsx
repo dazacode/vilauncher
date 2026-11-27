@@ -47,7 +47,7 @@ export function Hero({ project: p }: { project: Project }) {
                 </>
               )}
             </p>
-            <h1 className="mt-1 pb-1 break-words text-balance font-display text-hero font-bold tracking-[-0.035em] text-white [text-shadow:0_2px_24px_rgb(0_0_0/0.35)]">
+            <h1 className="mt-1 pb-1 break-words text-balance font-display text-hero font-bold tracking-[-0.035em] text-fg [text-shadow:0_2px_24px_rgb(0_0_0/0.35)]">
               {alias.name}
             </h1>
           </div>

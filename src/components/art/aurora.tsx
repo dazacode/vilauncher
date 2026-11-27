@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { useEffect, useMemo, useState } from "react"
 import { fileSrc } from "@/lib/api"
+import { useTheme } from "@/lib/theme"
 
 /**
  * The art behind a project, first match wins: the player's own pictures
@@ -26,7 +27,9 @@ function hash(s: string) {
 const GRAIN =
   "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>\")"
 
-export function Aurora({ seed, still, pictures = [], art }: { seed: string; still?: boolean; pictures?: string[]; art?: string | null }) {
+type AuroraProps = { seed: string; still?: boolean; pictures?: string[]; art?: string | null }
+
+function AuroraArt({ seed, still, pictures = [], art }: AuroraProps) {
   const [artFailed, setArtFailed] = useState<string | null>(null)
   const reduced = useReducedMotion()
   const h = hash(seed)
@@ -147,4 +150,11 @@ function Pictures({ paths, moving }: { paths: string[]; moving: boolean }) {
       )}
     </AnimatePresence>
   )
+}
+
+/** The ambient glow of the dark look. The light, calm and paws looks stay flat, with no gradients. */
+export function Aurora(props: AuroraProps) {
+  const theme = useTheme()
+  if (theme !== "dark") return <div className="absolute inset-0 bg-ground" />
+  return <AuroraArt {...props} />
 }
