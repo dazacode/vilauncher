@@ -16,6 +16,7 @@ import { run, useAlias, useStore } from "@/lib/store"
 import type { Project, Snapshot } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Brand } from "./brand"
+import { LauncherUpdate } from "@/features/shared/launcher-update"
 import { JobCard } from "./job-card"
 import { Bone, SidebarSkeleton } from "./skeleton"
 
@@ -144,6 +145,7 @@ export function Sidebar() {
         )}
       </div>
       <div className="space-y-2 border-t border-line px-2 py-3">
+        <LauncherUpdate />
         <JobCard />
         {!screenshot && (
           <Button variant="ghost" size="sm" className="w-full justify-start gap-3 px-2" onClick={() => open({ kind: "import" })}>
