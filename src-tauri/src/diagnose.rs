@@ -36,9 +36,14 @@ pub(crate) const AGILITY_PINNED: &[(&str, &str)] = &[
 ];
 const PINNED_PACKAGE: &str = "1.620.2";
 const PACKAGE_ID: &str = "microsoft.direct3d.d3d12";
+/// The Agility SDK files the launcher knows how to install, in the casing they ship with.
+const AGILITY_NAMES: [&str; 2] = ["D3D12Core.dll", "d3d12SDKLayers.dll"];
 
-/// `D3D12\` file beside the exe must all hash to these.
-pub(crate) type Agility = Vec<(String, String)>;
+/// Each `D3D12\` file beside the exe must hash to one of the values listed for its
+/// name. A project can name more than one hash near a file (its package's and the
+/// file's own), so every name carries the set of acceptable SHA-256 hashes; an empty
+/// set means "present".
+pub(crate) type Agility = Vec<(String, Vec<String>)>;
 
 /// A known problem: what it is, what to do, whether only the full check covers it,
 /// and the fix id if the launcher can repair it.
@@ -113,15 +118,15 @@ fn write_verified(
     Ok(())
 }
 
-/// Whether `dir\D3D12` holds every Agility file at an expected version. An empty
-/// expected hash (the project named only one file) means "present".
+/// Whether `dir\D3D12` holds every Agility file at an accepted version. An empty
+/// hash set (the project named a file but no hash) means "present".
 fn agility_ok(dir: &Path, agility: &Agility) -> bool {
-    agility.iter().all(|(name, sha)| {
+    agility.iter().all(|(name, shas)| {
         let path = dir.join("D3D12").join(name);
-        if sha.is_empty() {
+        if shas.is_empty() {
             path.is_file()
         } else {
-            sha256_hex(&path).as_deref() == Some(sha.as_str())
+            sha256_hex(&path).is_some_and(|got| shas.contains(&got))
         }
     })
 }
@@ -129,12 +134,12 @@ fn agility_ok(dir: &Path, agility: &Agility) -> bool {
 /// Whether `dir` is a `D3D12` folder with every expected file.
 fn agility_folder_ok(dir: &Path, agility: &Agility) -> bool {
     dir.file_name().is_some_and(|name| name == "D3D12")
-        && agility.iter().all(|(name, sha)| {
+        && agility.iter().all(|(name, shas)| {
             let path = dir.join(name);
-            if sha.is_empty() {
+            if shas.is_empty() {
                 path.is_file()
             } else {
-                sha256_hex(&path).as_deref() == Some(sha.as_str())
+                sha256_hex(&path).is_some_and(|got| shas.contains(&got))
             }
         })
 }
@@ -157,8 +162,11 @@ fn find_agility_build(dir: &Path, depth: u32) -> Option<PathBuf> {
     None
 }
 
-/// Every 64-character hexadecimal string on `lines[start..start+window]`.
-fn hashes_near(lines: &[&str], start: usize, window: usize) -> Option<String> {
+/// Every 64-character hexadecimal string on `lines[start..start+window]`, lowercased,
+/// in the order they appear. A project may write more than one (its package's hash and
+/// the file's own), so every one is a candidate rather than just the first.
+fn hashes_near(lines: &[&str], start: usize, window: usize) -> Vec<String> {
+    let mut found = Vec::new();
     for line in lines.iter().skip(start).take(window) {
         let bytes = line.as_bytes();
         let mut run = 0;
@@ -166,19 +174,20 @@ fn hashes_near(lines: &[&str], start: usize, window: usize) -> Option<String> {
             if byte.is_ascii_hexdigit() {
                 run += 1;
                 if run == 64 {
-                    return Some(line[at + 1 - 64..=at].to_ascii_lowercase());
+                    found.push(line[at + 1 - 64..=at].to_ascii_lowercase());
+                    run = 0;
                 }
             } else {
                 run = 0;
             }
         }
     }
-    None
+    found
 }
 
-/// The Agility files a project's own build script checks, by searching its text files
-/// for a file name followed by its SHA-256. Empty when it names none.
-fn agility_from_project(repo: &Path) -> Agility {
+/// A project's own text files (source, scripts, manifests), capped so a large repo is
+/// still cheap to scan.
+fn project_text_files(repo: &Path) -> Vec<PathBuf> {
     fn walk(dir: &Path, depth: u32, left: &mut usize, files: &mut Vec<PathBuf>) {
         if *left == 0 || depth == 0 {
             return;
@@ -210,8 +219,14 @@ fn agility_from_project(repo: &Path) -> Agility {
     }
     let mut files = Vec::new();
     walk(repo, 5, &mut 400, &mut files);
-    let mut found = Vec::new();
-    for path in files {
+    files
+}
+
+/// The Agility files a project's own build script checks, by searching its text files
+/// for a file name followed by its SHA-256. Empty when it names none.
+fn agility_from_project(repo: &Path) -> Agility {
+    let mut found: Agility = Vec::new();
+    for path in project_text_files(repo) {
         let Ok(meta) = std::fs::metadata(&path) else {
             continue;
         };
@@ -223,11 +238,94 @@ fn agility_from_project(repo: &Path) -> Agility {
         };
         let lines: Vec<&str> = text.lines().collect();
         for (i, line) in lines.iter().enumerate() {
-            for name in ["D3D12Core.dll", "d3d12SDKLayers.dll"] {
-                if line.contains(name) && !found.iter().any(|(have, _)| have == name) {
-                    if let Some(sha) = hashes_near(&lines, i, 6) {
-                        found.push((name.to_string(), sha));
+            for name in AGILITY_NAMES {
+                if !line.contains(name) {
+                    continue;
+                }
+                // Read at most six lines, but stop before the next line that names a
+                // different file, so one file's hash is not taken for another's.
+                let max = 6.min(lines.len() - i);
+                let mut window = max;
+                for ahead in 1..max {
+                    if AGILITY_NAMES
+                        .iter()
+                        .any(|other| *other != name && lines[i + ahead].contains(other))
+                    {
+                        window = ahead;
+                        break;
                     }
+                }
+                let shas = hashes_near(&lines, i, window);
+                if shas.is_empty() {
+                    continue;
+                }
+                let at = match found.iter().position(|(have, _)| have == name) {
+                    Some(at) => at,
+                    None => {
+                        found.push((name.to_string(), Vec::new()));
+                        found.len() - 1
+                    }
+                };
+                for sha in shas {
+                    if !found[at].1.contains(&sha) {
+                        found[at].1.push(sha);
+                    }
+                }
+            }
+        }
+    }
+    found
+}
+
+/// Every Agility SDK version string on a line: `1.<minor>.<patch>` with `minor` at
+/// least 600 (the first version this NuGet package carries). A file version's fourth
+/// part is dropped, and a plain number like `1.0.0` or a Windows build is ignored.
+fn versions_in(line: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    for token in line.split(|c: char| c != '.' && !c.is_ascii_digit()) {
+        let parts: Vec<&str> = token.split('.').collect();
+        if parts.len() < 3 || parts[0] != "1" {
+            continue;
+        }
+        let Ok(minor) = parts[1].parse::<u32>() else {
+            continue;
+        };
+        if minor < 600 || parts[2].parse::<u32>().is_err() {
+            continue;
+        }
+        let version = format!("1.{minor}.{}", parts[2]);
+        if !found.contains(&version) {
+            found.push(version);
+        }
+    }
+    found
+}
+
+/// The Agility SDK package versions a project pins (e.g. `1.614.1`), in the order found.
+/// Read only from lines that name the NuGet package or one of its DLLs, so an unrelated
+/// `1.x.y` elsewhere in the repo is not taken for the pinned version. Trying these first
+/// fetches the right package directly, rather than hunting Microsoft's list by hash.
+fn pinned_versions(repo: &Path) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    for path in project_text_files(repo) {
+        let Ok(meta) = std::fs::metadata(&path) else {
+            continue;
+        };
+        if meta.len() > 2_000_000 {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        for line in text.lines() {
+            let names_package = line.to_ascii_lowercase().contains(PACKAGE_ID)
+                || AGILITY_NAMES.iter().any(|name| line.contains(name));
+            if !names_package {
+                continue;
+            }
+            for version in versions_in(line) {
+                if !found.contains(&version) {
+                    found.push(version);
                 }
             }
         }
@@ -259,7 +357,7 @@ pub(crate) fn exe_names_agility(exe: &Path) -> bool {
 pub(crate) fn agility_for(repo: &Path) -> Agility {
     let pinned: Agility = AGILITY_PINNED
         .iter()
-        .map(|(name, sha)| ((*name).to_string(), (*sha).to_string()))
+        .map(|(name, sha)| ((*name).to_string(), vec![(*sha).to_string()]))
         .collect();
     let own = agility_from_project(repo);
     if own.iter().any(|(name, _)| name == "D3D12Core.dll") {
@@ -325,20 +423,23 @@ fn package_versions() -> Result<Vec<String>, String> {
     Ok(versions)
 }
 
-/// The version whose files match `agility`, from the cache, the pinned version, or NuGet.
-/// Returns the folder and the files' actual hashes.
+/// The version whose files match `agility`, from the cache, a version the project pins,
+/// else Microsoft's list. Returns the folder and the files' actual hashes.
 fn resolve_package(
     agility: &Agility,
+    versions_hint: &[String],
     cache: &Path,
     log: &dyn Fn(String),
 ) -> Result<(PathBuf, Agility), String> {
-    let core_sha = &agility
+    let core_shas = &agility
         .iter()
         .find(|(name, _)| name == "D3D12Core.dll")
         .ok_or("The expected Agility files name no D3D12Core.dll.")?
         .1;
     let dir = cache.join("D3D12");
-    if cached_core(cache).as_deref() == Some(core_sha.as_str()) && agility_folder_ok(&dir, agility)
+    if cached_core(cache)
+        .is_some_and(|cached| core_shas.contains(&cached))
+        && agility_folder_ok(&dir, agility)
     {
         log(format!("Using the checked copy in {}.", dir.display()));
         let actual = agility
@@ -346,7 +447,7 @@ fn resolve_package(
             .map(|(name, _)| {
                 (
                     name.clone(),
-                    sha256_hex(&dir.join(name)).unwrap_or_default(),
+                    vec![sha256_hex(&dir.join(name)).unwrap_or_default()],
                 )
             })
             .collect();
@@ -355,40 +456,28 @@ fn resolve_package(
     let pinned = agility
         == &AGILITY_PINNED
             .iter()
-            .map(|(name, sha)| ((*name).to_string(), (*sha).to_string()))
+            .map(|(name, sha)| ((*name).to_string(), vec![(*sha).to_string()]))
             .collect::<Agility>();
     std::fs::create_dir_all(&dir)
         .map_err(|error| format!("Could not create {}: {error}", dir.display()))?;
-    let mut versions = if pinned {
-        vec![PINNED_PACKAGE.to_string()]
-    } else {
-        log("Reading Microsoft's package versions for the project's files.".to_string());
-        package_versions()?
-    };
-    versions.retain(|v| !v.is_empty());
-    if versions.is_empty() {
-        return Err("Microsoft lists no stable D3D12 Agility SDK package.".into());
-    }
-    let mut tried = 0;
-    for version in versions {
-        tried += 1;
-        if tried > 40 {
-            break;
-        }
-        let url = package_url(&version);
+
+    // Download one version, keep it only when its D3D12Core.dll is a hash the project
+    // named. `Ok(None)` means "not this one, try the next"; an `Err` is a hard failure.
+    let attempt = |version: &str| -> Result<Option<(PathBuf, Agility)>, String> {
         log(format!("Trying Microsoft's {version} package."));
-        let package = match download(&url) {
+        let package = match download(&package_url(version)) {
             Ok(package) => package,
             Err(error) => {
                 log(error);
-                continue;
+                return Ok(None);
             }
         };
         let Some(core) = package_entry(&package, "D3D12Core.dll") else {
-            continue;
+            return Ok(None);
         };
-        if sha256(&core) != *core_sha {
-            continue;
+        let core_hash = sha256(&core);
+        if !core_shas.contains(&core_hash) {
+            return Ok(None);
         }
         log(format!(
             "Microsoft's {version} holds the project's D3D12Core.dll."
@@ -399,26 +488,66 @@ fn resolve_package(
                 return Err(format!("Microsoft's {version} has no {name}."));
             };
             let got = sha256(&bytes);
-            if !expected.is_empty() && got != *expected {
+            if !expected.is_empty() && !expected.contains(&got) {
                 log(format!(
-                    "Microsoft's {version} {name} is {got}, not {expected}."
+                    "Microsoft's {version} {name} is {got}, not {}.",
+                    expected.join(" or ")
                 ));
             }
-            actual.push((name.clone(), got));
+            actual.push((name.clone(), vec![got]));
             write_verified(&dir.join(name), &bytes, &sha256(&bytes), log)?;
         }
-        std::fs::write(
-            cache.join("package.txt"),
-            format!("{core_sha}\n{version}\n"),
-        )
-        .map_err(|error| format!("Could not record the package: {error}"))?;
+        std::fs::write(cache.join("package.txt"), format!("{core_hash}\n{version}\n"))
+            .map_err(|error| format!("Could not record the package: {error}"))?;
         if !agility_folder_ok(&dir, &actual) {
             return Err("The downloaded D3D12 Agility SDK files did not pass the check.".into());
         }
-        return Ok((dir, actual));
+        Ok(Some((dir.clone(), actual)))
+    };
+
+    if pinned {
+        return match attempt(PINNED_PACKAGE)? {
+            Some(result) => Ok(result),
+            None => Err(format!(
+                "Microsoft's pinned {PINNED_PACKAGE} package did not hold the expected files."
+            )),
+        };
+    }
+
+    // The version the project pins is tried first, so the right package is fetched
+    // directly instead of hunting Microsoft's list and depending on the target being
+    // among the newest few.
+    let mut tried: Vec<String> = Vec::new();
+    for version in versions_hint {
+        if version.is_empty() || tried.contains(version) {
+            continue;
+        }
+        tried.push(version.clone());
+        if let Some(result) = attempt(version)? {
+            return Ok(result);
+        }
+    }
+
+    // Fall back to Microsoft's list, newest first, when the project named no version
+    // or the one it named is gone.
+    log("Reading Microsoft's package versions for the project's files.".to_string());
+    let mut scanned = 0;
+    for version in package_versions()? {
+        if scanned >= 40 {
+            break;
+        }
+        if version.is_empty() || tried.contains(&version) {
+            continue;
+        }
+        scanned += 1;
+        tried.push(version.clone());
+        if let Some(result) = attempt(&version)? {
+            return Ok(result);
+        }
     }
     Err(format!(
-        "No Microsoft D3D12 Agility SDK package among the newest {tried} holds the project's files."
+        "No Microsoft D3D12 Agility SDK package among the {} tried holds the project's files.",
+        tried.len()
     ))
 }
 
@@ -451,7 +580,7 @@ fn agility_source(
             log("The build did not leave any D3D12 files.".to_string());
         }
     }
-    let source = resolve_package(&agility, cache, log)?;
+    let source = resolve_package(&agility, &pinned_versions(repo), cache, log)?;
     Ok((source.0, source.1))
 }
 
@@ -479,14 +608,14 @@ fn fix_agility(
     std::fs::create_dir_all(&dest)
         .map_err(|error| format!("Could not create {}: {error}", dest.display()))?;
     let mut copied = Vec::new();
-    for (name, sha) in &agility {
+    for (name, shas) in &agility {
         let to = dest.join(name);
-        if sha256_hex(&to).as_deref() == Some(sha.as_str()) {
+        if sha256_hex(&to).is_some_and(|got| shas.contains(&got)) {
             log(format!("{} is already correct.", to.display()));
             continue;
         }
         let from = source.join(name);
-        if sha256_hex(&from).as_deref() != Some(sha.as_str()) {
+        if !sha256_hex(&from).is_some_and(|got| shas.contains(&got)) {
             return Err(format!(
                 "{name} from {} is not the expected Microsoft file, so it was not used.",
                 source.display()
@@ -494,7 +623,7 @@ fn fix_agility(
         }
         let bytes =
             std::fs::read(&from).map_err(|error| format!("Could not read {name}: {error}"))?;
-        write_verified(&to, &bytes, sha, log)?;
+        write_verified(&to, &bytes, &sha256(&bytes), log)?;
         copied.push(name.clone());
     }
     if !agility_ok(dir, &agility) {
@@ -976,8 +1105,73 @@ mod tests {
         .unwrap();
         let agility = agility_for(&root);
         assert_eq!(agility.len(), 2);
-        assert_eq!(agility[0].1, AGILITY_PINNED[0].1);
-        assert_eq!(agility[1].1, AGILITY_PINNED[1].1);
+        assert_eq!(agility[0].1, vec![AGILITY_PINNED[0].1.to_string()]);
+        assert_eq!(agility[1].1, vec![AGILITY_PINNED[1].1.to_string()]);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_package_hash_beside_the_file_hash_does_not_hide_it() {
+        // A project's fetch script often names both its package's SHA-256 and the
+        // DLL's, with a comment that mentions the DLL on the line above. The package
+        // hash must not be mistaken for the file's: every hash near the name is a
+        // candidate, so the real one is still found.
+        let root = temp("two-hashes");
+        let package = "9880aa91602dd51dd6cf7911a2bca7a2323513b15338573cde014b3356eeaff2";
+        let core = "8a23d826b25b4329522ff451cb52b7f2b34d7f2913cfeb878371ce8bd765fe2d";
+        std::fs::write(
+            root.join("get-d3d12.ps1"),
+            format!(
+                "# The SHA-256 of the copies tested (D3D12Core.dll 1.614.1.0).\n\
+                 $package = '{package}'\n\
+                 $core = '{core}'\n"
+            ),
+        )
+        .unwrap();
+        let agility = agility_for(&root);
+        // Only the file the project named, with both hashes kept as candidates.
+        assert_eq!(agility.len(), 1);
+        assert_eq!(agility[0].0, "D3D12Core.dll");
+        assert!(agility[0].1.contains(&core.to_string()));
+        assert!(agility[0].1.contains(&package.to_string()));
+        // A file whose hash is the second candidate (the file hash) passes the check,
+        // though the package hash is listed first; a file matching neither fails.
+        let dir = root.join("game");
+        std::fs::create_dir_all(dir.join("D3D12")).unwrap();
+        let bytes = b"pretend-d3d12core";
+        let set = vec![(
+            "D3D12Core.dll".to_string(),
+            vec![package.to_string(), sha256(bytes)],
+        )];
+        std::fs::write(dir.join("D3D12").join("D3D12Core.dll"), bytes).unwrap();
+        assert!(agility_ok(&dir, &set));
+        std::fs::write(dir.join("D3D12").join("D3D12Core.dll"), b"something else").unwrap();
+        assert!(!agility_ok(&dir, &set));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn only_agility_versions_near_the_package_are_read() {
+        // A package version on a line that names the package or a DLL is a candidate; a
+        // file version's fourth part is dropped, and unrelated numbers are ignored.
+        assert_eq!(
+            versions_in("Microsoft.Direct3D.D3D12 1.614.1, D3D12Core.dll 1.614.1.0"),
+            vec!["1.614.1"]
+        );
+        assert_eq!(versions_in("param([string]$Version = '1.620.2')"), vec!["1.620.2"]);
+        assert!(versions_in("Windows 11 22H2 build 22623, D3D12 1.0.0").is_empty());
+
+        let root = temp("versions");
+        std::fs::write(
+            root.join("get-d3d12.ps1"),
+            "param([string]$Version = '1.614.1')\n\
+             # Microsoft.Direct3D.D3D12 1.614.1, D3D12Core.dll 1.614.1.0.\n\
+             $core = '8a23d826b25b4329522ff451cb52b7f2b34d7f2913cfeb878371ce8bd765fe2d'\n",
+        )
+        .unwrap();
+        // A stray version that names neither the package nor a DLL is not picked up.
+        std::fs::write(root.join("notes.txt"), "built against runtime 1.700.0\n").unwrap();
+        assert_eq!(pinned_versions(&root), vec!["1.614.1"]);
         std::fs::remove_dir_all(root).unwrap();
     }
 
