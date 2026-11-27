@@ -33,6 +33,44 @@ pub(crate) struct Facts<'a> {
     pub private: Vec<String>,
 }
 
+/// Names and folders that must not leave the PC: the user's name, their home
+/// folder, mounted volumes, the host name and `workspace`, on Windows
+/// (`C:\Users\alice`) and macOS (`/Users/alice`, `/Volumes/Backup`) alike.
+pub(crate) fn private_paths(workspace: &std::path::Path) -> Vec<String> {
+    let mut private: Vec<String> = Vec::new();
+    if let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
+        private.push(home.to_string_lossy().into_owned());
+    }
+    for var in ["USER", "USERNAME", "LOGNAME"] {
+        if let Ok(value) = std::env::var(var) {
+            private.push(value);
+        }
+    }
+    for var in ["COMPUTERNAME", "HOSTNAME"] {
+        if let Ok(value) = std::env::var(var) {
+            private.push(value);
+        }
+    }
+    if cfg!(target_os = "macos") {
+        if let Ok(output) = std::process::Command::new("/usr/sbin/scutil")
+            .args(["--get", "ComputerName"])
+            .output()
+        {
+            private.push(String::from_utf8_lossy(&output.stdout).trim().to_owned());
+        }
+        if let Ok(entries) = std::fs::read_dir("/Volumes") {
+            private.extend(
+                entries
+                    .flatten()
+                    .map(|entry| entry.path().to_string_lossy().into_owned()),
+            );
+        }
+    }
+    private.push(workspace.to_string_lossy().into_owned());
+    private.retain(|s| !s.trim().is_empty());
+    private
+}
+
 /// Removes every private string from `text`, longest first, and with either slash.
 pub(crate) fn scrub(text: &str, private: &[String]) -> String {
     let mut secrets: Vec<String> = private
@@ -180,6 +218,23 @@ mod tests {
         assert!(report.text.contains("line 1999"));
         assert!(!report.launcher_url.contains("line 1999"));
         assert!(report.launcher_url.len() < 12_000);
+    }
+
+    #[test]
+    fn macos_paths_and_names_are_scrubbed() {
+        let private = vec![
+            "/Users/esperance".to_string(),
+            "/Volumes/Backup".to_string(),
+            "esperance".to_string(),
+            "Esperances-MacBook-Pro".to_string(),
+        ];
+        let text = "warning in /Users/esperance/Library/Application Support/VILauncher (Esperances-MacBook-Pro)";
+        let scrubbed = scrub(text, &private);
+        assert!(!scrubbed.contains("esperance"), "{scrubbed}");
+        assert!(!scrubbed.contains("/Volumes/Backup"));
+        assert!(scrubbed.contains("<private>"));
+        // The home folder is cut whole, before the bare name can split it.
+        assert!(scrubbed.starts_with("warning in <private>/Library"));
     }
 
     #[test]

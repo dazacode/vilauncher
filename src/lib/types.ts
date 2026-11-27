@@ -32,6 +32,8 @@ export interface SystemInfo {
   ram_gb: number | null
   cpu: string | null
   cpu_cores: number | null
+  /** Running under Rosetta 2 (a translated process on Apple silicon). */
+  translated?: boolean
 }
 
 export interface Project {
@@ -59,6 +61,8 @@ export interface Project {
   reported: { ram_gb: number | null; vram_gb: number | null }
   custom: boolean
   kind: "git" | "zip" | "local"
+  /** The program's format, when there is one: a Windows program needs a runner on a Mac. */
+  binary: "windows" | "native" | "script" | "unknown" | null
   web_url: string | null
   installed: boolean
   checking: boolean
@@ -89,7 +93,7 @@ export interface Project {
 export interface Snapshot {
   version: string
   notice_accepted: boolean
-  brand: { name: string; team: string; site: string; site_label: string; source: string }
+  brand: { name: string; team: string; site: string; site_label: string; source: string; platform: "windows" | "macos" | string }
   list: { status: "loading" | "error" | "ready"; error: string | null; items: Project[] }
   custom: Project[]
   selected: string | null
@@ -126,7 +130,7 @@ export interface Snapshot {
     searching: boolean
     find_error: string | null
   }
-  tools: { ready: boolean; missing: string[] } | null
+  tools: { ready: boolean; missing: string[]; build_tools: string; install_hint: string } | null
   job: {
     running: boolean
     repo: string | null

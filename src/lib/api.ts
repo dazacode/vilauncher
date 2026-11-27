@@ -1,5 +1,17 @@
 import type { Action, LogView, Snapshot } from "./types"
 
+/**
+ * The system this runs on, from the browser or webview's own description. The
+ * snapshot's `brand.platform` is the launcher's answer; this covers the first
+ * paint and the browser mock.
+ */
+export function platformName(): "windows" | "macos" | "other" {
+  const ua = typeof navigator === "undefined" ? "" : navigator.userAgent
+  if (/Macintosh|Mac OS X/i.test(ua)) return "macos"
+  if (/Windows/i.test(ua)) return "windows"
+  return "other"
+}
+
 /** True inside the Tauri window; false in a plain browser (development, with a mock launcher). */
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 
@@ -96,7 +108,8 @@ export async function copyText(text: string) {
 }
 
 /**
- * Opens a web link: the opener plugin, then the launcher itself (Explorer opens the default browser).
+ * Opens a web link: the opener plugin, then the launcher itself (the system's
+ * shell opens the default browser).
  * Throws only when both fail, so the caller can say so.
  */
 export async function openUrl(url: string) {

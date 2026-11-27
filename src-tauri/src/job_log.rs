@@ -27,11 +27,7 @@ pub(crate) fn write(workspace: &Path, slug: &str, stage: &str, lines: &[String])
             }
         })
         .collect();
-    let private = [
-        std::env::var("USERNAME").unwrap_or_default(),
-        std::env::var("USERPROFILE").unwrap_or_default(),
-        workspace.display().to_string(),
-    ];
+    let private = crate::report::private_paths(workspace);
 
     let mut text = format!("== {} | {}\n", utc_now(), stage.trim());
     let start = lines.len().saturating_sub(MAX_LINES);

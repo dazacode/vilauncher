@@ -1,8 +1,10 @@
-//! Git, Rust (cargo) and the C++ build tools that building a project needs:
-//! found on the PATH or in the folders their installers use (a PATH changed
-//! after Windows started does not reach programs started before), and put
-//! on this PC with winget when the player asks.
+//! Git, Rust (cargo) and the build tools that building a project needs:
+//! found on the `PATH` or in the folders their installers use (a `PATH`
+//! changed after the launcher started does not reach programs started before
+//! it), and put on this PC with the system's own installer when the player
+//! asks: winget on Windows, Xcode Command Line Tools and rustup on macOS.
 
+use crate::platform;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
@@ -11,30 +13,48 @@ use std::sync::Mutex;
 pub struct Tools {
     pub git: Option<PathBuf>,
     pub cargo: Option<PathBuf>,
-    /// The C++ build tools (MSVC): Rust needs their linker.
-    pub msvc: bool,
+    /// The C++ build tools (MSVC) on Windows, Xcode Command Line Tools on
+    /// macOS. Rust needs their linker.
+    pub clt: bool,
 }
 
 impl Tools {
     pub fn ready(&self) -> bool {
-        self.git.is_some() && self.cargo.is_some() && self.msvc
+        self.git.is_some() && self.cargo.is_some() && self.clt
     }
 
     /// What is missing, for people.
     pub fn missing(&self) -> Vec<&'static str> {
         let mut m = Vec::new();
+        if !self.clt {
+            m.push(BUILD_TOOLS);
+        }
         if self.git.is_none() {
             m.push("Git");
         }
         if self.cargo.is_none() {
             m.push("Rust");
         }
-        if !self.msvc {
-            m.push("C++ build tools");
-        }
         m
     }
 }
+
+/// What the build tools are called on this system.
+#[cfg(windows)]
+pub const BUILD_TOOLS: &str = "C++ build tools";
+#[cfg(target_os = "macos")]
+pub const BUILD_TOOLS: &str = "Xcode Command Line Tools";
+#[cfg(all(unix, not(target_os = "macos")))]
+pub const BUILD_TOOLS: &str = "build tools";
+
+/// How the tools are installed here, for the UI's hint.
+#[cfg(windows)]
+pub const INSTALL_HINT: &str = "Installs with winget; Windows asks for permission.";
+#[cfg(target_os = "macos")]
+pub const INSTALL_HINT: &str =
+    "Uses Apple's Command Line Tools installer and rustup; macOS asks for permission.";
+#[cfg(all(unix, not(target_os = "macos")))]
+pub const INSTALL_HINT: &str = "Installed with the system's package manager.";
 
 /// The last look, shared with the build commands.
 static FOUND: Mutex<Option<Tools>> = Mutex::new(None);
@@ -50,9 +70,10 @@ fn env_path(var: &str) -> Option<PathBuf> {
 fn answers(program: &Path) -> bool {
     let mut c = Command::new(program);
     c.arg("--version")
+        .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    crate::hide_window(&mut c);
+    platform::configure_background_command(&mut c);
     c.status().map(|s| s.success()).unwrap_or(false)
 }
 
@@ -68,71 +89,15 @@ fn find(name: &str, places: &[Option<PathBuf>]) -> Option<PathBuf> {
         .cloned()
 }
 
-fn msvc_installed() -> bool {
-    // Every Visual Studio install (any edition, Build Tools too), from the
-    // installer's own list, else the usual folders.
-    let mut roots: Vec<PathBuf> = Vec::new();
-    if let Some(pf86) = env_path("ProgramFiles(x86)") {
-        let vswhere = pf86
-            .join("Microsoft Visual Studio")
-            .join("Installer")
-            .join("vswhere.exe");
-        if vswhere.is_file() {
-            let mut c = Command::new(vswhere);
-            c.args(["-all", "-products", "*", "-property", "installationPath"]);
-            crate::hide_window(&mut c);
-            if let Ok(o) = c.output() {
-                roots.extend(
-                    String::from_utf8_lossy(&o.stdout)
-                        .lines()
-                        .map(str::trim)
-                        .filter(|l| !l.is_empty())
-                        .map(PathBuf::from),
-                );
-            }
-        }
-    }
-    for base in [env_path("ProgramFiles"), env_path("ProgramFiles(x86)")]
-        .into_iter()
-        .flatten()
+/// Where the tools live on this system.
+fn places() -> Vec<Option<PathBuf>> {
+    #[cfg(windows)]
     {
-        let vs = base.join("Microsoft Visual Studio");
-        for year in std::fs::read_dir(&vs).into_iter().flatten().flatten() {
-            for edition in std::fs::read_dir(year.path())
-                .into_iter()
-                .flatten()
-                .flatten()
-            {
-                roots.push(edition.path());
-            }
-        }
-    }
-    // The C++ tools are there if a version of them has its 64-bit linker.
-    roots.iter().any(|root| {
-        std::fs::read_dir(root.join("VC").join("Tools").join("MSVC"))
-            .into_iter()
-            .flatten()
-            .flatten()
-            .any(|v| {
-                v.path()
-                    .join("bin")
-                    .join("Hostx64")
-                    .join("x64")
-                    .join("link.exe")
-                    .is_file()
-            })
-    })
-}
-
-/// Looks for the tools now.
-pub fn detect() -> Tools {
-    let pf = env_path("ProgramFiles");
-    let pf86 = env_path("ProgramFiles(x86)");
-    let local = env_path("LOCALAPPDATA");
-    let home = env_path("USERPROFILE");
-    let git = find(
-        "git",
-        &[
+        let pf = env_path("ProgramFiles");
+        let pf86 = env_path("ProgramFiles(x86)");
+        let local = env_path("LOCALAPPDATA");
+        let home = env_path("USERPROFILE");
+        vec![
             pf.as_ref()
                 .map(|p| p.join("Git").join("cmd").join("git.exe")),
             pf86.as_ref()
@@ -140,20 +105,40 @@ pub fn detect() -> Tools {
             local
                 .as_ref()
                 .map(|p| p.join("Programs").join("Git").join("cmd").join("git.exe")),
-        ],
-    );
-    let cargo = find(
-        "cargo",
-        &[
             env_path("CARGO_HOME").map(|p| p.join("bin").join("cargo.exe")),
             home.as_ref()
                 .map(|p| p.join(".cargo").join("bin").join("cargo.exe")),
-        ],
-    );
+        ]
+    }
+    #[cfg(not(windows))]
+    {
+        let home = env_path("HOME");
+        vec![
+            Some(PathBuf::from("/opt/homebrew/bin/git")),
+            Some(PathBuf::from("/usr/local/bin/git")),
+            Some(PathBuf::from("/usr/bin/git")),
+            Some(PathBuf::from("/opt/homebrew/bin/cargo")),
+            home.as_ref()
+                .map(|p| p.join(".cargo").join("bin").join("cargo")),
+        ]
+    }
+}
+
+/// Whether the C++ build tools (Windows) or the Command Line Tools (macOS)
+/// are installed.
+fn build_tools_installed() -> bool {
+    platform::build_tools_installed()
+}
+
+/// Looks for the tools now.
+pub fn detect() -> Tools {
+    let all = places();
+    let git = find("git", &all[..all.len().saturating_sub(2)]);
+    let cargo = find("cargo", &all[all.len().saturating_sub(2)..]);
     let t = Tools {
         git,
         cargo,
-        msvc: msvc_installed(),
+        clt: build_tools_installed(),
     };
     *FOUND.lock().unwrap() = Some(t.clone());
     t
@@ -172,13 +157,19 @@ fn command(path: Option<PathBuf>, name: &str) -> Command {
             }
         }
     }
-    if !dirs.is_empty() {
+    // The found tools first, then whatever the system had, then the standard
+    // tool folders (macOS needs the last: a GUI app inherits a short `PATH`).
+    let mut value = if dirs.is_empty() {
+        std::env::var_os("PATH")
+    } else {
         if let Some(path) = std::env::var_os("PATH") {
             dirs.extend(std::env::split_paths(&path));
         }
-        if let Ok(joined) = std::env::join_paths(dirs) {
-            c.env("PATH", joined);
-        }
+        std::env::join_paths(dirs).ok()
+    };
+    value = platform::with_tool_dirs(value);
+    if let Some(value) = value {
+        c.env("PATH", value);
     }
     c
 }
@@ -191,39 +182,139 @@ pub fn cargo() -> Command {
     command(current().and_then(|t| t.cargo), "cargo")
 }
 
-/// Whether winget (the Windows package manager) is there.
-pub fn has_winget() -> bool {
-    answers(Path::new("winget"))
+/// Whether the system's package manager is there (winget; always on macOS,
+/// whose own tools do the job).
+pub fn has_manager() -> bool {
+    #[cfg(windows)]
+    {
+        answers(Path::new("winget"))
+    }
+    #[cfg(not(windows))]
+    {
+        true
+    }
 }
 
-/// The winget installs for what `t` lacks: (what, arguments).
-pub fn install_steps(t: &Tools) -> Vec<(&'static str, Vec<String>)> {
-    let common = [
-        "--exact",
-        "--source",
-        "winget",
-        "--accept-package-agreements",
-        "--accept-source-agreements",
-    ];
-    let mut steps = Vec::new();
-    let mut step = |what: &'static str, id: &str, extra: &[&str]| {
-        let mut a: Vec<String> = vec!["install".into(), "--id".into(), id.into()];
-        a.extend(common.iter().map(|s| s.to_string()));
-        a.extend(extra.iter().map(|s| s.to_string()));
-        steps.push((what, a));
-    };
-    if t.git.is_none() {
-        step("Git", "Git.Git", &["--silent"]);
+/// One install step: what it is for, the program, and its arguments.
+pub struct Step {
+    pub what: &'static str,
+    pub program: &'static str,
+    pub args: Vec<String>,
+}
+
+/// The installs for what `t` lacks, run in this order.
+pub fn install_steps(t: &Tools) -> Vec<Step> {
+    #[cfg(windows)]
+    {
+        let common = [
+            "--exact",
+            "--source",
+            "winget",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+        ];
+        let mut steps = Vec::new();
+        let mut step = |what: &'static str, id: &str, extra: &[&str]| {
+            let mut args: Vec<String> = vec!["install".into(), "--id".into(), id.into()];
+            args.extend(common.iter().map(|s| s.to_string()));
+            args.extend(extra.iter().map(|s| s.to_string()));
+            steps.push(Step {
+                what,
+                program: "winget",
+                args,
+            });
+        };
+        if t.git.is_none() {
+            step("Git", "Git.Git", &["--silent"]);
+        }
+        if !t.clt {
+            step(
+                BUILD_TOOLS,
+                "Microsoft.VisualStudio.2022.BuildTools",
+                &["--override", "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"],
+            );
+        }
+        if t.cargo.is_none() {
+            step("Rust", "Rustlang.Rustup", &["--silent"]);
+        }
+        steps
     }
-    if !t.msvc {
-        step(
-            "C++ build tools",
-            "Microsoft.VisualStudio.2022.BuildTools",
-            &["--override", "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"],
-        );
+    #[cfg(target_os = "macos")]
+    {
+        let mut steps = Vec::new();
+        if !t.clt {
+            // Apple's installer window opens; the caller waits for the tools to answer.
+            steps.push(Step {
+                what: BUILD_TOOLS,
+                program: "/usr/bin/xcode-select",
+                args: vec!["--install".into()],
+            });
+        }
+        if t.git.is_none() && answers(Path::new("/opt/homebrew/bin/brew")) {
+            steps.push(Step {
+                what: "Git",
+                program: "/opt/homebrew/bin/brew",
+                args: vec!["install".into(), "git".into()],
+            });
+        }
+        if t.cargo.is_none() {
+            // The official installer, downloaded first so it is visible in the log.
+            let script = std::env::temp_dir().join("vilauncher-rustup-init.sh");
+            steps.push(Step {
+                what: "Rust",
+                program: "/usr/bin/curl",
+                args: vec![
+                    "--proto".into(),
+                    "=https".into(),
+                    "--tlsv1.2".into(),
+                    "-sSfL".into(),
+                    "https://sh.rustup.rs".into(),
+                    "-o".into(),
+                    script.display().to_string(),
+                ],
+            });
+            steps.push(Step {
+                what: "Rust",
+                program: "/bin/sh",
+                args: vec![script.display().to_string(), "-y".into()],
+            });
+        }
+        steps
     }
-    if t.cargo.is_none() {
-        step("Rust", "Rustlang.Rustup", &["--silent"]);
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        let _ = t;
+        Vec::new()
     }
-    steps
+}
+
+/// Waits (up to `seconds`) for a just-started install to answer.
+pub fn wait_until_installed(what: &str, seconds: u64) -> bool {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(seconds);
+    loop {
+        let now = detect();
+        let done = match what {
+            "Rust" => now.cargo.is_some(),
+            "Git" => now.git.is_some(),
+            _ => now.clt,
+        };
+        if done {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}
+
+/// The version of the found git, for the log.
+pub fn git_version() -> Option<String> {
+    let t = current()?;
+    let mut c = command(t.git, "git");
+    c.arg("--version");
+    let out = c.output().ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
 }

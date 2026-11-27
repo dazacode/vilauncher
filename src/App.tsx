@@ -8,11 +8,12 @@ import { Dialogs } from "@/features/dialogs/dialogs"
 import { LibrarySkeleton, LibraryView } from "@/features/library/library-view"
 import { WorkshopView } from "@/features/library/workshop-view"
 import { SettingsView } from "@/features/settings/settings-view"
-import { getBackend } from "@/lib/api"
+import { getBackend, platformName } from "@/lib/api"
 import { scheduleRefresh, useStore } from "@/lib/store"
 
 export function App() {
   const snap = useStore((s) => s.snap)
+  const mac = (snap?.brand.platform ?? platformName()) === "macos"
   const view = useStore((s) => s.view)
   useEffect(() => {
     let off: (() => void) | undefined
@@ -28,8 +29,9 @@ export function App() {
         <Sidebar />
         <main className="relative min-w-0 flex-1 overflow-hidden bg-[#0b0910]">
           {/* The top of the window drags it; the controls and the page nav sit over the art. */}
+          {/* macOS draws its own traffic lights (top left, over the sidebar), so no buttons here. */}
           <div className="drag absolute inset-x-0 top-0 z-40 flex h-[28px] justify-end">
-            <WindowControls />
+            {!mac && <WindowControls />}
           </div>
           <div className="drag absolute inset-x-0 top-[28px] z-30 flex h-[52px] items-center justify-end pr-[53px]">
             <TopNav />

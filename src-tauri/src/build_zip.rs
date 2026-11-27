@@ -50,18 +50,40 @@ fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::
     }
     let mut remaining = MAX_EXPANDED_BYTES;
     let mut executables = Vec::new();
+    let mut bundles = Vec::new();
     for index in 0..zip.len() {
         let mut entry = zip.by_index(index)?;
         let name = entry.name()?;
         let name = name.trim_end_matches('/');
-        if entry.is_symlink() || !name.split('/').all(valid_component) {
+        if !name.split('/').all(valid_component) {
             return Err(io::Error::other(
-                "The build ZIP contains an unsafe file path or symbolic link.",
+                "The build ZIP contains an unsafe file path.",
             ));
         }
         let relative = PathBuf::from(name);
         let output = destination.join(&relative);
+        if entry.is_symlink() {
+            // macOS bundles carry symlinks; they are recreated where the system has them.
+            let mut target = String::new();
+            io::Read::read_to_string(&mut entry, &mut target)?;
+            let target = target.trim();
+            if target.is_empty()
+                || target.starts_with('/')
+                || !target.split('/').all(valid_component)
+            {
+                return Err(io::Error::other(
+                    "The build ZIP contains an unsafe symbolic link.",
+                ));
+            }
+            fs::create_dir_all(output.parent().expect("a link has a parent"))?;
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(target, &output)?;
+            continue;
+        }
         if entry.is_dir() {
+            if name.ends_with(".app") {
+                bundles.push(relative.clone());
+            }
             fs::create_dir_all(output)?;
             continue;
         }
@@ -72,32 +94,48 @@ fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::
         let mut file = OpenOptions::new()
             .write(true)
             .create_new(true)
-            .open(output)?;
+            .open(&output)?;
         let written = io::copy(&mut io::Read::take(&mut entry, remaining + 1), &mut file)?;
         remaining = remaining
             .checked_sub(written)
             .ok_or_else(|| io::Error::other("The extracted build exceeds 8 GiB."))?;
-        if relative
+        // A program: a Windows exe, a Mach-O binary or a script. Data files
+        // (dlls, rpf) are not even read for their first bytes.
+        let executable = relative
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
-        {
+            || crate::platform::binary_kind(&output) != crate::platform::Binary::Unknown;
+        if executable {
+            crate::platform::make_executable(&output);
             executables.push(relative);
         }
     }
+    // Apple's quarantine would block a freshly unpacked game on first start.
+    crate::platform::clear_quarantine(destination);
     let mut victory = executables.iter().filter(|path| is_victory(path));
-    match (victory.next(), victory.next(), executables.as_slice()) {
+    let chosen = match (victory.next(), victory.next(), executables.as_slice()) {
         (Some(exe), None, _) | (None, None, [exe]) => Ok(exe.clone()),
-        (None, None, []) => Err(io::Error::other("The ZIP contains no Windows executable.")),
+        (None, None, []) => match bundles.as_slice() {
+            [app] => Ok(app.clone()),
+            [] => Err(io::Error::other("The ZIP contains no program.")),
+            _ => Err(io::Error::other(
+                "The ZIP contains multiple possible launch programs.",
+            )),
+        },
         _ => Err(io::Error::other(
             "The ZIP contains multiple possible launch executables.",
         )),
-    }
+    }?;
+    // Bundles keep their own inner permissions; a lone binary is made runnable.
+    crate::platform::make_executable(&destination.join(&chosen));
+    Ok(chosen)
 }
 
+/// Whether a path is the victory program, named either way.
 pub fn is_victory(executable: &Path) -> bool {
     executable
-        .file_name()
-        .is_some_and(|name| name.eq_ignore_ascii_case("victory.exe"))
+        .file_stem()
+        .is_some_and(|name| name.eq_ignore_ascii_case("victory"))
 }
 
 /// Read only literal defaults from a companion script. The script itself is never run.

@@ -21,6 +21,8 @@ pub(crate) const FIX_GRAPHICS_MEMORY: &str = "graphics-memory";
 pub(crate) const FIX_GRAPHICS_DEVICE: &str = "graphics-device";
 pub(crate) const FIX_DRIVER_PAGE: &str = "driver-page";
 pub(crate) const FIX_REPO_SWITCH: &str = "repo-switch";
+pub(crate) const FIX_QUARANTINE: &str = "quarantine";
+pub(crate) const FIX_EXEC_BIT: &str = "exec-bit";
 
 /// Microsoft's D3D12 Agility SDK files and the package that holds them. Each copy is
 /// checked against a SHA-256: these when the project's own build names no version.
@@ -627,7 +629,7 @@ pub(crate) fn preflight(check: &Check) -> Vec<Finding> {
             heavy: true,
             data: None,
         });
-    } else if !agility_ok(check.exe.parent().unwrap_or(Path::new(".")), &agility) {
+    } else if cfg!(windows) && !agility_ok(check.exe.parent().unwrap_or(Path::new(".")), &agility) {
         found.push(Finding {
             title: "The D3D12 Agility SDK files are missing or not the expected version.".to_string(),
             detail: "The game needs them in D3D12\\ next to its exe, or device creation fails with 0x887E0003. Fix and verify finds the project's version, installs it and checks every hash.".to_string(),
@@ -635,6 +637,38 @@ pub(crate) fn preflight(check: &Check) -> Vec<Finding> {
             heavy: false,
             data: None,
         });
+    }
+    // macOS: a program Gatekeeper or a lost permission bit refuses to start.
+    if check.installed && check.exe.is_file() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let executable = check
+                .exe
+                .metadata()
+                .map(|meta| meta.permissions().mode() & 0o111 != 0)
+                .unwrap_or(true);
+            if !executable {
+                found.push(Finding {
+                    title: "The build's program is not marked executable.".to_string(),
+                    detail: "macOS refuses to start it as it is. Fix and verify sets the execute bit and checks that the system sees it."
+                        .to_string(),
+                    fix: Some(FIX_EXEC_BIT),
+                    heavy: false,
+                    data: None,
+                });
+            }
+        }
+        if crate::platform::is_quarantined(check.exe) {
+            found.push(Finding {
+                title: "macOS holds the build in quarantine.".to_string(),
+                detail: "Gatekeeper downloaded-build protection stops an unsigned program. Fix and verify clears the quarantine flag and checks it is gone."
+                    .to_string(),
+                fix: Some(FIX_QUARANTINE),
+                heavy: false,
+                data: None,
+            });
+        }
     }
     if !check.game_ok {
         if check.game_dir.as_os_str().is_empty() {
@@ -674,7 +708,10 @@ pub(crate) fn preflight(check: &Check) -> Vec<Finding> {
         if !crate::tools::detect().ready() {
             found.push(Finding {
                 title: "Building is missing one or more tools.".to_string(),
-                detail: "Fix and verify installs the missing Git, Rust or C++ build tools with winget and looks again.".to_string(),
+                detail: format!(
+                    "Fix and verify installs the missing Git, Rust or {} and looks again.",
+                    crate::tools::BUILD_TOOLS.to_lowercase()
+                ),
                 fix: Some(FIX_TOOLS),
                 heavy: true,
                 data: None,
@@ -757,7 +794,7 @@ pub(crate) fn from_log(lines: &[String]) -> Vec<Finding> {
             .any(|line| needles.iter().any(|needle| line.contains(needle)))
     };
     let mut found = Vec::new();
-    if has(&["Agility SDK runtime missing", "0x887E0003", "0x887A002D"]) {
+    if cfg!(windows) && has(&["Agility SDK runtime missing", "0x887E0003", "0x887A002D"]) {
         found.push(Finding {
             title: "The game could not load the D3D12 Agility SDK.".to_string(),
             detail: "Fix and verify installs and checks the files the project needs, then Play again after it passes.".to_string(),
@@ -814,7 +851,29 @@ pub(crate) fn from_log(lines: &[String]) -> Vec<Finding> {
             data: None,
         });
     }
-    if has(&["Access is denied", "permission denied", "os error 5"]) {
+    if cfg!(target_os = "macos")
+        && has(&[
+            "cannot be opened because the developer cannot be verified",
+            "is damaged and can't be opened",
+            "Bad CPU type in executable",
+        ])
+    {
+        found.push(Finding {
+            title: "macOS refused to start the build.".to_string(),
+            detail: "Gatekeeper blocked an unsigned program, or the build is for another processor. Fix and verify clears the quarantine flag; Bad CPU means a build made for Intel only (or Apple silicon only)."
+                .to_string(),
+            fix: Some(FIX_QUARANTINE),
+            heavy: false,
+            data: None,
+        });
+    }
+    if has(&[
+        "Access is denied",
+        "permission denied",
+        "os error 5",
+        "os error 13",
+        "Permission denied (os error 13)",
+    ]) {
         found.push(Finding {
             title: "A file or folder could not be written.".to_string(),
             detail: "Fix and verify clears read-only flags and proves the saves and cache folders writable.".to_string(),
@@ -892,14 +951,26 @@ mod tests {
             free_bytes: None,
             gpu: None,
         };
-        assert_eq!(preflight(&check).len(), 1);
-        assert_eq!(preflight(&check)[0].fix, Some(FIX_AGILITY));
+        let findings = preflight(&check);
+        assert_eq!(findings.len(), 1);
+        // On macOS the same build first trips the missing execute bit; the
+        // Agility check is a Windows one.
+        assert_eq!(
+            findings[0].fix,
+            Some(if cfg!(windows) {
+                FIX_AGILITY
+            } else {
+                FIX_EXEC_BIT
+            })
+        );
         // The build's files are not the real Microsoft ones, so the fix falls back
         // to Microsoft's package (this needs the network).
-        if let Err(error) = fix(FIX_AGILITY, &exe, &repo, &root.join("cache")) {
-            eprintln!("network fix skipped: {error}");
+        if cfg!(windows) {
+            if let Err(error) = fix(FIX_AGILITY, &exe, &repo, &root.join("cache")) {
+                eprintln!("network fix skipped: {error}");
+            }
+            assert!(agility_ok(exe.parent().unwrap(), &agility_for(&repo)));
         }
-        assert!(agility_ok(exe.parent().unwrap(), &agility_for(&repo)));
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -935,7 +1006,6 @@ mod tests {
         ];
         let found = from_log(&log);
         for fix_id in [
-            FIX_AGILITY,
             FIX_GRAPHICS_DEVICE,
             FIX_DRIVER_PAGE,
             FIX_GRAPHICS_MEMORY,
@@ -947,6 +1017,11 @@ mod tests {
                 "missing {fix_id}"
             );
         }
+        // The log is a Windows one; the Agility check stays Windows-only.
+        assert_eq!(
+            found.iter().any(|f| f.fix == Some(FIX_AGILITY)),
+            cfg!(windows)
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -1161,8 +1236,11 @@ mod tests {
     fn a_crash_log_names_the_known_problem() {
         let lines = vec!["Error: Agility SDK runtime missing: D3D12Core.dll not found".to_string()];
         let found = from_log(&lines);
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].fix, Some(FIX_AGILITY));
+        // A Windows-only problem: it is not raised on macOS.
+        assert_eq!(found.len(), usize::from(cfg!(windows)));
+        if cfg!(windows) {
+            assert_eq!(found[0].fix, Some(FIX_AGILITY));
+        }
         assert!(from_log(&["ok".to_string()]).is_empty());
     }
 }

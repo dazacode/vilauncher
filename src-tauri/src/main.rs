@@ -16,6 +16,7 @@ mod job_log;
 mod launcher;
 mod notify;
 mod patches;
+mod platform;
 mod previous;
 mod report;
 mod rust_project;
@@ -77,6 +78,8 @@ fn log(from: usize, state: tauri::State<'_, Shared>) -> launcher::LogView {
 }
 
 fn main() {
+    // Finder and the Dock give an app a bare PATH; the tools live elsewhere.
+    platform::init_environment();
     // Fix and verify without a window, for the agent tool (scripts\vilauncher-agent.mjs fix):
     // `--fix <repo>` prints the job's log and a STAGE line. Debug and release builds alike.
     // It refuses (exit 1) unless AI agent access is on, and while another launcher window runs.
@@ -113,8 +116,7 @@ fn main() {
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
     }
-    // Development check without a window: the launcher's first snapshot, as JSON.
-    #[cfg(debug_assertions)]
+    // Check without a window: the launcher's first snapshot, as JSON.
     if std::env::args().any(|a| a == "--dump-snapshot") {
         let mut app = App::new(notify::Ctx::new(|| {}), settings_store::load());
         for tries in 0..40 {
@@ -138,6 +140,10 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .setup(|tauri_app| {
+            // WKWebView has no edit shortcuts of its own: Cmd+C/V/X/A/Z and
+            // Cmd+Q/H/W only work through a native menu with these items.
+            #[cfg(target_os = "macos")]
+            install_macos_menu(&tauri_app.handle().clone())?;
             let handle = tauri_app.handle().clone();
             let ctx = notify::Ctx::new(move || {
                 let _ = handle.emit("launcher://changed", ());
@@ -183,24 +189,71 @@ fn fix_allowed() -> Result<(), String> {
     Ok(())
 }
 
-/// Whether a VILauncher.exe other than this process runs (checked with tasklist, CSV: "name","pid",...).
+/// The macOS application menu: App (about, services, hide, quit), Edit
+/// (undo, redo, cut, copy, paste, select all) and Window (minimise, zoom,
+/// close). Without it, the standard keyboard shortcuts do nothing.
+#[cfg(target_os = "macos")]
+fn install_macos_menu(app: &tauri::AppHandle) -> tauri::Result<()> {
+    use tauri::menu::{AboutMetadata, Menu, PredefinedMenuItem, Submenu};
+
+    let name = brand::NAME;
+    let app_menu = Submenu::with_items(
+        app,
+        name,
+        true,
+        &[
+            &PredefinedMenuItem::about(
+                app,
+                Some(&format!("About {name}")),
+                Some(AboutMetadata::default()),
+            )?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::services(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, Some(&format!("Hide {name}")))?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, Some(&format!("Quit {name}")))?,
+        ],
+    )?;
+    let edit = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+    let window = Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, Some("Zoom"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )?;
+    let menu = Menu::with_items(app, &[&app_menu, &edit, &window])?;
+    app.set_menu(menu)?;
+    Ok(())
+}
+
+/// Whether another launcher runs besides this process (tasklist on Windows, ps on macOS).
+/// A `--dump-snapshot` run is a check, not a window, so it never counts as one.
 fn other_launcher_running() -> Result<bool, String> {
-    let mut command = std::process::Command::new("tasklist");
-    command.args(["/FI", "IMAGENAME eq VILauncher.exe", "/FO", "CSV", "/NH"]);
-    hide_window(&mut command);
-    let output = command
-        .output()
-        .map_err(|_| "could not check whether VILauncher is running (tasklist failed), so Fix was not started".to_string())?;
-    if !output.status.success() {
-        return Err("could not check whether VILauncher is running (tasklist failed), so Fix was not started".into());
+    if std::env::args().any(|a| a == "--dump-snapshot") {
+        return Ok(false);
     }
-    let me = std::process::id();
-    let text = String::from_utf8_lossy(&output.stdout);
-    Ok(text
-        .lines()
-        .filter_map(|line| line.split(',').nth(1))
-        .filter_map(|pid| pid.trim().trim_matches('"').parse::<u32>().ok())
-        .any(|pid| pid != me))
+    platform::other_launcher_running(std::process::id())
 }
 
 /// The system's own glass behind the window: Mica on Windows 11 (Acrylic on
