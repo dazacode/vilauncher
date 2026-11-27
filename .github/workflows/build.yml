@@ -201,5 +201,5 @@ jobs:
           files: |
             release/exe/VILauncher.exe
             release/installer/*.exe
-            release/linux/*.AppImage
-            release/linux/*.deb
+            release/linux/**/*.AppImage
+            release/linux/**/*.deb
