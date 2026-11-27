@@ -1,6 +1,16 @@
-# VILauncher
+<p align="center">
+  <img src="assets/banner.png" alt="VILauncher by VIPortLive" width="960">
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-ff4fa8"></a>
+  <a href="https://github.com/dazacode/vilauncher/actions/workflows/build.yml"><img alt="Build" src="https://github.com/dazacode/vilauncher/actions/workflows/build.yml/badge.svg"></a>
+  <a href="https://github.com/dazacode/vilauncher/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/dazacode/vilauncher?color=ff4fa8"></a>
+</p>
 
 A Windows launcher for community game projects. It lists projects from [VIPortLive](https://viportlive.com), downloads and builds them with Git and Cargo, and starts them with **your own copy of the game files**.
+
+![VILauncher library: recommended builds, filters and a project's overview](assets/screenshots/library.png)
 
 > **No game is included.** VILauncher ships no game files, downloads none, and is not affiliated with Rockstar Games, Take-Two Interactive, or any other publisher. See [LEGAL.md](LEGAL.md).
 
@@ -48,6 +58,12 @@ Get `VILauncher.exe` (portable) or the installer from [Releases](https://github.
 - **Activity log.** Full Git and Cargo output, copyable and exportable. Each job's log is also kept on disk.
 - **AI-agent access (off by default).** Lets an AI agent read logs and, after you confirm, apply a patch and run the project's build. See [Agent tools](#agent-tools).
 - **Screenshot mode.** Hides names, paths, notes and logs for sharing pictures.
+
+## Screenshots
+
+![A project that is not installed yet, with the Set up button](assets/screenshots/first-setup.png)
+
+The screenshots use example data from the browser mock, not a real PC or account.
 
 ## Requirements
 
