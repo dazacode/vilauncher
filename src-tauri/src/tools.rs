@@ -196,6 +196,23 @@ pub fn has_winget() -> bool {
     answers(Path::new("winget"))
 }
 
+/// The rustup program, when it is in its usual folder.
+pub fn rustup() -> Option<PathBuf> {
+    find(
+        "rustup",
+        &[
+            env_path("CARGO_HOME").map(|p| p.join("bin").join("rustup.exe")),
+            env_path("USERPROFILE").map(|p| p.join(".cargo").join("bin").join("rustup.exe")),
+        ],
+    )
+}
+
+/// Whether a winget error is its "no newer version" result (0x8A15002B). That means the
+/// package is already installed, so the tool is there and the look-again decides.
+pub fn winget_already_installed(error: &str) -> bool {
+    error.to_ascii_lowercase().contains("0x8a15002b")
+}
+
 /// The winget installs for what `t` lacks: (what, arguments).
 pub fn install_steps(t: &Tools) -> Vec<(&'static str, Vec<String>)> {
     let common = [
@@ -226,4 +243,23 @@ pub fn install_steps(t: &Tools) -> Vec<(&'static str, Vec<String>)> {
         step("Rust", "Rustlang.Rustup", &["--silent"]);
     }
     steps
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn winget_nothing_to_upgrade_counts_as_installed() {
+        // The exact text from issues #6 and #8.
+        assert!(winget_already_installed(
+            "\"winget\" ended with exit code: 0x8a15002b"
+        ));
+        assert!(winget_already_installed("ended with exit code: 0x8A15002B"));
+        // Other winget failures still stop the install.
+        assert!(!winget_already_installed(
+            "\"winget\" ended with exit code: 0x8a150011"
+        ));
+        assert!(!winget_already_installed("could not start winget"));
+    }
 }

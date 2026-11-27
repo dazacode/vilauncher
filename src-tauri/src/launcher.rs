@@ -1558,6 +1558,22 @@ fn stage(job: &Arc<Mutex<Job>>, ctx: &Ctx, s: &str) {
     ctx.request_repaint();
 }
 
+/// Fetches a project's git submodules (when it has a `.gitmodules`), shallowly, so the
+/// build finds their sources. A plain clone or fetch leaves them empty.
+fn init_submodules(job: &Arc<Mutex<Job>>, ctx: &Ctx, dir: &std::path::Path) -> Result<(), String> {
+    if !dir.join(".gitmodules").is_file() {
+        return Ok(());
+    }
+    stage(job, ctx, "Downloading the project's submodules");
+    run(
+        job,
+        ctx,
+        tools::git()
+            .args(["submodule", "update", "--init", "--recursive", "--depth", "1"])
+            .current_dir(dir),
+    )
+}
+
 /// Downloads `p` (or its newest version) and builds it, once; it stays
 /// installed until the player updates it.
 fn install(
@@ -1614,6 +1630,7 @@ fn install(
                 .args(["reset", "--hard", "FETCH_HEAD"])
                 .current_dir(&dir),
         )?;
+        init_submodules(job, ctx, &dir)?;
     } else {
         stage(job, ctx, "Downloading the project");
         let mut c = tools::git();
@@ -1623,6 +1640,7 @@ fn install(
         }
         c.arg("--").arg(&url).arg(&dir);
         run(job, ctx, &mut c)?;
+        init_submodules(job, ctx, &dir)?;
     }
     stage(job, ctx, "Building (the first time takes several minutes)");
     let target = target_dir(&p.repo);
@@ -2264,7 +2282,26 @@ fn install_missing_tools(job: &Arc<Mutex<Job>>, ctx: &Ctx) -> Result<(), String>
         );
         let mut c = Command::new("winget");
         c.args(&args);
-        run(job, ctx, &mut c).map_err(|error| format!("{what}: {error}"))?;
+        match run(job, ctx, &mut c) {
+            Ok(()) => {}
+            // Already installed with nothing newer: not a failure. The look-again below decides.
+            Err(error) if tools::winget_already_installed(&error) => {
+                job.lock()
+                    .unwrap()
+                    .log
+                    .push(format!("{what} is already installed; checking it."));
+            }
+            Err(error) => return Err(format!("{what}: {error}")),
+        }
+    }
+    // Rustup can be present while its stable toolchain is not, and then cargo never appears.
+    if tools::detect().cargo.is_none() {
+        if let Some(rustup) = tools::rustup() {
+            stage(job, ctx, "Setting up the stable Rust toolchain");
+            let mut c = Command::new(rustup);
+            c.args(["default", "stable"]);
+            run(job, ctx, &mut c).map_err(|error| format!("Rust: {error}"))?;
+        }
     }
     Ok(())
 }
