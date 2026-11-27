@@ -5,7 +5,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-ff4fa8"></a>
   <a href="https://github.com/dazacode/vilauncher/actions/workflows/build.yml"><img alt="Build" src="https://github.com/dazacode/vilauncher/actions/workflows/build.yml/badge.svg"></a>
-  <a href="https://github.com/dazacode/vilauncher/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/dazacode/vilauncher?color=ff4fa8"></a>
+  <a href="https://github.com/dazacode/vilauncher/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/dazacode/vilauncher?color=ff4fa8&cacheSeconds=300"></a>
 </p>
 
 A Windows launcher for community game projects. It lists projects from [VIPortLive](https://viportlive.com), downloads and builds them with Git and Cargo, and starts them with **your own copy of the game files**.
@@ -37,6 +37,10 @@ Mandyhub's settings and installed projects are carried over on first start, so n
 **The projects are not ours.** VILauncher manages projects made by other people. It does not review, certify or vouch for their code. Read what you run.
 
 **Rockstar and GTA.** VILauncher shows community projects for a game whose files you must already own. It never includes, downloads or distributes game files. Rockstar Games and Take-Two Interactive are not affiliated with this project and have not endorsed it. Their names and marks belong to them.
+
+## What's new
+
+The newest release, its notes and its downloads are always at [Releases](https://github.com/dazacode/vilauncher/releases/latest). The badges above update themselves: the release badge shows the newest version, and the build badge shows whether the `main` branch builds.
 
 ## Download
 
