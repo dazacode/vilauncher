@@ -235,6 +235,26 @@ fn agility_from_project(repo: &Path) -> Agility {
     found
 }
 
+/// Whether the program at `exe` exports the two symbols the D3D12 loader reads to find
+/// the Agility SDK: `D3D12SDKVersion` and `D3D12SDKPath`. Without them the `D3D12\`
+/// folder beside the program is ignored and the inbox D3D12 runtime is used instead.
+///
+/// This looks for both names as NUL-terminated strings, which is how the export table
+/// stores them. A name that appears only as ordinary text would also pass, so a `true`
+/// is strong evidence rather than proof; a `false` is reliable.
+pub(crate) fn exe_names_agility(exe: &Path) -> bool {
+    let Ok(bytes) = std::fs::read(exe) else {
+        return false;
+    };
+    ["D3D12SDKVersion", "D3D12SDKPath"].iter().all(|name| {
+        let mut needle = name.as_bytes().to_vec();
+        needle.push(0);
+        bytes
+            .windows(needle.len())
+            .any(|window| window == needle.as_slice())
+    })
+}
+
 /// The files to install: the project's own pinned set, else Microsoft's current one.
 pub(crate) fn agility_for(repo: &Path) -> Agility {
     let pinned: Agility = AGILITY_PINNED
@@ -450,7 +470,10 @@ fn fix_agility(
             "{} already holds both files at the expected version.",
             dest.display()
         ));
-        return Ok("The D3D12 Agility SDK files were already in place.".into());
+        return Ok(format!(
+            "The D3D12 Agility SDK files were already in place.{}",
+            agility_unused_note(exe)
+        ));
     }
     let (source, agility) = agility_source(exe, repo, cache, log)?;
     std::fs::create_dir_all(&dest)
@@ -481,7 +504,20 @@ fn fix_agility(
         "{} holds both files and both hashes match.",
         dest.display()
     ));
-    Ok(format!("Copied {} and checked them.", copied.join(", ")))
+    Ok(format!(
+        "Copied {} and checked them.{}",
+        copied.join(", "),
+        agility_unused_note(exe)
+    ))
+}
+
+/// A sentence for the fix's result when the program will not use the copied files.
+fn agility_unused_note(exe: &Path) -> &'static str {
+    if exe_names_agility(exe) {
+        ""
+    } else {
+        " The program does not export D3D12SDKVersion and D3D12SDKPath, so it will not use these files; its build must add them."
+    }
 }
 
 /// Whether a small file can be written, read back and removed in `dir`.
@@ -734,7 +770,22 @@ pub(crate) fn preflight(check: &Check) -> Vec<Finding> {
             });
         }
     }
-    for finding in from_log(check.last_log) {
+    let log_findings = from_log(check.last_log);
+    // The files can be in place and still unused: a program that does not export the
+    // Agility symbols never looks in D3D12\. Say so rather than suggesting a file copy.
+    if check.installed
+        && log_findings.iter().any(|f| f.fix == Some(FIX_AGILITY))
+        && !exe_names_agility(check.exe)
+    {
+        found.push(Finding {
+            title: "The game's program does not load the D3D12 Agility SDK.".to_string(),
+            detail: "The program does not export D3D12SDKVersion and D3D12SDKPath, so the D3D12\\ folder beside it is ignored. Build downloads the project's newest version and checks again; if it still does not export both, its maker has to add them.".to_string(),
+            fix: Some(FIX_BUILD),
+            heavy: true,
+            data: None,
+        });
+    }
+    for finding in log_findings {
         if finding.fix == Some(FIX_DRIVER_PAGE) && check.gpu.is_none() {
             continue;
         }
@@ -757,7 +808,16 @@ pub(crate) fn from_log(lines: &[String]) -> Vec<Finding> {
             .any(|line| needles.iter().any(|needle| line.contains(needle)))
     };
     let mut found = Vec::new();
-    if has(&["Agility SDK runtime missing", "0x887E0003", "0x887A002D"]) {
+    // "root signature refused" and "Unsupported bit-flag set" come from a D3D12 root
+    // signature that asks for flags only the Agility SDK runtime knows, so the game
+    // is running on the inbox runtime.
+    if has(&[
+        "Agility SDK runtime missing",
+        "0x887E0003",
+        "0x887A002D",
+        "root signature refused",
+        "Unsupported bit-flag set",
+    ]) {
         found.push(Finding {
             title: "The game could not load the D3D12 Agility SDK.".to_string(),
             detail: "Fix and verify installs and checks the files the project needs, then Play again after it passes.".to_string(),
@@ -1164,5 +1224,80 @@ mod tests {
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].fix, Some(FIX_AGILITY));
         assert!(from_log(&["ok".to_string()]).is_empty());
+    }
+
+    #[test]
+    fn a_root_signature_refusal_points_at_the_agility_sdk() {
+        // The log from issue #3: the inbox runtime refuses flags only Agility knows.
+        let lines = vec![
+            "host root signature refused error=The parameter is incorrect. (0x80070057)"
+                .to_string(),
+            "root signature: Unsupported bit-flag set (root signature flags c00).".to_string(),
+        ];
+        let found = from_log(&lines);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].fix, Some(FIX_AGILITY));
+    }
+
+    #[test]
+    fn a_program_must_name_both_agility_symbols() {
+        let root = temp("exports");
+        let exe = root.join("victory.exe");
+        std::fs::write(&exe, b"MZ....D3D12SDKVersion\0....D3D12SDKPath\0").unwrap();
+        assert!(exe_names_agility(&exe));
+        std::fs::write(&exe, b"MZ....D3D12SDKVersion\0 no path symbol").unwrap();
+        assert!(!exe_names_agility(&exe));
+        std::fs::write(&exe, b"MZ....D3D12SDKVersionX\0....D3D12SDKPath").unwrap();
+        assert!(!exe_names_agility(&exe));
+        assert!(!exe_names_agility(&root.join("missing.exe")));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn unused_agility_files_are_reported_as_a_build_problem() {
+        let root = temp("unused");
+        let exe = root.join("victory.exe");
+        // Files are in place at the pinned hashes, but the program exports nothing.
+        std::fs::write(&exe, b"MZ no agility exports").unwrap();
+        let repo = root.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        // The project names its own files and hashes, so no Microsoft download is needed.
+        let (core, layers) = (b"core".as_slice(), b"layers".as_slice());
+        std::fs::write(
+            repo.join("build.txt"),
+            format!(
+                "D3D12Core.dll\n{}\nd3d12SDKLayers.dll\n{}\n",
+                sha256(core),
+                sha256(layers)
+            ),
+        )
+        .unwrap();
+        let dest = root.join("D3D12");
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(dest.join("D3D12Core.dll"), core).unwrap();
+        std::fs::write(dest.join("d3d12SDKLayers.dll"), layers).unwrap();
+        let log = vec!["host root signature refused".to_string()];
+        let check = Check {
+            exe: &exe,
+            game_dir: &root,
+            repo_dir: &repo,
+            data: &root.join("data"),
+            cache: &root.join("cache"),
+            last_log: &log,
+            switches: "",
+            installed: true,
+            game_ok: true,
+            unplugged: false,
+            slow: false,
+            free_bytes: None,
+            gpu: None,
+        };
+        let found = preflight(&check);
+        // The files pass, so the only Agility finding is the one from the log, and the
+        // build finding explains why the files alone cannot fix it.
+        assert!(found.iter().any(|f| f.fix == Some(FIX_BUILD)
+            && f.title.contains("does not load the D3D12 Agility SDK")));
+        assert!(!preflight(&check).iter().any(|f| f.title.contains("missing or not the expected")));
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
