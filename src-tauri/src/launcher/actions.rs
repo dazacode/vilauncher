@@ -916,7 +916,14 @@ fn open_link(url: &str) -> Result<(), String> {
     if !plain {
         return Err("Only https links can be opened from the launcher.".into());
     }
-    std::process::Command::new("explorer.exe")
+    let opener = if cfg!(windows) {
+        "explorer.exe"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(opener)
         .arg(url)
         .spawn()
         .map(|_| ())

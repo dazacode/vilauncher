@@ -2003,7 +2003,26 @@ fn stop_programs_under(dir: &Path) {
         hide_window(&mut c);
         let _ = c.status();
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        let me = std::process::id();
+        for entry in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
+            let Some(pid) = entry
+                .file_name()
+                .to_str()
+                .and_then(|n| n.parse::<u32>().ok())
+            else {
+                continue;
+            };
+            if pid != me
+                && std::fs::read_link(entry.path().join("exe"))
+                    .is_ok_and(|exe| exe.starts_with(dir))
+            {
+                let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
+            }
+        }
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     let _ = dir;
 }
 
