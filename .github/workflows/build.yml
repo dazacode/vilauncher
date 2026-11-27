@@ -64,12 +64,15 @@ jobs:
       # Optional. Without the secret the build still runs, unsigned; the signing
       # script in tauri.conf.json then does nothing. See docs/FALSE-POSITIVES.md.
       - name: Import the signing certificate
-        if: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
+          if (-not $env:WINDOWS_CERTIFICATE) {
+            Write-Host 'No signing certificate is set: this build is unsigned.'
+            exit 0
+          }
           $pfx = Join-Path $env:RUNNER_TEMP 'certificate.pfx'
           $base64 = $env:WINDOWS_CERTIFICATE -replace '\s', ''
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($base64))
