@@ -159,7 +159,13 @@ fn find_agility_build(dir: &Path, depth: u32) -> Option<PathBuf> {
 
 /// Every 64-character hexadecimal string on `lines[start..start+window]`.
 fn hashes_near(lines: &[&str], start: usize, window: usize) -> Option<String> {
-    for line in lines.iter().skip(start).take(window) {
+    for (k, line) in lines.iter().skip(start).take(window).enumerate() {
+        // A hash on a later line about the package (`$package = '...'`, `.nupkg`) is the
+        // archive's, not the file's: get-d3d12.ps1 style scripts pin both, package first.
+        let lower = line.to_ascii_lowercase();
+        if k > 0 && (lower.contains("package") || lower.contains("nupkg")) {
+            continue;
+        }
         let bytes = line.as_bytes();
         let mut run = 0;
         for (at, byte) in bytes.iter().enumerate() {
@@ -978,6 +984,31 @@ mod tests {
         assert_eq!(agility.len(), 2);
         assert_eq!(agility[0].1, AGILITY_PINNED[0].1);
         assert_eq!(agility[1].1, AGILITY_PINNED[1].1);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_script_pinning_package_and_dll_gives_the_dll_hash() {
+        let root = temp("package-and-dll");
+        std::fs::create_dir_all(root.join("scripts")).unwrap();
+        std::fs::write(
+            root.join("scripts").join("get-d3d12.ps1"),
+            "# Fetches the D3D12 Agility SDK, D3D12Core.dll, from NuGet.\n\
+             param([string]$Version = '1.614.1')\n\
+             # The SHA-256 of the copies tested (Microsoft.Direct3D.D3D12 1.614.1, D3D12Core.dll 1.614.1.0).\n\
+             $package = '9880AA91602DD51DD6CF7911A2BCA7A2323513B15338573CDE014B3356EEAFF2'\n\
+             $core = '8A23D826B25B4329522FF451CB52B7F2B34D7F2913CFEB878371CE8BD765FE2D'\n\
+             $url = \"https://api.nuget.org/v3-flatcontainer/microsoft.direct3d.d3d12/$Version/microsoft.direct3d.d3d12.$Version.nupkg\"\n",
+        )
+        .unwrap();
+        let agility = agility_for(&root);
+        assert_eq!(
+            agility,
+            vec![(
+                "D3D12Core.dll".to_string(),
+                "8a23d826b25b4329522ff451cb52b7f2b34d7f2913cfeb878371ce8bd765fe2d".to_string()
+            )]
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 
