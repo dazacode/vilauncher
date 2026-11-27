@@ -24,6 +24,7 @@ const state = {
   overrides: new Map<string, Graphics>(),
   notes: new Map<string, string>(),
   warm: false,
+  notice: params.get("notice") !== "0",
 }
 
 function project(s: (typeof SAMPLE)[number], index: number): Project {
@@ -60,6 +61,7 @@ function project(s: (typeof SAMPLE)[number], index: number): Project {
 function snapshot(): Snapshot {
   return {
     version: "0.1.0",
+    notice_accepted: state.notice,
     brand: { name: "VILauncher", team: "VIPortLive team", site: "https://viportlive.com", site_label: "viportlive.com", source: "https://github.com/dazacode/vilauncher" },
     list: { status: "ready", error: null, items: SAMPLE.map(project) },
     custom: [],
@@ -151,6 +153,9 @@ async function act(a: Action): Promise<unknown> {
       break
     case "set_settings":
       if (a.patch.warm_before_play != null) state.warm = a.patch.warm_before_play
+      break
+    case "accept_notice":
+      state.notice = true
       break
     case "uninstall":
       state.installed.delete(a.repo)

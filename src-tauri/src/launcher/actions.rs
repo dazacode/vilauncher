@@ -61,6 +61,8 @@ pub(crate) enum Action {
     ImportSaveZip { path: String },
     ExportSave { source: String, path: String },
     DeleteSave { path: String },
+    /// The player agreed to the legal notice.
+    AcceptNotice,
 }
 
 #[derive(Deserialize)]
@@ -432,6 +434,10 @@ impl App {
                 let destination = if destination.extension().is_none() { destination.with_extension("zip") } else { destination };
                 save_zip::export(Path::new(&source), &destination).map_err(|e| format!("Could not export the save: {e}"))?;
                 json!(destination.display().to_string())
+            }
+            Action::AcceptNotice => {
+                self.saved.notice_accepted = NOTICE_VERSION;
+                Value::Null
             }
             Action::DeleteSave { path } => {
                 saves::delete_save(&workspace(), Path::new(&path)).map_err(|e| format!("Could not delete the save: {e}"))?;

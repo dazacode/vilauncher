@@ -11,6 +11,7 @@ import { pickFile, pickFolder, saveFile } from "@/lib/api"
 import { allProjects, run, useAlias, useStore } from "@/lib/store"
 import type { PlayChoice, PlayNext, SaveOption, SavesList } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { NoticeDialog } from "./notice-dialog"
 
 /** Every dialog, opened from the store or by the launcher itself (a failed import, a move). */
 export function Dialogs() {
@@ -28,6 +29,7 @@ export function Dialogs() {
       {dialog?.kind === "presets" && <PresetsDialog repo={dialog.repo} choice={dialog.choice} onClose={close} />}
       <MoveDialog />
       <ImportErrorDialog />
+      <NoticeDialog />
     </>
   )
 }

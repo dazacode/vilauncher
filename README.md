@@ -69,6 +69,16 @@ Checks: `pnpm exec tsc -b` and `cargo test` in `src-tauri`. CI builds every push
 
 The project list comes from `https://viportlive.com/api/launcher`, with PortWatch's `tracker.json` as the fallback.
 
+## Legal notice
+
+VILauncher is a project manager: it keeps community projects in one place and installs, updates and starts them without the usual setup headaches. It does not include, download or distribute any game, game build or game files.
+
+- **You must provide the build.** Every project that needs the game runs only with your own copy, from a folder on your PC.
+- **You are responsible for what happens.** The projects are third-party software. You decide what you install, build and run, and you are solely responsible for it, including having the right to use the game files you supply.
+- **No warranty**, as set out in the GPL v3, and **no affiliation** with any game publisher or developer.
+
+The full text is in [LEGAL.md](LEGAL.md). The app shows it on first start and asks you to agree before the library opens; the installer shows it too.
+
 ## Credits
 
 - Forked from [Mandyhub](https://github.com/TheGameOnAddict/mandyhub-sinkfinger) by Zettrox

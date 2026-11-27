@@ -76,6 +76,7 @@ export interface Project {
 
 export interface Snapshot {
   version: string
+  notice_accepted: boolean
   brand: { name: string; team: string; site: string; site_label: string; source: string }
   list: { status: "loading" | "error" | "ready"; error: string | null; items: Project[] }
   custom: Project[]
@@ -206,3 +207,4 @@ export type Action =
   | { type: "import_save_zip"; path: string }
   | { type: "export_save"; source: string; path: string }
   | { type: "delete_save"; path: string }
+  | { type: "accept_notice" }

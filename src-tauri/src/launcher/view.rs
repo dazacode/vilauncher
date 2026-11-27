@@ -9,6 +9,8 @@ use serde::Serialize;
 #[derive(Serialize)]
 pub(crate) struct Snapshot {
     version: &'static str,
+    /// Whether the player agreed to the current legal notice.
+    notice_accepted: bool,
     brand: BrandView,
     list: ListView,
     custom: Vec<ProjectView>,
@@ -201,6 +203,7 @@ impl App {
         let searching = matches!(&*self.finding.lock().unwrap(), Some(None));
         Snapshot {
             version: env!("CARGO_PKG_VERSION"),
+            notice_accepted: self.saved.notice_accepted >= NOTICE_VERSION,
             brand: BrandView {
                 name: brand::NAME,
                 team: brand::TEAM,

@@ -115,7 +115,9 @@ export function SettingsView() {
           <Row label="Based on Mandyhub by Zettrox" hint="Free software under the GNU General Public License v3 or later. Redesign of the original by ellion369; save picker, checkpoints, presets and build tracking by TheGameOnAddict.">
             <Button size="sm" variant="ghost" onClick={() => void openUrl(snap.brand.source)}><ExternalLink /> Source code</Button>
           </Row>
-          <Row label="No game files included" hint="VILauncher never downloads game files: you need your own copy of the game." />
+          <Row label="Legal notice" hint="You provide your own copy of the game, and you are responsible for what you install, build and run. VILauncher only manages the projects.">
+            <Button size="sm" variant="ghost" onClick={() => useStore.getState().open({ kind: "notice" })}>Read</Button>
+          </Row>
         </Group>
       </div>
     </div>

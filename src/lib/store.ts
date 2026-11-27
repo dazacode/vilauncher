@@ -12,6 +12,7 @@ export type Dialog =
   | { kind: "setup"; repo: string }
   | { kind: "saves"; repo: string }
   | { kind: "presets"; repo: string; choice: PlayChoice }
+  | { kind: "notice" }
   | null
 
 interface State {

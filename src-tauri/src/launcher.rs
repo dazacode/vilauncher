@@ -117,7 +117,12 @@ pub(crate) struct Saved {
     launch_args: String,
     project_launch: std::collections::BTreeMap<String, ProjectLaunch>,
     launch_presets: Vec<LaunchPreset>,
+    /// The version of the legal notice the player agreed to (0: not yet).
+    notice_accepted: u32,
 }
+
+/// The legal notice's version: raised when its text changes in a way that needs a new yes.
+pub(crate) const NOTICE_VERSION: u32 = 1;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct LaunchPreset {

@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [vilauncher, master]
+    branches: [main]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
