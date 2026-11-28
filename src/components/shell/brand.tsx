@@ -21,7 +21,7 @@ export function Brand() {
         src="/logo.svg"
         alt=""
         onClick={onLogo}
-        className="size-6 rounded-[6px] [-webkit-app-region:no-drag]"
+        className="size-6 rounded-[6px] no-drag"
         draggable={false}
       />
       <span className="flex items-baseline leading-none">
