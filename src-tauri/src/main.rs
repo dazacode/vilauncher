@@ -110,9 +110,21 @@ fn without_folder(path: &str, folder: &str) -> String {
         .join(":")
 }
 
+/// On some Linux graphics setups (NVIDIA on Wayland, AppImage bundles) WebKitGTK paints a
+/// blank white window, because it draws through DMA-BUF buffers the driver cannot share.
+/// The launcher's interface is light, so the renderer is turned off unless the player set it.
+#[cfg(target_os = "linux")]
+fn avoid_blank_webview() {
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+}
+
 fn main() {
     #[cfg(target_os = "linux")]
     keep_child_programs_out_of_the_appimage();
+    #[cfg(target_os = "linux")]
+    avoid_blank_webview();
     // Fix and verify without a window, for the agent tool (scripts\vilauncher-agent.mjs fix):
     // `--fix <repo>` prints the job's log and a STAGE line. Debug and release builds alike.
     // It refuses (exit 1) unless AI agent access is on, and while another launcher window runs.
