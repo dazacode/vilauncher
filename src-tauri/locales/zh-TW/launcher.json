@@ -141,5 +141,21 @@
   "Could not keep {file}: {error}. The files are not usable until Get NVIDIA's files runs again.": "無法保留 {file}：{error}。在重新執行「取得 NVIDIA 檔案」之前，這些檔案無法使用。",
   "Getting NVIDIA's files stopped unexpectedly: nothing kept.": "取得 NVIDIA 檔案時意外中止：未保留任何檔案。",
   "LOCALAPPDATA is not set, so there is no folder to keep NVIDIA's files in.": "未設定 LOCALAPPDATA，因此沒有可保存 NVIDIA 檔案的資料夾。",
-  "{name}: the system folder is not known": "{name}：無法找到系統資料夾"
+  "{name}: the system folder is not known": "{name}：無法找到系統資料夾",
+  "The project has uncommitted changes. Save or discard them before turning on an add-on.": "專案有尚未提交的變更。請先儲存或捨棄這些變更，再開啟附加元件。",
+  "The branch {branch} exists without the add-on's commits. Delete it, then turn the add-on on again.": "分支 {branch} 已存在，但沒有附加元件的提交。請刪除它，再重新開啟附加元件。",
+  "The add-on's patches do not apply to this project, so nothing was changed. To port them by hand, read {guide} in {source}. Git said: {error}": "附加元件的修補程式無法套用到這個專案，因此沒有做任何變更。若要手動移植，請閱讀 {source} 中的 {guide}。Git 的訊息：{error}",
+  "The add-on's patches do not apply to this project, so nothing was changed. Git said: {error}": "附加元件的修補程式無法套用到這個專案，因此沒有做任何變更。Git 的訊息：{error}",
+  "The project has uncommitted changes on the add-on's branch. Save or discard them before turning the add-on off.": "專案在附加元件的分支上有尚未提交的變更。請先儲存或捨棄這些變更，再關閉附加元件。",
+  "The project is not on {branch} now, so the add-on stays on. Switch the project back to {branch} to turn it off.": "專案目前不在 {branch} 上，因此附加元件保持開啟。請把專案切回 {branch} 再關閉它。",
+  "Could not download {source}: {error}": "無法下載 {source}：{error}",
+  "Could not update {source}: {error}": "無法更新 {source}：{error}",
+  "{source} has no commit {commit}: {error}": "{source} 沒有提交 {commit}：{error}",
+  "Turn off {addons} before updating this project: an update resets its code, and the add-on's patches would be lost.": "更新這個專案前，請先關閉 {addons}：更新會重設專案的程式碼，附加元件的修補程式會因此遺失。",
+  "There is no add-on {id}.": "沒有名為 {id} 的附加元件。",
+  "{warning} Confirm to turn it on.": "{warning} 請確認後再開啟。",
+  "Install the project first.": "請先安裝專案。",
+  "Memory stack": "記憶體精簡修補",
+  "Cuts VRAM and private memory with no change to what is drawn. On the author's RTX 5080 16 GB: VRAM about 12.6 GB down to 8.55 GB, private commit about 26 GB down to about 20.5 GB.": "降低顯示記憶體與私有記憶體用量，畫面完全不變。在作者的 RTX 5080 16 GB 上：顯示記憶體約從 12.6 GB 降到 8.55 GB，私有提交約從 26 GB 降到約 20.5 GB。",
+  "Turning this on commits the memory stack's patches to a vilauncher/memory-stack branch of this project, then switches the project to that branch. It only applies if the project is close to the stack's base (e94251a). Forks that have moved further do not take the patches: the launcher says so and changes nothing. The first run after turning it on makes the shaders again (minutes of missing draws). Turning it off goes back to the project's own branch.": "開啟後，記憶體精簡修補程式會提交到這個專案的 vilauncher/memory-stack 分支，並把專案切換到該分支。只有接近修補程式基準（e94251a）的專案才能套用。差異更大的分支無法套用這些修補程式：啟動器會說明原因，且不做任何變更。開啟後第一次執行會重新產生著色器（會有幾分鐘缺少畫面）。關閉後會回到專案原本的分支。"
 }

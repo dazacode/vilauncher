@@ -284,6 +284,26 @@ export interface StorageView {
   }[]
 }
 
+/** An add-on for a project, as the `addons` action lists it (src-tauri/src/launcher/actions.rs, AddonView). */
+export interface AddonView {
+  id: string
+  name: string
+  summary: string
+  /** What turning it on changes, shown before the player confirms. */
+  warning: string
+  source: string
+  source_url: string | null
+  /** The porting guide, for a project the patches don't fit. */
+  guide_url: string | null
+  /** The commit the patches were cut against. */
+  base: string | null
+  /** `NAME=value` lines. */
+  switches: string[]
+  on: boolean
+  /** Whether the project's history has `base`; null when that can't be told (not installed). */
+  fits: boolean | null
+}
+
 /** The warnings a player must accept before a risky step. Mirrors the Rust whitelist. */
 export type ResponsibilityId = "import-repo" | "agent-access" | "agent-patch"
 
@@ -334,6 +354,8 @@ export type Action =
   | { type: "set_project_switches"; repo: string; value: string | null }
   | { type: "apply_advice"; repo: string; id: string }
   | { type: "set_script_option"; repo: string; option: keyof ScriptOptions; enabled: boolean }
+  | { type: "addons"; repo: string }
+  | { type: "addon_set"; repo: string; id: string; on: boolean; confirmed?: boolean }
   | { type: "set_project_notes"; repo: string; notes: string }
   | { type: "save_preset"; repo: string; name: string; include_switches: boolean }
   | { type: "apply_preset"; repo: string; name: string | null }

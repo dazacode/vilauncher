@@ -4,7 +4,7 @@
 // ?platform=macos (or windows) previews the other system's labels and chrome.
 
 import { isLocale, systemLocale } from "@/i18n/locales"
-import type { Action, Graphics, LogView, Project, ResponsibilityId, Snapshot, StageKind, StorageView } from "@/lib/types"
+import type { Action, AddonView, Graphics, LogView, Project, ResponsibilityId, Snapshot, StageKind, StorageView } from "@/lib/types"
 
 // The controls VIctory reads from the keyboard, as src-tauri/src/controller_keys.rs lists them.
 const CONTROLLER_CONTROLS: { id: string; label: string; default_key: number }[] = [
@@ -49,6 +49,8 @@ const state = {
   graphics,
   overrides: new Map<string, Graphics>(),
   keepGame: new Set<string>(),
+  // Add-ons turned on, per project.
+  addons: new Map<string, Set<string>>(),
   branches: new Map<string, string>(),
   notes: new Map<string, string>(),
   warm: false,
@@ -316,6 +318,34 @@ async function act(a: Action): Promise<unknown> {
       if (a.value) state.keepGame.add(a.repo)
       else state.keepGame.delete(a.repo)
       break
+    case "addons": {
+      // The second sample "fits" (its history has the base), the others don't, as most forks.
+      const installed = state.installed.has(a.repo)
+      const view: AddonView[] = [
+        {
+          id: "memory-stack",
+          name: "Memory stack",
+          summary: "Cuts VRAM and private memory with no change to what is drawn. On the author's RTX 5080 16 GB: VRAM about 12.6 GB down to 8.55 GB, private commit about 26 GB down to about 20.5 GB.",
+          warning: "Turning this on commits the memory stack's patches to a vilauncher/memory-stack branch of this project, then switches the project to that branch. The first run after turning it on makes the shaders again (minutes of missing draws). Turning it off goes back to the project's own branch.",
+          source: "https://github.com/skornuta/victory-memory-stack",
+          source_url: "https://github.com/skornuta/victory-memory-stack/tree/85c86c17f7dd129350a815be92432293e9c6b409",
+          guide_url: "https://github.com/skornuta/victory-memory-stack/blob/85c86c17f7dd129350a815be92432293e9c6b409/AGENTS.md",
+          base: "e94251a",
+          switches: ["VICTORY_GPU_DETILE=1", "VICTORY_SLOT_EVICT=1", "VICTORY_BINDLESS_FEEDBACK=1"],
+          on: state.addons.get(a.repo)?.has("memory-stack") ?? false,
+          fits: installed ? a.repo === SAMPLE[1]?.repo : null,
+        },
+      ]
+      return view
+    }
+    case "addon_set": {
+      if (a.on && !a.confirmed) throw new Error("Confirm to turn it on.")
+      const on = state.addons.get(a.repo) ?? new Set<string>()
+      if (a.on) on.add(a.id)
+      else on.delete(a.id)
+      state.addons.set(a.repo, on)
+      break
+    }
     case "set_project_graphics":
       if (a.graphics) state.overrides.set(a.repo, a.graphics)
       else state.overrides.delete(a.repo)
