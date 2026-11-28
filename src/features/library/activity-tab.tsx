@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Copy, Download, Square, Wrench } from "lucide-react"
+import { AlertCircle, CheckCircle2, Copy, Download, Square, Trash2, Wrench } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -101,6 +101,7 @@ export function ActivityTab({ project }: { project: Project }) {
   const status = job?.stage || t("library.activity.nothing")
   return (
     <div className="space-y-4">
+      {project.activity?.warm_up && <p className="text-caption text-fg-3">{t("library.activity.warmUp")}</p>}
       <div className="flex items-center gap-3">
         {job?.running ? <Spinner className="text-accent-fg" /> : job?.failed ? <AlertCircle className="size-4 text-bad" /> : job?.stage ? <CheckCircle2 className="size-4 text-ok" /> : null}
         <p className={job?.failed ? "text-body text-bad" : "text-body text-fg-2"}>{status}</p>
@@ -110,10 +111,26 @@ export function ActivityTab({ project }: { project: Project }) {
               <Wrench /> {t("library.fix")}
             </Button>
           )}
+          {!snap.job.running && !snap.active_builds && project.installed && (
+            <Button size="sm" variant="ghost" title={t("library.activity.clearCacheTitle")} onClick={() => void run({ type: "clear_shader_cache", repo: project.repo })}>
+              <Trash2 /> {t("library.activity.clearCache")}
+            </Button>
+          )}
           {job?.stoppable && (
             <Button size="sm" variant="danger" onClick={() => void run({ type: "stop" })}><Square /> {t("library.action.stop")}</Button>
           )}
           <Button size="sm" variant="ghost" disabled={!lines.length} onClick={() => void copyText(lines.join("\n")).then(() => toast.success(t("library.activity.logCopied")))}><Copy /> {t("common.copy")}</Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            title={t("library.activity.summaryTitle")}
+            onClick={async () => {
+              const text = await run<string>({ type: "diagnostic_summary", repo: project.repo })
+              if (text) void copyText(text).then(() => toast.success(t("library.activity.summaryCopied")))
+            }}
+          >
+            <Copy /> {t("library.activity.summary")}
+          </Button>
           <Button
             size="sm"
             variant="ghost"

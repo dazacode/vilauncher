@@ -92,6 +92,13 @@ export default {
     works: "可正常运行",
     issues: "已知问题",
   },
+  advice: {
+    title: "本机可能的设置",
+    recommended: "建议使用（已在两台机器上验证）",
+    possible: "可能的设置，未在你的硬件上验证",
+    source: "来源：{source}",
+    apply: "应用",
+  },
   details: {
     title: "详细信息",
     source: "来源",
@@ -219,7 +226,13 @@ export default {
   activity: {
     nothing: "当前没有正在运行的任务",
     fixTitle: "检查所有已知问题、进行修复并验证结果",
+    warmUp: "新构建版本的前几分钟可能较慢，因为正在编译着色器。首次运行缓慢本身不是错误报告。",
+    clearCache: "清除着色器缓存",
+    clearCacheTitle: "删除此项目的着色器缓存。下次游玩会重新生成，前几分钟可能较慢。",
     logCopied: "已复制日志",
+    summary: "复制诊断摘要",
+    summaryTitle: "复制启动器版本、开关、显卡设置、内存，以及此项目日志的结尾，供反馈问题使用",
+    summaryCopied: "已复制诊断摘要",
     export: "导出",
     exportTitle: "导出活动日志",
     exportFilter: "日志",

@@ -9,16 +9,23 @@ use serde::Serialize;
 pub(crate) struct Reported {
     pub ram_gb: Option<f64>,
     pub vram_gb: Option<f64>,
+    /// Peak commit (RAM plus page file, Windows' "commit charge"), when the text says it.
+    pub commit_gb: Option<f64>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
 enum Kind {
     Ram,
     Vram,
+    Commit,
 }
 
 /// Words after the amount that say which memory, longest first.
 const KINDS: &[(&str, Kind)] = &[
+    ("private commit", Kind::Commit),
+    ("commit charge", Kind::Commit),
+    ("commit memory", Kind::Commit),
+    ("commit", Kind::Commit),
     ("dedicated video memory", Kind::Vram),
     ("dedicated vram", Kind::Vram),
     ("video memory", Kind::Vram),
@@ -64,10 +71,10 @@ pub(crate) fn parse<'a>(texts: impl IntoIterator<Item = &'a str>) -> Reported {
     for text in texts {
         for clause in clauses(text) {
             for (gb, kind) in amounts(&clause) {
-                let slot = if kind == Kind::Vram {
-                    &mut out.vram_gb
-                } else {
-                    &mut out.ram_gb
+                let slot = match kind {
+                    Kind::Vram => &mut out.vram_gb,
+                    Kind::Ram => &mut out.ram_gb,
+                    Kind::Commit => &mut out.commit_gb,
                 };
                 *slot = Some(slot.map_or(gb, |old| old.max(gb)));
             }
@@ -296,9 +303,18 @@ mod tests {
             r,
             Reported {
                 ram_gb: Some(34.0),
-                vram_gb: Some(12.0)
+                vram_gb: Some(12.0),
+                commit_gb: None,
             }
         );
         assert_eq!(parse([""]), Reported::default());
+    }
+
+    #[test]
+    fn a_peak_commit_is_read_apart_from_ram() {
+        let r = parse(["Peaks at 40 GB private commit with 24 GB of RAM"]);
+        assert_eq!(r.commit_gb, Some(40.0));
+        assert_eq!(r.ram_gb, Some(24.0));
+        assert_eq!(one("Uses 40 GB commit charge"), (None, None));
     }
 }

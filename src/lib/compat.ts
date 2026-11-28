@@ -32,6 +32,8 @@ export interface Assessment {
   gpu: Check
   ram: Check
   vram: Check
+  /** Commit limit against the author's peak commit (Windows only; unknown elsewhere). */
+  commit: Check
 }
 
 type Gpu = SystemInfo["gpus"][number]
@@ -140,7 +142,22 @@ export function assess(p: Project, system: SystemInfo | null): Assessment {
   }
   const ram = memory(t("format.compat.ram"), system?.ram_gb, p.reported.ram_gb)
   const vram = memory(t("format.compat.vram"), gpu?.vram_gb, p.reported.vram_gb)
-  const checks = [gpuCheck, ram, vram]
+  // The verdict comes from the launcher (system.rs COMMIT_MARGIN_GB decides "short"); this row shows it.
+  const commitPeak = p.reported.commit_gb
+  const commit: Check = {
+    label: t("format.compat.commit"),
+    value: system?.commit_limit_gb ? gb(system.commit_limit_gb) : null,
+    level: p.commit_short == null ? "unknown" : p.commit_short ? "concern" : "good",
+    note:
+      commitPeak == null
+        ? t("format.compat.noCommitUsage")
+        : p.commit_short == null
+          ? t("format.compat.commitUnknown")
+          : p.commit_short
+            ? t("format.compat.commitBelow", { amount: gb(commitPeak) })
+            : t("format.compat.commitAbove", { amount: gb(commitPeak) }),
+  }
+  const checks = [gpuCheck, ram, vram, commit]
   const level: Level = checks.some((c) => c.level === "concern")
     ? "concern"
     : checks.some((c) => c.level === "close")
@@ -165,8 +182,10 @@ export function assess(p: Project, system: SystemInfo | null): Assessment {
         ? t("format.compat.warning.ram", { used: gb(p.reported.ram_gb!), have: gb(system!.ram_gb!) })
         : vram.level === "concern"
           ? t("format.compat.warning.vram", { used: gb(p.reported.vram_gb!), have: gb(gpu!.vram_gb!) })
-          : level === "close"
-            ? t("format.compat.warning.close")
-            : null
-  return { level, headline, warning, gpu: gpuCheck, ram, vram }
+          : commit.level === "concern"
+            ? t("format.compat.warning.commit", { used: gb(commitPeak!), have: gb(system!.commit_limit_gb!) })
+            : level === "close"
+              ? t("format.compat.warning.close")
+              : null
+  return { level, headline, warning, gpu: gpuCheck, ram, vram, commit }
 }

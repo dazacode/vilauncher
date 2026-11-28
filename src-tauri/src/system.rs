@@ -20,6 +20,27 @@ pub(crate) struct SystemInfo {
     /// Running under Rosetta 2 on Apple silicon (a translated process).
     #[serde(default)]
     pub translated: bool,
+    /// Windows only: the most memory the system can promise to programs (RAM plus page
+    /// file), in GB. None elsewhere, and when Windows does not say.
+    #[serde(default)]
+    pub commit_limit_gb: Option<f64>,
+    /// Windows only: the memory promised to programs right now, in GB.
+    #[serde(default)]
+    pub commit_used_gb: Option<f64>,
+    /// Windows only: the build number (e.g. 22631). Read by known_problems.rs for advice
+    /// conditions; not sent to the window.
+    #[serde(skip)]
+    pub os_build: Option<u32>,
+}
+
+/// The room a build's author's peak commit needs under the commit limit, in GB. A judgement
+/// call, to be agreed by the team: 4 GiB keeps a little for the system and the launcher on
+/// top of the peak; the commit pressure that failed on 32 GB PCs left under 1 GB free.
+pub(crate) const COMMIT_MARGIN_GB: f64 = 4.0;
+
+/// Whether a commit limit leaves no room for a peak commit plus `COMMIT_MARGIN_GB`.
+pub(crate) fn commit_short(limit_gb: f64, peak_gb: f64) -> bool {
+    limit_gb < peak_gb + COMMIT_MARGIN_GB
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -133,7 +154,12 @@ fn cards(names: &[String], adapters: &[(String, f64)]) -> Vec<Gpu> {
 
 /// Looks at this PC (can take a few seconds; never panics, gives up after ~8 s).
 pub(crate) fn detect() -> SystemInfo {
-    std::panic::catch_unwind(detect_inner).unwrap_or_default()
+    let mut info = std::panic::catch_unwind(detect_inner).unwrap_or_default();
+    if let Some(charge) = crate::platform::commit_charge() {
+        info.commit_limit_gb = Some(charge.limit_gb);
+        info.commit_used_gb = Some(charge.used_gb);
+    }
+    info
 }
 
 #[cfg(windows)]
@@ -176,6 +202,9 @@ fn detect_inner() -> SystemInfo {
         cpu,
         cpu_cores,
         translated: false,
+        commit_limit_gb: None,
+        commit_used_gb: None,
+        os_build: None,
     }
 }
 
@@ -282,6 +311,11 @@ fn parse_report(json: &str) -> Option<SystemInfo> {
         cpu,
         cpu_cores,
         translated: false,
+        commit_limit_gb: None,
+        commit_used_gb: None,
+        os_build: number(&v["build"])
+            .map(|n| n.round() as u32)
+            .filter(|n| *n > 0),
     })
 }
 
@@ -316,7 +350,8 @@ $ram = [double](Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
 $installed = [double]((Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum).Sum)
 $cpuName = [string](Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name)
 $cores = [int]((Get-CimInstance Win32_Processor | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum)
-[pscustomobject]@{ gpus = $gpus; adapters = $adapters; ram = $ram; installed = $installed; cpu = $cpuName; cpu_cores = $cores } | ConvertTo-Json -Compress -Depth 4
+$build = [string](Get-CimInstance Win32_OperatingSystem).BuildNumber
+[pscustomobject]@{ gpus = $gpus; adapters = $adapters; ram = $ram; installed = $installed; cpu = $cpuName; cpu_cores = $cores; build = $build } | ConvertTo-Json -Compress -Depth 4
 "#;
 
     const TIMEOUT: Duration = Duration::from_secs(8);
@@ -560,6 +595,9 @@ mod macos {
             cpu,
             cpu_cores,
             translated,
+            commit_limit_gb: None,
+            commit_used_gb: None,
+            os_build: None,
         }
     }
 
@@ -748,10 +786,35 @@ mod tests {
             cpu: Some("Y".into()),
             cpu_cores: Some(8),
             translated: false,
+            commit_limit_gb: None,
+            commit_used_gb: None,
+            os_build: None,
         };
         assert_eq!(
             serde_json::to_string(&info).unwrap(),
-            r#"{"gpus":[{"name":"X","vendor":"NVIDIA","vram_gb":null}],"ram_gb":16.0,"cpu":"Y","cpu_cores":8,"translated":false}"#
+            r#"{"gpus":[{"name":"X","vendor":"NVIDIA","vram_gb":null}],"ram_gb":16.0,"cpu":"Y","cpu_cores":8,"translated":false,"commit_limit_gb":null,"commit_used_gb":null}"#
         );
+    }
+
+    #[test]
+    fn a_peak_commit_needs_its_margin_under_the_commit_limit() {
+        // 54 GB limit, 40 GB peak: 44 GB is what a peak needs, so it fits.
+        assert!(!commit_short(54.0, 40.0));
+        // Exactly the peak plus the margin is enough; a tenth of a GB less is not.
+        assert!(!commit_short(40.0 + COMMIT_MARGIN_GB, 40.0));
+        assert!(commit_short(40.0 + COMMIT_MARGIN_GB - 0.1, 40.0));
+        // A 32 GB machine with a 34 GB page-file-backed limit cannot take a 40 GB peak.
+        assert!(commit_short(34.0, 40.0));
+    }
+
+    #[test]
+    fn commit_pages_become_gigabytes_to_one_decimal() {
+        use crate::platform::commit_from_pages;
+        // 4 KiB pages: 54 GiB of limit is 14155776 pages; 10 GiB in use is 2621440 pages.
+        let charge = commit_from_pages(14_155_776, 2_621_440, 4096).unwrap();
+        assert_eq!(charge.limit_gb, 54.0);
+        assert_eq!(charge.used_gb, 10.0);
+        assert_eq!(commit_from_pages(0, 10, 4096), None, "an empty limit is no answer");
+        assert_eq!(commit_from_pages(10, 10, 0), None, "a page size is needed");
     }
 }

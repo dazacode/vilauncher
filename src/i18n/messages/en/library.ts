@@ -95,6 +95,13 @@ export default {
     works: "What works",
     issues: "Known issues",
   },
+  advice: {
+    title: "Possible settings for this PC",
+    recommended: "Recommended (checked on two machines)",
+    possible: "Possible setting, not verified on your hardware",
+    source: "Source: {source}",
+    apply: "Apply",
+  },
   details: {
     title: "Details",
     source: "Source",
@@ -225,7 +232,13 @@ export default {
   activity: {
     nothing: "Nothing running",
     fixTitle: "Check every known problem, fix it and verify the result",
+    warmUp: "The first few minutes after a new build may be slow while shaders compile. A slow first run is not a bug report by itself.",
+    clearCache: "Clear shader cache",
+    clearCacheTitle: "Delete this project's shader cache. The next Play rebuilds it, and its first minutes may be slow.",
     logCopied: "Log copied",
+    summary: "Copy diagnostic summary",
+    summaryTitle: "Copy the launcher version, switches, graphics, memory and the end of this project's log, for a bug report",
+    summaryCopied: "Diagnostic summary copied",
     export: "Export",
     exportTitle: "Export the activity log",
     exportFilter: "Log",

@@ -101,6 +101,12 @@ impl BuildActivity {
         }
     }
 
+    /// Whether the first run of this build is still to come. Its first minutes compile
+    /// about a thousand pipelines, so a slow first run is not representative.
+    pub fn warm_up_pending(&self) -> bool {
+        warm_up_pending(self.updated, self.last_run)
+    }
+
     pub fn pending_label(&self) -> Option<&'static str> {
         (self.ran == Some(false)).then_some(if self.new_install {
             msg_str!("New install · Not run yet")
@@ -135,10 +141,26 @@ pub fn local_time(seconds: u64) -> Option<String> {
     ))
 }
 
+/// The warm-up decision: a build made after its last recorded run (or never run) is still
+/// to get its first run, and the notice says so. Equal times count as run.
+pub fn warm_up_pending(built: u64, last_run: Option<u64>) -> bool {
+    last_run.is_none_or(|run| run < built)
+}
+
 fn seconds(time: SystemTime) -> u64 {
     time.duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+#[cfg(test)]
+#[test]
+fn the_first_run_after_a_build_is_flagged_until_a_run_follows_it() {
+    // Never run: pending. A run after the build: done. A build after the last run: pending.
+    assert!(warm_up_pending(1_000, None));
+    assert!(!warm_up_pending(1_000, Some(1_500)));
+    assert!(!warm_up_pending(1_000, Some(1_000)), "a run in the same second as the build counts");
+    assert!(warm_up_pending(2_000, Some(1_500)), "an update after the last run is pending again");
 }
 
 #[cfg(test)]

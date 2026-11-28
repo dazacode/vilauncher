@@ -30,9 +30,11 @@ export function App() {
       <div className="flex h-full">
         <Sidebar />
         <main className="relative min-w-0 flex-1">
-          {/* The top of the window drags it; the controls sit over the art. */}
+          {/* The top of the window drags it; the controls sit over the art. WebView2 (Windows)
+              moves the window from the `drag` class; WebKitGTK and WKWebView ignore it, so Tauri
+              drags from data-tauri-drag-region there. */}
           {/* macOS draws its own traffic lights (top left, over the sidebar), so no buttons here. */}
-          <div className="drag absolute inset-x-0 top-0 z-30 flex h-10 justify-end">
+          <div data-tauri-drag-region="deep" className="drag absolute inset-x-0 top-0 z-30 flex h-10 justify-end">
             {!mac && <WindowControls />}
           </div>
           {!snap ? view === "library" && <LibrarySkeleton /> : view === "library" ? <LibraryView /> : <SettingsView />}

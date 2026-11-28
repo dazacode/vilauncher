@@ -164,6 +164,114 @@ pub(crate) fn make(f: &Facts) -> Report {
     }
 }
 
+/// The last lines of the project's job log that go in the diagnostic summary.
+const SUMMARY_LOG_LINES: usize = 60;
+
+/// What the diagnostic summary is made of. Everything here is already known to the
+/// launcher; nothing is probed for the summary. The driver version and the OS build are
+/// not recorded anywhere yet, so the summary says so.
+pub(crate) struct SummaryFacts<'a> {
+    pub launcher_version: &'a str,
+    pub project: &'a str,
+    /// The project's folder name under `repos\`, which names its log file.
+    pub slug: &'a str,
+    /// The commit the installed build was made from, when recorded.
+    pub commit: Option<String>,
+    /// The launch's `NAME=value` lines; only the `VICTORY_*` ones are shown.
+    pub switches: &'a str,
+    pub gpus: Vec<crate::system::Gpu>,
+    pub ram_gb: Option<f64>,
+    /// The project's last job log lines (the header is not included), when a log exists.
+    pub log_tail: Option<Vec<String>>,
+    /// Text that must not leave the PC (see `private_paths`).
+    pub private: Vec<String>,
+}
+
+/// The `VICTORY_NAME=value` lines of a launch, names and values only. A value that is not
+/// a plain token (anything with a slash, a colon or a space) is replaced by a note, so a
+/// path never reaches the summary.
+fn switch_lines(extra: &str) -> Vec<String> {
+    extra
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("VICTORY_"))
+        .filter_map(|line| {
+            let (name, value) = line.split_once('=').unwrap_or((line, ""));
+            let rest = name.strip_prefix("VICTORY_")?;
+            let name_ok = !rest.is_empty()
+                && rest
+                    .bytes()
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_');
+            if !name_ok {
+                return None;
+            }
+            if value.is_empty() {
+                return Some(name.to_string());
+            }
+            let plain = value
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'));
+            Some(if plain {
+                format!("{name}={value}")
+            } else {
+                format!("{name}=(value not shown)")
+            })
+        })
+        .collect()
+}
+
+/// The plain-text summary for a bug report, in a fixed order, English throughout.
+pub(crate) fn diagnostic_summary(f: &SummaryFacts) -> String {
+    let mut lines: Vec<String> = vec![
+        "VILauncher diagnostic summary".to_string(),
+        format!("Launcher: VILauncher {}", f.launcher_version),
+        format!("Project: {}", f.project),
+        format!("Project folder: {}", f.slug),
+        format!("Commit: {}", f.commit.as_deref().unwrap_or("not recorded")),
+        "Switches:".to_string(),
+    ];
+    let switches = switch_lines(f.switches);
+    if switches.is_empty() {
+        lines.push("  none set".to_string());
+    }
+    lines.extend(switches.into_iter().map(|s| format!("  {s}")));
+    lines.push("Graphics:".to_string());
+    if f.gpus.is_empty() {
+        lines.push("  not found".to_string());
+    }
+    for gpu in &f.gpus {
+        let vram = gpu
+            .vram_gb
+            .map(|gb| format!("{gb} GB"))
+            .unwrap_or_else(|| "not found".to_string());
+        lines.push(format!(
+            "  {}; driver: not recorded; video memory: {vram}",
+            gpu.name
+        ));
+    }
+    lines.push(format!(
+        "Memory: {}",
+        f.ram_gb
+            .map(|gb| format!("{gb} GB"))
+            .unwrap_or_else(|| "not found".to_string())
+    ));
+    lines.push("OS build: not recorded".to_string());
+    match &f.log_tail {
+        Some(tail) => {
+            let start = tail.len().saturating_sub(SUMMARY_LOG_LINES);
+            lines.push(format!(
+                "Log (last {} lines of {}.log):",
+                tail.len() - start,
+                f.slug
+            ));
+            lines.extend(tail[start..].iter().cloned());
+        }
+        None => lines.push("Log: no log yet".to_string()),
+    }
+    let text = lines.join("\n");
+    scrub(&text, &f.private) + "\n"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,5 +352,90 @@ mod tests {
             scrub("C:/Users/alice/x alice", &private),
             "<private>/x <private>"
         );
+    }
+
+    #[test]
+    fn the_summary_has_its_fields_in_a_fixed_order() {
+        let log = vec!["Playing".to_string(), "frame 1".to_string()];
+        let text = diagnostic_summary(&SummaryFacts {
+            launcher_version: "1.1.0",
+            project: "Victory",
+            slug: "owner_victory",
+            commit: Some("abc1234".into()),
+            switches: "VICTORY_A=1\nVICTORY_B=2",
+            gpus: vec![crate::system::Gpu {
+                name: "NVIDIA GeForce RTX 4060".into(),
+                vendor: crate::system::Vendor::Nvidia,
+                vram_gb: Some(8.0),
+            }],
+            ram_gb: Some(16.0),
+            log_tail: Some(log),
+            private: vec![],
+        });
+        let order = [
+            "VILauncher diagnostic summary",
+            "Launcher: VILauncher 1.1.0",
+            "Project: Victory",
+            "Project folder: owner_victory",
+            "Commit: abc1234",
+            "Switches:",
+            "Graphics:",
+            "Memory: 16 GB",
+            "OS build: not recorded",
+            "Log (last 2 lines of owner_victory.log):",
+        ];
+        let mut at = 0;
+        for marker in order {
+            let found = text[at..]
+                .find(marker)
+                .unwrap_or_else(|| panic!("{marker} out of order:\n{text}"));
+            at += found + marker.len();
+        }
+        assert!(text.contains("driver: not recorded; video memory: 8 GB"), "{text}");
+        assert!(text.contains("  VICTORY_A=1\n  VICTORY_B=2"), "{text}");
+        assert!(text.ends_with("frame 1\n"));
+    }
+
+    #[test]
+    fn unknown_facts_say_not_recorded_or_not_found() {
+        let text = diagnostic_summary(&SummaryFacts {
+            launcher_version: "1.1.0",
+            project: "Victory",
+            slug: "owner_victory",
+            commit: None,
+            switches: "PATH=C:\\x\nVICTORY_ONLY",
+            gpus: vec![],
+            ram_gb: None,
+            log_tail: None,
+            private: vec![],
+        });
+        assert!(text.contains("Commit: not recorded"));
+        assert!(text.contains("Graphics:\n  not found"));
+        assert!(text.contains("Memory: not found"));
+        assert!(text.contains("Log: no log yet"));
+        // Only the VICTORY_ line is shown, and without a value it shows the name alone.
+        assert!(text.contains("Switches:\n  VICTORY_ONLY\nGraphics:"), "{text}");
+        assert!(!text.contains("PATH"));
+    }
+
+    #[test]
+    fn switch_values_that_are_paths_and_home_folders_are_never_shown() {
+        let private = vec!["C:\\Users\\alice".to_string(), "alice".to_string()];
+        let text = diagnostic_summary(&SummaryFacts {
+            launcher_version: "1.1.0",
+            project: "Victory",
+            slug: "owner_victory",
+            commit: None,
+            switches: "VICTORY_DIR=C:\\Users\\alice\\Games\nVICTORY_X=1 2",
+            gpus: vec![],
+            ram_gb: None,
+            log_tail: Some(vec!["Looking in C:/Users/alice/Games".to_string()]),
+            private,
+        });
+        assert!(!text.contains("alice"), "{text}");
+        assert!(text.contains("Looking in <private>/Games"), "{text}");
+        assert!(text.contains("VICTORY_DIR=(value not shown)"));
+        assert!(text.contains("VICTORY_X=(value not shown)"));
+        assert!(text.contains("<private>"));
     }
 }
