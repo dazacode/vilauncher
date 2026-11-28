@@ -2651,9 +2651,11 @@ fn fix_tools(job: &Arc<Mutex<Job>>, ctx: &Ctx) -> Result<String, String> {
     if have.ready() {
         Ok("Git, Rust and the C++ build tools are installed and answer.".into())
     } else {
+        let missing = have.missing();
         Err(format!(
-            "these tools still do not answer: {}.",
-            have.missing().join(", ")
+            "these tools still do not answer: {}. {}",
+            missing.join(", "),
+            tools::by_hand_hint(&missing)
         ))
     }
 }
