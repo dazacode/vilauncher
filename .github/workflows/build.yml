@@ -180,6 +180,17 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
+      # The release text is this version's section of CHANGELOG.md. The step fails when the
+      # section is missing or empty, so a release never goes out without its thanks.
+      - name: Take this version's notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p release
+          awk -v v="$version" '/^## /{p=($0 == "## " v); next} p' CHANGELOG.md > release/notes.md
+          test -s release/notes.md
+
       - uses: actions/download-artifact@v4
         with:
           name: VILauncher.exe
@@ -200,6 +211,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           name: VILauncher ${{ github.ref_name }}
+          body_path: release/notes.md
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
