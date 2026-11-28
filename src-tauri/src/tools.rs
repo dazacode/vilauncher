@@ -217,6 +217,18 @@ pub fn rustup() -> Option<PathBuf> {
     )
 }
 
+/// What the player does for the tools still missing after Fix: each one's install page.
+pub fn by_hand_hint(missing: &[&str]) -> String {
+    let steps: Vec<String> = missing
+        .iter()
+        .map(|what| format!("{what} from {}", manual_install_page(what)))
+        .collect();
+    format!(
+        "Install {} by hand, then press Fix again. A winget install can report success while the tool does not run.",
+        steps.join("; ")
+    )
+}
+
 /// Where to get a tool by hand when winget cannot install it.
 pub fn manual_install_page(what: &str) -> &'static str {
     match what {
@@ -268,6 +280,15 @@ pub fn install_steps(t: &Tools) -> Vec<(&'static str, Vec<String>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_missing_tool_is_named_with_its_install_page() {
+        let hint = by_hand_hint(&["Rust"]);
+        assert!(hint.contains("Rust from https://rustup.rs"), "{hint}");
+        assert!(hint.contains("press Fix again"));
+        assert!(by_hand_hint(&["Git", "Rust"]).contains("git-scm.com"));
+    }
+
 
     #[test]
     fn winget_nothing_to_upgrade_counts_as_installed() {
