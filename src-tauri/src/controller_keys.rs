@@ -54,7 +54,9 @@ pub fn key_of(bindings: &BTreeMap<String, u16>, control: &Control) -> u16 {
 
 /// Whether `key` may be given to control `id`: a real key, and not one another control uses.
 pub fn check_key(bindings: &BTreeMap<String, u16>, id: &str, key: u16) -> Result<(), String> {
-    if key == 0 || key == 0xFF {
+    // 0 and 0xFF are not keys; the rest stay with Windows or are modifiers the game needs.
+    const RESERVED: &[u16] = &[0x03, 0x10, 0x11, 0x12, 0x14, 0x2C, 0x5B, 0x5C, 0x5D, 0x90, 0x91, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5];
+    if key == 0 || key == 0xFF || RESERVED.contains(&key) {
         return Err("That key cannot be used for a controller control.".into());
     }
     for other in CONTROLS.iter().filter(|c| c.id != id) {
@@ -121,19 +123,22 @@ mod hook {
 
     struct State {
         bindings: BTreeMap<String, u16>,
-        /// Keys held down whose presses were changed, and what each sent.
+        /// Keys held down whose presses were changed, and what each sent. Kept across
+        /// settings changes, so the release is always seen and nothing stays pressed.
         held: HashMap<u16, Step>,
     }
 
     static STATE: Mutex<Option<State>> = Mutex::new(None);
 
+    fn lock() -> std::sync::MutexGuard<'static, Option<State>> {
+        STATE.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     pub fn configure(on: bool, bindings: BTreeMap<String, u16>) {
         {
-            let mut state = STATE.lock().unwrap_or_else(|e| e.into_inner());
-            *state = Some(State {
-                bindings,
-                held: HashMap::new(),
-            });
+            let mut state = lock();
+            let held = state.take().map(|old| old.held).unwrap_or_default();
+            *state = Some(State { bindings, held });
         }
         ENABLED.store(on, Ordering::Relaxed);
         if on {
@@ -152,58 +157,69 @@ mod hook {
     }
 
     unsafe extern "system" fn keyboard_hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-        if code >= 0 && ENABLED.load(Ordering::Relaxed) {
+        if code >= 0 {
             let info = &*(lparam as *const KBDLLHOOKSTRUCT);
             let message = wparam as u32;
             let down = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
             let up = message == WM_KEYUP || message == WM_SYSKEYUP;
             // Keys this hook sent are flagged injected: letting them through avoids a loop.
-            if (down || up)
-                && info.flags & LLKHF_INJECTED == 0
-                && game_in_front()
-                && handle(info.vkCode as u16, down)
-            {
-                return 1;
+            if (down || up) && info.flags & LLKHF_INJECTED == 0 {
+                let key = info.vkCode as u16;
+                // A release is always handled, so a key pressed in the game cannot stay down
+                // when the focus moves away or the setting changes.
+                let consumed = if up {
+                    release(key)
+                } else {
+                    ENABLED.load(Ordering::Relaxed) && game_in_front() && press(key)
+                };
+                if consumed {
+                    return 1;
+                }
             }
         }
         CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam)
     }
 
-    /// Returns true when the key is consumed (not passed on to the game).
-    fn handle(key: u16, down: bool) -> bool {
-        let mut guard = STATE.lock().unwrap_or_else(|e| e.into_inner());
+    /// A key went down in the game. Returns true when the key is consumed.
+    fn press(key: u16) -> bool {
+        let mut guard = lock();
         let Some(state) = guard.as_mut() else {
             return false;
         };
-        if down {
-            if state.held.contains_key(&key) {
-                return true;
+        if state.held.contains_key(&key) {
+            return true;
+        }
+        match translate(&state.bindings, key) {
+            Step::Pass => false,
+            Step::Send(sent) => {
+                state.held.insert(key, Step::Send(sent));
+                drop(guard);
+                // SAFETY: SendInput with one well-formed input.
+                unsafe { send(sent, true) };
+                true
             }
-            match translate(&state.bindings, key) {
-                Step::Pass => false,
-                Step::Send(sent) => {
-                    state.held.insert(key, Step::Send(sent));
-                    drop(guard);
-                    // SAFETY: SendInput with one well-formed input.
-                    unsafe { send(sent, true) };
-                    true
-                }
-                Step::Swallow => {
-                    state.held.insert(key, Step::Swallow);
-                    true
-                }
+            Step::Swallow => {
+                state.held.insert(key, Step::Swallow);
+                true
             }
-        } else {
-            match state.held.remove(&key) {
-                None => false,
-                Some(Step::Send(sent)) => {
-                    drop(guard);
-                    // SAFETY: as above.
-                    unsafe { send(sent, false) };
-                    true
-                }
-                Some(_) => true,
+        }
+    }
+
+    /// A key went up. Releases what its press sent. Returns true when the key is consumed.
+    fn release(key: u16) -> bool {
+        let mut guard = lock();
+        let Some(state) = guard.as_mut() else {
+            return false;
+        };
+        match state.held.remove(&key) {
+            None => false,
+            Some(Step::Send(sent)) => {
+                drop(guard);
+                // SAFETY: as above.
+                unsafe { send(sent, false) };
+                true
             }
+            Some(_) => true,
         }
     }
 
@@ -302,6 +318,9 @@ mod tests {
         // Keys the layer never reads for a control are not refused for that reason.
         assert!(check_key(&none, "a", 0x20).is_ok());
         assert!(check_key(&none, "a", 0).is_err());
+        // Modifiers, Windows and lock keys stay with the system.
+        assert!(check_key(&none, "a", 0x12).is_err());
+        assert!(check_key(&none, "a", 0x5B).is_err());
     }
 
     #[test]

@@ -53,18 +53,19 @@ pub struct Patches {
     pub base: Option<String>,
 }
 
-/// What a project has from an add-on: the branch it was on, and the add-on's branch
-/// (empty when the add-on only sets switches).
+/// What a project has from an add-on, kept so turning it off puts back exactly what was there.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Applied {
+    /// The branch the project was on (or its commit when detached).
     pub original: String,
+    /// The add-on's branch; empty when the add-on only sets switches.
     pub branch: String,
-    /// The switches and arguments the add-on added, copied so turning it off does not need
-    /// its manifest any more.
+    /// Each switch the add-on sets, with the value the player had before (None: not set).
     #[serde(default)]
-    pub switches: BTreeMap<String, String>,
+    pub prior: BTreeMap<String, Option<String>>,
+    /// The launch arguments the add-on added (arguments already present are not listed).
     #[serde(default)]
-    pub args: Vec<String>,
+    pub added_args: Vec<String>,
 }
 
 /// Reads and checks one manifest.
@@ -190,6 +191,25 @@ pub fn catalog(folder: &Path) -> (Vec<Addon>, Vec<String>) {
     }
     addons.sort_by(|a, b| a.name.cmp(&b.name));
     (addons, problems)
+}
+
+/// The value a switch has in `text` (its last line), or None when it is not set.
+pub fn switch_value(text: &str, key: &str) -> Option<String> {
+    text.lines().rev().find_map(|line| {
+        let (k, value) = line.split_once('=')?;
+        (k.trim() == key).then(|| value.to_string())
+    })
+}
+
+/// The switch text with each switch in `prior` put back to the value it had (None: removed).
+pub fn restore_switches(current: &str, prior: &BTreeMap<String, Option<String>>) -> String {
+    let mut lines: Vec<String> = current
+        .lines()
+        .filter(|line| !line.split_once('=').is_some_and(|(key, _)| prior.contains_key(key.trim())))
+        .map(str::to_owned)
+        .collect();
+    lines.extend(prior.iter().filter_map(|(key, value)| value.as_ref().map(|v| format!("{key}={v}"))));
+    lines.join("\n")
 }
 
 /// The switch text with the add-on's switches set (`on`) or removed (off). Other lines
@@ -318,7 +338,23 @@ pub fn apply(repo: &Path, addon: &Addon, source: &Path) -> Result<Applied, Strin
     };
     let files = patch_files(&source.join(&patches.dir))?;
     let branch = format!("vilauncher/{}", addon.id);
-    git(repo, &["checkout", "--quiet", "-B", &branch])?;
+    if git(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_ok() {
+        // Our branch from an earlier turn-on: keep what is on it (the player may have
+        // committed there), as long as it still has the add-on's commits on the original.
+        let ahead = git(repo, &["rev-list", "--count", &format!("{original}..{branch}")])?;
+        if ahead == "0" {
+            return Err(format!(
+                "The branch {branch} exists without the add-on's commits. Delete it, then turn the add-on on again."
+            ));
+        }
+        git(repo, &["checkout", "--quiet", &branch])?;
+        return Ok(Applied {
+            original,
+            branch,
+            ..Applied::default()
+        });
+    }
+    git(repo, &["checkout", "--quiet", "-b", &branch])?;
     let mut c = tools::git();
     c.current_dir(repo).args([
         "-c",
@@ -363,6 +399,12 @@ pub fn remove(repo: &Path, applied: &Applied) -> Result<(), String> {
             "The project has uncommitted changes on the add-on's branch. Save or discard them before turning the add-on off."
                 .into(),
         );
+    }
+    if current_ref(repo)? != applied.branch {
+        return Err(format!(
+            "The project is not on {} now, so the add-on stays on. Switch the project back to {} to turn it off.",
+            applied.branch, applied.branch
+        ));
     }
     git(repo, &["checkout", "--quiet", &applied.original]).map(|_| ())
 }
@@ -433,6 +475,23 @@ mod tests {
     }
 
     #[test]
+    fn restoring_switches_gives_back_the_players_own_values() {
+        let prior: BTreeMap<String, Option<String>> = [
+            ("VICTORY_A".to_string(), Some("40".to_string())),
+            ("VICTORY_B".to_string(), None),
+        ]
+        .into();
+        let on: BTreeMap<String, String> = [
+            ("VICTORY_A".to_string(), "60".to_string()),
+            ("VICTORY_B".to_string(), "1".to_string()),
+        ]
+        .into();
+        let applied = with_switches("VICTORY_GLOBAL=1\nVICTORY_A=40", &on, true);
+        assert_eq!(switch_value(&applied, "VICTORY_A").as_deref(), Some("60"));
+        assert_eq!(restore_switches(&applied, &prior), "VICTORY_GLOBAL=1\nVICTORY_A=40");
+    }
+
+    #[test]
     fn switches_and_args_turn_on_and_off_without_touching_other_lines() {
         let switches: BTreeMap<_, _> = [("VICTORY_A".to_string(), "1".to_string())].into();
         let on = with_switches("VICTORY_GLOBAL=1\nVICTORY_A=0", &switches, true);
@@ -486,6 +545,58 @@ mod tests {
         remove(&project, &applied).unwrap();
         assert_eq!(run_git(&project, &["rev-parse", "--abbrev-ref", "HEAD"]), "main");
         assert_eq!(text(project.join("engine.txt")), "one\n");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn turning_an_add_on_on_again_keeps_the_players_commits_on_its_branch() {
+        let root = temp("reuse");
+        let source = root.join("source");
+        std::fs::create_dir_all(&source).unwrap();
+        run_git(&source, &["init", "-q", "-b", "main"]);
+        std::fs::write(source.join("engine.txt"), "one
+").unwrap();
+        run_git(&source, &["add", "."]);
+        run_git(&source, &["commit", "-q", "-m", "base"]);
+        std::fs::write(source.join("engine.txt"), "one
+two
+").unwrap();
+        run_git(&source, &["commit", "-qam", "Add a line"]);
+        let patch_dir = source.join("patches");
+        std::fs::create_dir_all(&patch_dir).unwrap();
+        run_git(&source, &["format-patch", "-q", "-1", "HEAD", "-o", patch_dir.to_str().unwrap()]);
+        run_git(&source, &["add", "patches"]);
+        run_git(&source, &["commit", "-q", "-m", "Patches for the add-on"]);
+        let pinned = run_git(&source, &["rev-parse", "HEAD"]);
+        let project = root.join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        run_git(&project, &["init", "-q", "-b", "main"]);
+        std::fs::write(project.join("engine.txt"), "one
+").unwrap();
+        run_git(&project, &["add", "."]);
+        run_git(&project, &["commit", "-q", "-m", "base"]);
+
+        let mut addon = parse(&manifest(Some("patches"), &pinned, &[])).unwrap();
+        addon.source.repo = source.to_string_lossy().into_owned();
+        let source_cache = fetch_source(&addon, &root.join("cache")).unwrap();
+
+        let first = apply(&project, &addon, &source_cache).unwrap();
+        // The player works on the add-on's branch and commits there.
+        std::fs::write(project.join("mine.txt"), "mine
+").unwrap();
+        run_git(&project, &["add", "mine.txt"]);
+        run_git(&project, &["commit", "-q", "-m", "Player work"]);
+        remove(&project, &first).unwrap();
+        assert_eq!(run_git(&project, &["rev-parse", "--abbrev-ref", "HEAD"]), "main");
+
+        // Turning it on again reuses the branch: the player's commit is still there.
+        let again = apply(&project, &addon, &source_cache).unwrap();
+        assert_eq!(again.branch, "vilauncher/test-addon");
+        assert!(project.join("mine.txt").is_file());
+        assert_eq!(
+            run_git(&project, &["log", "-1", "--format=%s"]),
+            "Player work"
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 

@@ -914,40 +914,68 @@ impl App {
             if !dir.join(".git").is_dir() {
                 return Err("Install the project first.".into());
             }
-            let source = addons::fetch_source(
-                &addon,
-                &workspace().join("add-on-sources").join(id),
-            )?;
+            let source = addons::fetch_source(&addon, &workspace().join("add-on-sources").join(id))?;
             let mut applied = addons::apply(&dir, &addon, &source)?;
-            applied.switches = addon.switches.clone();
-            applied.args = addon.args.clone();
-            self.change_addon_settings(repo, &applied, true);
-            self.launch_mut(repo).addons.insert(id.to_string(), applied);
+            // Remember what the player had, so turning the add-on off gives it back.
+            let switches = self.effective_switches(repo);
+            let args = self.effective_args(repo);
+            let words: Vec<&str> = args.split_whitespace().collect();
+            applied.added_args = addon
+                .args
+                .iter()
+                .filter(|arg| !words.contains(&arg.as_str()))
+                .cloned()
+                .collect();
+            applied.prior = addon
+                .switches
+                .keys()
+                .map(|key| (key.clone(), addons::switch_value(&switches, key)))
+                .collect();
+            let new_switches = addons::with_switches(&switches, &addon.switches, true);
+            let new_args = addons::with_args(&args, &applied.added_args, true);
+            let launch = self.launch_mut(repo);
+            launch.switches = Some(new_switches);
+            if !applied.added_args.is_empty() {
+                launch.args = Some(new_args);
+            }
+            launch.addons.insert(id.to_string(), applied);
         } else {
             if !turned_on {
                 return Ok(());
             }
             let applied = self.launch_mut(repo).addons.get(id).cloned().unwrap_or_default();
             addons::remove(&dir, &applied)?;
-            self.change_addon_settings(repo, &applied, false);
-            self.launch_mut(repo).addons.remove(id);
+            let switches = self.effective_switches(repo);
+            let args = self.effective_args(repo);
+            let new_switches = addons::restore_switches(&switches, &applied.prior);
+            let new_args = addons::with_args(&args, &applied.added_args, false);
+            let launch = self.launch_mut(repo);
+            launch.switches = Some(new_switches);
+            if !applied.added_args.is_empty() {
+                launch.args = Some(new_args);
+            }
+            launch.addons.remove(id);
             self.tidy_launch(repo);
         }
         Ok(())
     }
 
-    /// Sets (or removes) an add-on's switches and launch arguments for a project. Starts
-    /// from the project's own settings, or the shared ones when it has none.
-    fn change_addon_settings(&mut self, repo: &str, applied: &addons::Applied, on: bool) {
-        let shared_switches = self.saved.extra_env.clone();
-        let shared_args = self.saved.launch_args.clone();
-        let launch = self.launch_mut(repo);
-        let switches = launch.switches.clone().unwrap_or(shared_switches);
-        launch.switches = Some(addons::with_switches(&switches, &applied.switches, on));
-        if !applied.args.is_empty() {
-            let args = launch.args.clone().unwrap_or(shared_args);
-            launch.args = Some(addons::with_args(&args, &applied.args, on));
-        }
+    /// The switches a project launches with: its own, else the shared ones.
+    fn effective_switches(&self, repo: &str) -> String {
+        self.saved
+            .project_launch
+            .get(&project_key(repo))
+            .and_then(|launch| launch.switches.clone())
+            .unwrap_or_else(|| self.saved.extra_env.clone())
+    }
+
+    /// The launch arguments a project uses: its own, else the shared ones.
+    fn effective_args(&self, repo: &str) -> String {
+        self.saved
+            .project_launch
+            .get(&project_key(repo))
+            .and_then(|launch| launch.args.clone())
+            .unwrap_or_else(|| self.saved.launch_args.clone())
     }
 
     fn launch_mut(&mut self, repo: &str) -> &mut ProjectLaunch {
