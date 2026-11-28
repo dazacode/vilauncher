@@ -53,6 +53,9 @@ jobs:
       - name: Type-check the UI
         run: pnpm exec tsc -b
 
+      - name: Test the UI logic
+        run: pnpm test:ui
+
       # Every language has every message, and no English is left in the UI code (docs/I18N.md).
       - name: Check the translations
         run: pnpm i18n:check
@@ -156,6 +159,9 @@ jobs:
       - name: Type-check the UI
         run: pnpm exec tsc -b
 
+      - name: Test the UI logic
+        run: pnpm test:ui
+
       - name: Build the UI
         run: pnpm exec vite build
 
@@ -228,6 +234,9 @@ jobs:
 
       - name: Type-check the UI
         run: pnpm exec tsc -b
+
+      - name: Test the UI logic
+        run: pnpm test:ui
 
       - name: Build the UI
         run: pnpm exec vite build
