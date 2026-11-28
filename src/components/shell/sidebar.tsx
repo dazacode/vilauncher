@@ -10,7 +10,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip } from "@/components/ui/tooltip"
 import { useT } from "@/i18n"
-import { assess, mainGpu, SORTS, sortLabel, sortProjects, withSpec } from "@/lib/compat"
+import { assess, cardsOf, mainGpu, SORTS, sortLabel, sortProjects, withSpec } from "@/lib/compat"
 import { openUrl } from "@/lib/api"
 import { fps, gpuText, shortStage } from "@/lib/format"
 import { run, useAlias, useStore } from "@/lib/store"
@@ -162,7 +162,7 @@ function group(snap: Snapshot, query: string, filter: number) {
   const s = snap.settings
   const keep = (p: Project) => {
     const text = !query || p.name.toLowerCase().includes(query) || p.repo.toLowerCase().includes(query)
-    const card = (name: string) => p.custom || p.gpu.some((g) => g.toLowerCase() === name)
+    const card = (name: string) => p.custom || cardsOf(p).some((g) => g.toLowerCase() === name)
     const tier = p.custom || s.list_tier === 0 || p.listing.tier === (s.list_tier === 1 ? "tracked" : "watchlist")
     // Taken-down projects are hidden unless the player turns them on.
     const taken = s.show_nuked || !p.listing.nuked
@@ -404,7 +404,7 @@ function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: 
     // Where a build doesn't fit the PC, its warning takes the place of the cards it runs on.
     const verdict = assess(p, withSpec(snap.system, snap.settings))
     if (verdict.level === "concern") tone = "text-warn"
-    const detail = verdict.warning ?? (p.gpu.length ? gpuText(p.gpu) : null)
+    const detail = verdict.warning ?? (cardsOf(p).length ? gpuText(cardsOf(p)) : null)
     line = [f != null ? `${f} fps` : null, detail].filter(Boolean).join(" · ") || t("shell.row.notMeasured")
   }
   return (

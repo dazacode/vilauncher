@@ -7,6 +7,7 @@ import { Tooltip } from "@/components/ui/tooltip"
 import { toast } from "sonner"
 import { useT } from "@/i18n"
 import { copyText, openUrl } from "@/lib/api"
+import { cardsOf } from "@/lib/compat"
 import { fps, gpuText } from "@/lib/format"
 import { run, useAlias, useStore } from "@/lib/store"
 import type { Project } from "@/lib/types"
@@ -86,7 +87,7 @@ function Stats({ project: p }: { project: Project }) {
   if (f != null) stats.push({ value: `${f} fps`, label: t("library.hero.average") })
   if (p.render != null && (p.render > 0 || f != null))
     stats.push({ value: `${Math.round(p.render * 100)}%`, label: t("library.hero.accuracy"), tip: t("library.hero.accuracyTip") })
-  if (p.gpu.length) stats.push({ value: gpuText(p.gpu), label: t("library.hero.madeFor") })
+  if (cardsOf(p).length) stats.push({ value: gpuText(cardsOf(p)), label: t("library.hero.madeFor") })
   if (!stats.length) return null
   return (
     <dl className="mt-6 flex flex-wrap items-stretch gap-y-3">

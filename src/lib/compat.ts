@@ -45,11 +45,21 @@ export function mainGpu(system: SystemInfo | null): Gpu | null {
   return [...system.gpus].sort((a, b) => rank(a) - rank(b) || (b.vram_gb ?? 0) - (a.vram_gb ?? 0))[0]
 }
 
+/**
+ * The cards `p` was made for: the list's own `gpu` tags, or NVIDIA when the fork's repo or name
+ * says NVIDIA (VIctory-NVIDIA forks use NVIDIA's DLSS files and are not tested on other cards).
+ */
+export function cardsOf(p: Project): string[] {
+  if (p.gpu.length > 0) return p.gpu
+  return /nvidia/i.test(`${p.repo} ${p.name}`) ? ["NVIDIA"] : []
+}
+
 /** Whether `p` was made for the player's card: null when either is unknown. */
 export function matchesCard(p: Project, system: SystemInfo | null): boolean | null {
   const gpu = mainGpu(system)
-  if (!gpu || p.gpu.length === 0 || (gpu.vendor !== "NVIDIA" && gpu.vendor !== "AMD")) return null
-  return p.gpu.some((g) => g.toLowerCase() === gpu.vendor.toLowerCase())
+  const cards = cardsOf(p)
+  if (!gpu || cards.length === 0 || (gpu.vendor !== "NVIDIA" && gpu.vendor !== "AMD")) return null
+  return cards.some((g) => g.toLowerCase() === gpu.vendor.toLowerCase())
 }
 
 /**
@@ -109,7 +119,7 @@ const gb = (n: number) => `${formatNumber(n, Number.isInteger(n) ? undefined : {
 export function assess(p: Project, system: SystemInfo | null): Assessment {
   const gpu = mainGpu(system)
   const match = matchesCard(p, system)
-  const cards = formatList(p.gpu)
+  const cards = formatList(cardsOf(p))
   const gpuCheck: Check = {
     label: t("format.compat.gpu"),
     value: gpu?.name ? gpu.name.replace(/^(NVIDIA|AMD|Intel\(R\)) /, "") : null,
@@ -119,7 +129,7 @@ export function assess(p: Project, system: SystemInfo | null): Assessment {
         ? t("format.compat.madeForYours", { vendor: gpu!.vendor })
         : match === false
           ? t("format.compat.madeFor", { cards })
-          : p.gpu.length === 0
+          : cardsOf(p).length === 0
             ? t("format.compat.noCards")
             : t("format.compat.madeFor", { cards }),
   }
