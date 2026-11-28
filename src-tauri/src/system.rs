@@ -181,11 +181,67 @@ fn detect_inner() -> SystemInfo {
         .ok()
         .and_then(|text| meminfo_bytes(&text))
         .and_then(ram_gb);
+    let (cpu, cpu_cores) = std::fs::read_to_string("/proc/cpuinfo")
+        .map(|text| parse_cpuinfo(&text))
+        .unwrap_or((None, None));
     SystemInfo {
-        gpus: Vec::new(),
+        gpus: linux_gpus(std::path::Path::new("/sys/bus/pci/devices")),
         ram_gb,
-        ..SystemInfo::default()
+        cpu,
+        cpu_cores,
     }
+}
+
+/// The processor's name and its logical processor count, from /proc/cpuinfo.
+#[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
+fn parse_cpuinfo(text: &str) -> (Option<String>, Option<u32>) {
+    let name = text
+        .lines()
+        .find(|l| l.starts_with("model name"))
+        .and_then(|l| l.split_once(':'))
+        .map(|(_, value)| value.trim().to_owned())
+        .filter(|value| !value.is_empty());
+    let threads = text.lines().filter(|l| l.starts_with("processor")).count();
+    (name, u32::try_from(threads).ok().filter(|n| *n > 0))
+}
+
+/// The graphics cards on the PCI bus (PCI class 03: display controllers), from sysfs.
+/// The name is the maker and the device id; video memory is read where the driver
+/// reports it (AMD's amdgpu does, NVIDIA's driver does not).
+#[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
+fn linux_gpus(bus: &std::path::Path) -> Vec<Gpu> {
+    let read = |path: std::path::PathBuf| std::fs::read_to_string(path).ok();
+    let mut gpus: Vec<Gpu> = std::fs::read_dir(bus)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let dir = entry.path();
+            let class = read(dir.join("class"))?;
+            if !class.trim().starts_with("0x03") {
+                return None;
+            }
+            let maker = match read(dir.join("vendor"))?.trim() {
+                "0x10de" => "NVIDIA",
+                "0x1002" => "AMD",
+                "0x8086" => "Intel",
+                _ => "Other",
+            };
+            let device = read(dir.join("device")).unwrap_or_default();
+            let name = format!("{maker} graphics card {}", device.trim());
+            let vram_gb = read(dir.join("mem_info_vram_total"))
+                .and_then(|bytes| bytes.trim().parse::<f64>().ok())
+                .and_then(vram_gb);
+            Some(Gpu {
+                vendor: vendor(&name),
+                name,
+                vram_gb,
+            })
+        })
+        .collect();
+    // The biggest card first: that is the one games use.
+    gpus.sort_by(|a, b| b.vram_gb.unwrap_or(0.0).total_cmp(&a.vram_gb.unwrap_or(0.0)));
+    gpus
 }
 
 /// `MemTotal` from /proc/meminfo, in bytes.
@@ -440,6 +496,41 @@ mod tests {
         // An empty processor name and a zero core count are no answer at all.
         assert_eq!((one.cpu, one.cpu_cores), (None, None));
         assert!(parse_report("not json").is_none());
+    }
+
+    #[test]
+    fn linux_processor_and_threads_are_read_from_cpuinfo() {
+        let text = "processor\t: 0\nvendor_id\t: AuthenticAMD\nmodel name\t: AMD Ryzen 7 5800X 8-Core Processor\n\nprocessor\t: 1\nmodel name\t: AMD Ryzen 7 5800X 8-Core Processor\n";
+        let (name, threads) = parse_cpuinfo(text);
+        assert_eq!(name.as_deref(), Some("AMD Ryzen 7 5800X 8-Core Processor"));
+        assert_eq!(threads, Some(2));
+        assert_eq!(parse_cpuinfo(""), (None, None));
+    }
+
+    #[test]
+    fn linux_graphics_cards_come_from_the_pci_display_class() {
+        let root = std::env::temp_dir().join(format!("vl-pci-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let card = |name: &str, class: &str, vendor: &str, vram: Option<&str>| {
+            let dir = root.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("class"), class).unwrap();
+            std::fs::write(dir.join("vendor"), vendor).unwrap();
+            std::fs::write(dir.join("device"), "0x2504\n").unwrap();
+            if let Some(vram) = vram {
+                std::fs::write(dir.join("mem_info_vram_total"), vram).unwrap();
+            }
+        };
+        card("0000-01-00.0", "0x030000\n", "0x10de\n", None);
+        card("0000-06-00.0", "0x030000\n", "0x1002\n", Some("17179869184\n"));
+        card("0000-00-1f.3", "0x040300\n", "0x8086\n", None);
+        let gpus = linux_gpus(&root);
+        assert_eq!(gpus.len(), 2, "the audio device is not a card");
+        assert_eq!(gpus[0].vendor, Vendor::Amd);
+        assert_eq!(gpus[0].vram_gb, Some(16.0));
+        assert_eq!(gpus[1].vendor, Vendor::Nvidia);
+        assert_eq!(gpus[1].vram_gb, None);
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
