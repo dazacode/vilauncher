@@ -1,3 +1,4 @@
+import { formatList, formatNumber, t } from "@/i18n"
 import type { Project, SystemInfo } from "./types"
 
 /**
@@ -9,13 +10,17 @@ import type { Project, SystemInfo } from "./types"
  * The verdicts are the ones "Can my PC run GTA VI?" (portwatch-vi, lib/pc-check.ts)
  * gives a part: yes, close, no. A part is yes at 95% of what is wanted (benchmark
  * suites differ by about that much) and close at 80%. `concern` is the "no".
+ *
+ * The texts are in the current language: call `assess` while drawing, from a component
+ * that uses `useT()`, so they follow a change of language.
  */
 export type Level = "good" | "close" | "concern" | "unknown"
 
 export interface Check {
   level: Level
   label: string
-  value: string
+  /** What the PC has; null when it isn't known. */
+  value: string | null
   note: string
 }
 
@@ -56,12 +61,20 @@ export function withSpec(
   if (!spec || (spec.spec_ram_gb == null && spec.spec_vram_gb == null)) return system
   const base: SystemInfo = system ?? { gpus: [], ram_gb: null, cpu: null, cpu_cores: null }
   const gpus = base.gpus.map((g, i) => (i === 0 && spec.spec_vram_gb != null ? { ...g, vram_gb: spec.spec_vram_gb } : g))
-  if (base.gpus.length === 0 && spec.spec_vram_gb != null) gpus.push({ name: "Unknown", vendor: "Other", vram_gb: spec.spec_vram_gb })
+  if (base.gpus.length === 0 && spec.spec_vram_gb != null) gpus.push({ name: "", vendor: "Other", vram_gb: spec.spec_vram_gb })
   return { ...base, gpus, ram_gb: spec.spec_ram_gb ?? base.ram_gb }
 }
 
-/** The list's order. 0 keeps the order the launcher was given (VIPortLive's), the rest sort by it. */
-export const SORTS = ["VIPortLive order", "Name", "Frame rate", "Stars", "Recent commits"] as const
+/**
+ * The list's orders, by their index (`list_sort`). 0 keeps the order the launcher was given
+ * (VIPortLive's), the rest sort by it. Their names: `sortLabel`.
+ */
+export const SORTS = ["listing", "name", "fps", "stars", "commits"] as const
+
+export type SortId = (typeof SORTS)[number]
+
+/** An order's name in the current language ("Frame rate"). */
+export const sortLabel = (id: SortId) => t(`format.sort.${id}`)
 
 /** A stable sort of a project list by the chosen order; unknown values sort last. */
 export function sortProjects(list: Project[], sort: number): Project[] {
@@ -87,43 +100,45 @@ export function ratio(have: number, used: number): Level {
   return have >= used * 0.95 ? "good" : have >= used * 0.8 ? "close" : "concern"
 }
 
-const gb = (n: number) => `${Number.isInteger(n) ? n : n.toFixed(1)} GB`
+/** A size in GB, written the current language's way: "16 GB", "7.5 GB". */
+const gb = (n: number) => `${formatNumber(n, Number.isInteger(n) ? undefined : { minimumFractionDigits: 1, maximumFractionDigits: 1 })} GB`
 
 export function assess(p: Project, system: SystemInfo | null): Assessment {
   const gpu = mainGpu(system)
   const match = matchesCard(p, system)
+  const cards = formatList(p.gpu)
   const gpuCheck: Check = {
-    label: "Graphics card",
-    value: gpu ? gpu.name.replace(/^(NVIDIA|AMD|Intel\(R\)) /, "") : "Unknown",
+    label: t("format.compat.gpu"),
+    value: gpu?.name ? gpu.name.replace(/^(NVIDIA|AMD|Intel\(R\)) /, "") : null,
     level: match === true ? "good" : match === false ? "concern" : "unknown",
     note:
       match === true
-        ? `Made for ${gpu!.vendor} cards, like yours`
+        ? t("format.compat.madeForYours", { vendor: gpu!.vendor })
         : match === false
-          ? `Made for ${p.gpu.join(" and ")} cards`
+          ? t("format.compat.madeFor", { cards })
           : p.gpu.length === 0
-            ? "The author hasn't said which cards it runs on"
-            : `Made for ${p.gpu.join(" and ")} cards`,
+            ? t("format.compat.noCards")
+            : t("format.compat.madeFor", { cards }),
   }
   const memory = (label: string, have: number | null | undefined, used: number | null): Check => {
     const level: Level = have && used ? ratio(have, used) : "unknown"
     return {
       label,
-      value: have ? gb(have) : "Unknown",
+      value: have ? gb(have) : null,
       level,
       note: !used
-        ? "No usage reported"
+        ? t("format.compat.noUsage")
         : !have
-          ? `The author reported about ${gb(used)}`
+          ? t("format.compat.reported", { amount: gb(used) })
           : level === "good"
-            ? `Above the ${gb(used)} the author reported`
+            ? t("format.compat.above", { amount: gb(used) })
             : level === "close"
-              ? `Close to the ${gb(used)} the author reported`
-              : `Below the ${gb(used)} the author reported`,
+              ? t("format.compat.close", { amount: gb(used) })
+              : t("format.compat.below", { amount: gb(used) }),
     }
   }
-  const ram = memory("System memory", system?.ram_gb, p.reported.ram_gb)
-  const vram = memory("Video memory", gpu?.vram_gb, p.reported.vram_gb)
+  const ram = memory(t("format.compat.ram"), system?.ram_gb, p.reported.ram_gb)
+  const vram = memory(t("format.compat.vram"), gpu?.vram_gb, p.reported.vram_gb)
   const checks = [gpuCheck, ram, vram]
   const level: Level = checks.some((c) => c.level === "concern")
     ? "concern"
@@ -135,22 +150,22 @@ export function assess(p: Project, system: SystemInfo | null): Assessment {
   const headline =
     level === "concern"
       ? gpuCheck.level === "concern"
-        ? `Made for ${p.gpu.join(" and ")}: it may not start, or run slowly, on your card.`
-        : "It may run slowly on your PC: it used more memory on the author's."
+        ? t("format.compat.headline.card", { cards })
+        : t("format.compat.headline.memory")
       : level === "close"
-        ? "Close to what your PC has: it may run a little slower than the author's."
+        ? t("format.compat.headline.close")
         : level === "good"
-          ? "A good match for your PC, from what its author reported."
-          : "Not enough is known yet to compare it with your PC."
+          ? t("format.compat.headline.good")
+          : t("format.compat.headline.unknown")
   const warning =
     gpuCheck.level === "concern"
-      ? `Made for ${p.gpu.join(" and ")} cards, not ${gpu!.vendor}`
+      ? t("format.compat.warning.card", { cards, vendor: gpu!.vendor })
       : ram.level === "concern"
-        ? `Used ${gb(p.reported.ram_gb!)} of memory on the author's PC; yours has ${gb(system!.ram_gb!)}`
+        ? t("format.compat.warning.ram", { used: gb(p.reported.ram_gb!), have: gb(system!.ram_gb!) })
         : vram.level === "concern"
-          ? `Used ${gb(p.reported.vram_gb!)} of video memory on the author's PC; yours has ${gb(gpu!.vram_gb!)}`
+          ? t("format.compat.warning.vram", { used: gb(p.reported.vram_gb!), have: gb(gpu!.vram_gb!) })
           : level === "close"
-            ? "Close to your PC's limits: it may run a little slower"
+            ? t("format.compat.warning.close")
             : null
   return { level, headline, warning, gpu: gpuCheck, ram, vram }
 }

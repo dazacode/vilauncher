@@ -4,18 +4,22 @@ import { Sidebar } from "@/components/shell/sidebar"
 import { WindowControls } from "@/components/shell/window-controls"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { Dialogs } from "@/features/dialogs/dialogs"
+import { useT } from "@/i18n"
 import { LibrarySkeleton, LibraryView } from "@/features/library/library-view"
 import { SettingsView } from "@/features/settings/settings-view"
-import { getBackend } from "@/lib/api"
+import { act, getBackend } from "@/lib/api"
 import { scheduleRefresh, useStore } from "@/lib/store"
 
 export function App() {
+  const t = useT()
   const snap = useStore((s) => s.snap)
   const view = useStore((s) => s.view)
   useEffect(() => {
     let off: (() => void) | undefined
     void getBackend().then(async (b) => {
       off = await b.onChange(scheduleRefresh)
+      // The launcher follows the system's language unless the player chose one.
+      await act({ type: "set_system_languages", languages: [...navigator.languages] }).catch(() => undefined)
       scheduleRefresh()
     })
     return () => off?.()
@@ -36,6 +40,7 @@ export function App() {
       <Toaster
         position="bottom-right"
         theme="dark"
+        containerAriaLabel={t("shell.notifications")}
         toastOptions={{ className: "!glass !rounded-lg !text-fg !border-line !text-[13px]" }}
       />
     </TooltipProvider>

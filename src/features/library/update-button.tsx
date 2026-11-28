@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { Button, type ButtonProps } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
+import { useT } from "@/i18n"
 import { run, useStore } from "@/lib/store"
 
 /**
@@ -9,6 +10,7 @@ import { run, useStore } from "@/lib/store"
  * ("Don't show this again"); `dialog` must be rendered once by the caller.
  */
 export function useUpdateWarning(repo: string) {
+  const t = useT()
   const skip = useStore((s) => s.snap?.settings.skip_update_warning ?? false)
   const [open, setOpen] = useState(false)
   const [dontShow, setDontShow] = useState(false)
@@ -23,22 +25,22 @@ export function useUpdateWarning(repo: string) {
     <Dialog
       open={open}
       onOpenChange={setOpen}
-      title="Update this project?"
-      description="Updating replaces this build. The previous build is kept, so you can restore it once, but the project's source is replaced. Uncommitted changes in the project folder are saved as a patch file in VILauncher's patches folder before the update. The build takes several minutes. Your saves are not touched."
+      title={t("library.updateDialog.title")}
+      description={t("library.updateDialog.description")}
       footer={
         <>
           <Button variant="primary" onClick={() => void update()}>
-            Update
+            {t("library.action.update")}
           </Button>
           <Button variant="ghost" onClick={() => setOpen(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
         </>
       }
     >
       <label className="flex cursor-pointer items-center gap-2.5 text-body text-fg-2">
         <input type="checkbox" checked={dontShow} onChange={(e) => setDontShow(e.target.checked)} className="size-4" />
-        Don't show this again
+        {t("library.updateDialog.dontShow")}
       </label>
     </Dialog>
   )

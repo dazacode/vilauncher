@@ -7,22 +7,25 @@ import { Input, Textarea } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { GraphicsGroups } from "@/features/library/graphics-tab"
+import { LanguageSelect } from "@/features/shared/language-select"
 import { ResponsibilityDialog } from "@/features/shared/responsibility"
+import { formatBytes, formatList, Trans, useT } from "@/i18n"
 import { openUrl, pickFolder } from "@/lib/api"
 import { useDraft } from "@/lib/hooks"
-import { pawsUnlocked, setTheme, THEMES, type Theme, useTheme } from "@/lib/theme"
+import { pawsUnlocked, setTheme, THEMES, type Theme, themeLabel, useTheme } from "@/lib/theme"
 import { run, useStore } from "@/lib/store"
 import type { StorageView } from "@/lib/types"
 
 export function SettingsView() {
+  const t = useT()
   const snap = useStore((s) => s.snap)!
   const screenshot = useStore((s) => s.screenshot)
   const setScreenshot = useStore((s) => s.setScreenshot)
   const s = snap.settings
   const theme = useTheme()
   const looks = [
-    ...THEMES.map((t) => ({ value: t.id as string, label: t.label })),
-    ...(pawsUnlocked() || theme === "paws" ? [{ value: "paws", label: "Paws" }] : []),
+    ...THEMES.map((look) => ({ value: look.id as string, label: themeLabel(look.id) })),
+    ...(pawsUnlocked() || theme === "paws" ? [{ value: "paws", label: themeLabel("paws") }] : []),
   ]
   const [askAgents, setAskAgents] = useState(false)
   // Turning agents on needs the warning once; the switch only moves after Continue.
@@ -38,78 +41,97 @@ export function SettingsView() {
       <div className="drag h-12" />
       <div className="mx-auto max-w-[760px] space-y-10 px-10 pb-16">
         <header>
-          <h1 className="font-display text-page font-bold tracking-[-0.02em] text-fg">Settings</h1>
+          <h1 className="font-display text-page font-bold tracking-[-0.02em] text-fg">{t("settings.title")}</h1>
           <p className="mt-1 text-body text-fg-3">{snap.brand.name} {snap.version}</p>
         </header>
 
-        <Group title="Appearance" description="Dark is the default. Light and calm are flat, with no glow. The look is remembered on this PC.">
-          <Row label="Look" hint="Applies at once.">
-            <Segmented label="Look" size="sm" value={theme} options={looks} onChange={(v) => setTheme(v as Theme)} />
+        <Group title={t("settings.appearance.title")} description={t("settings.appearance.description")}>
+          <Row label={t("settings.appearance.look")} hint={t("settings.appearance.lookHint")}>
+            <Segmented label={t("settings.appearance.look")} size="sm" value={theme} options={looks} onChange={(v) => setTheme(v as Theme)} />
           </Row>
+          <LanguageRow />
         </Group>
 
-        <Group title="Privacy">
-          <Row label="Screenshot mode" hint="Shows example names and hides paths, notes and logs, for sharing pictures of the launcher.">
-            <Switch checked={screenshot} onCheckedChange={setScreenshot} aria-label="Screenshot mode" />
+        <Group title={t("settings.privacy.title")}>
+          <Row label={t("settings.privacy.screenshot")} hint={t("settings.privacy.screenshotHint")}>
+            <Switch checked={screenshot} onCheckedChange={setScreenshot} aria-label={t("settings.privacy.screenshot")} />
           </Row>
         </Group>
 
         {screenshot ? (
-          <p className="text-body text-fg-3">The other settings are hidden in Screenshot mode.</p>
+          <p className="text-body text-fg-3">{t("settings.privacy.othersHidden")}</p>
         ) : (
           <>
-            <Group title="Game files" description="The folder with game_scarlett_master.exe from your own copy of the game. VILauncher never downloads game files.">
-              <Row stacked label="Folder">
-                <Input value={gameDir} onChange={(e) => setGameDir(e.target.value)} placeholder="Paste the folder's path" className="font-mono text-secondary" aria-label="Game folder" />
-                <Button size="md" onClick={async () => { const d = await pickFolder("The folder with your game files"); if (d) void run({ type: "set_game_dir", path: d }) }}>
-                  <FolderOpen /> Choose…
+            <Group title={t("settings.gameFiles.title")} description={t("settings.gameFiles.description")}>
+              <Row stacked label={t("settings.gameFiles.folder")}>
+                <Input value={gameDir} onChange={(e) => setGameDir(e.target.value)} placeholder={t("settings.gameFiles.placeholder")} className="font-mono text-secondary" aria-label={t("settings.gameFiles.label")} />
+                <Button size="md" onClick={async () => { const d = await pickFolder(t("settings.gameFiles.pickTitle")); if (d) void run({ type: "set_game_dir", path: d }) }}>
+                  <FolderOpen /> {t("common.choose")}
                 </Button>
                 <Button size="md" variant="ghost" disabled={snap.files.searching} onClick={() => void run({ type: "find_game_files" })}>
-                  {snap.files.searching ? <Spinner /> : <Search />} {snap.files.searching ? "Searching" : "Find"}
+                  {snap.files.searching ? <Spinner /> : <Search />} {snap.files.searching ? t("settings.gameFiles.searching") : t("settings.gameFiles.find")}
                 </Button>
               </Row>
-              <Row label="Status" hint={snap.files.find_error ?? undefined}>
+              <Row label={t("settings.gameFiles.status")} hint={snap.files.find_error ?? undefined}>
                 <FilesStatus />
               </Row>
             </Group>
 
-            <Group title="Build tools" description="Projects are downloaded with Git and built with Rust and the C++ build tools, once, on this PC.">
-              <Row label={!snap.tools ? "Checking…" : snap.tools.ready ? "Git, Rust and the C++ build tools are ready" : `Missing ${snap.tools.missing.join(", ")}`} hint={snap.tools && !snap.tools.ready ? "Installs with winget; Windows asks for permission." : undefined}>
-                {snap.tools && !snap.tools.ready && <Button size="sm" variant="primary" disabled={busy} onClick={() => void run({ type: "install_tools" })}>Install missing tools</Button>}
+            <Group title={t("settings.tools.title")} description={t("settings.tools.description")}>
+              <Row
+                label={!snap.tools ? t("common.checking") : snap.tools.ready ? t("settings.tools.ready") : t("settings.tools.missing", { tools: formatList(snap.tools.missing) })}
+                hint={snap.tools && !snap.tools.ready ? t("settings.tools.hint") : undefined}
+              >
+                {snap.tools && !snap.tools.ready && <Button size="sm" variant="primary" disabled={busy} onClick={() => void run({ type: "install_tools" })}>{t("settings.tools.install")}</Button>}
                 {snap.tools?.ready && <Dot ok />}
               </Row>
             </Group>
 
             <div className="space-y-8">
               <div className="px-1">
-                <h2 className="font-display text-section font-semibold text-fg">Default graphics</h2>
-                <p className="mt-0.5 text-secondary text-fg-3">Every project uses these unless you change its own in its Graphics tab.</p>
+                <h2 className="font-display text-section font-semibold text-fg">{t("settings.graphics.title")}</h2>
+                <p className="mt-0.5 text-secondary text-fg-3">{t("settings.graphics.description")}</p>
               </div>
               <GraphicsGroups graphics={s.graphics} onChange={(graphics) => void run({ type: "set_default_graphics", graphics })} />
             </div>
 
-            <Group title="Shaders and launch" description="VIctory can translate the game's shaders before you play, so the game doesn't stop to do it on the way. Each project keeps its own cache.">
-              <Row label="Warm up shaders before playing" hint="Runs each time you press Play. The first one takes minutes and about 1.3 GB.">
-                <Switch checked={s.warm_before_play} onCheckedChange={(v) => void run({ type: "set_settings", patch: { warm_before_play: v } })} aria-label="Warm up shaders before playing" />
+            <Group title={t("settings.shaders.title")} description={t("settings.shaders.description")}>
+              <Row label={t("settings.shaders.warm")} hint={t("settings.shaders.warmHint")}>
+                <Switch checked={s.warm_before_play} onCheckedChange={(v) => void run({ type: "set_settings", patch: { warm_before_play: v } })} aria-label={t("settings.shaders.warm")} />
               </Row>
-              <Row label="Also build the GPU pipelines" hint="Slow: about 20 minutes on 16 threads, hours after a translator update.">
-                <Switch checked={s.warm_pipelines} onCheckedChange={(v) => void run({ type: "set_settings", patch: { warm_pipelines: v } })} aria-label="Also build the GPU pipelines" />
+              <Row label={t("settings.shaders.pipelines")} hint={t("settings.shaders.pipelinesHint")}>
+                <Switch checked={s.warm_pipelines} onCheckedChange={(v) => void run({ type: "set_settings", patch: { warm_pipelines: v } })} aria-label={t("settings.shaders.pipelines")} />
               </Row>
-              <Row stacked label="Default launch arguments" hint="Added to victory run, for example --strict. Arguments for the game go after --.">
-                <Input value={args} onChange={(e) => setArgs(e.target.value)} placeholder="--strict -- -title-argument" className="font-mono text-secondary" aria-label="Default launch arguments" />
+              <Row stacked label={t("settings.shaders.args")} hint={t("settings.shaders.argsHint")}>
+                <Input
+                  value={args}
+                  onChange={(e) => setArgs(e.target.value)}
+                  // i18n-ignore: an example command line
+                  placeholder="--strict -- -title-argument"
+                  className="font-mono text-secondary"
+                  aria-label={t("settings.shaders.args")}
+                />
               </Row>
-              <Row stacked label="Default launch switches" hint="One VICTORY_NAME=value per line.">
-                <Textarea value={env} onChange={(e) => setEnv(e.target.value)} placeholder="VICTORY_NAME=value" rows={3} className="font-mono text-secondary" aria-label="Default launch switches" />
+              <Row stacked label={t("settings.shaders.switches")} hint={t("settings.shaders.switchesHint")}>
+                <Textarea
+                  value={env}
+                  onChange={(e) => setEnv(e.target.value)}
+                  // i18n-ignore: an environment variable, as it is written
+                  placeholder="VICTORY_NAME=value"
+                  rows={3}
+                  className="font-mono text-secondary"
+                  aria-label={t("settings.shaders.switches")}
+                />
               </Row>
             </Group>
 
-            <Group title="Storage">
-              <Row label="Install folder" hint={<span className="font-mono break-all" data-selectable>{s.workspace}</span>}>
-                <Button size="sm" disabled={busy} onClick={async () => { const d = await pickFolder("Where projects are downloaded and built"); if (d) void run({ type: "choose_install_dir", path: d }) }}>Change…</Button>
-                {s.install_dir_custom && <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run({ type: "use_default_install_dir" })}>Use default</Button>}
+            <Group title={t("settings.storage.title")}>
+              <Row label={t("settings.storage.installFolder")} hint={<span className="font-mono break-all" data-selectable>{s.workspace}</span>}>
+                <Button size="sm" disabled={busy} onClick={async () => { const d = await pickFolder(t("settings.storage.pickTitle")); if (d) void run({ type: "choose_install_dir", path: d }) }}>{t("common.change")}</Button>
+                {s.install_dir_custom && <Button size="sm" variant="ghost" disabled={busy} onClick={() => void run({ type: "use_default_install_dir" })}>{t("settings.storage.useDefault")}</Button>}
               </Row>
-              <Row label="Background pictures" hint="Put .jpg or .png pictures here and they show behind every project.">
-                <Button size="sm" onClick={() => void run({ type: "open", what: "backgrounds" })}><FolderOpen /> Open folder</Button>
+              <Row label={t("settings.storage.backgrounds")} hint={t("settings.storage.backgroundsHint")}>
+                <Button size="sm" onClick={() => void run({ type: "open", what: "backgrounds" })}><FolderOpen /> {t("common.openFolder")}</Button>
               </Row>
             </Group>
 
@@ -117,12 +139,12 @@ export function SettingsView() {
           </>
         )}
 
-        <Group title="AI agents">
-          <Row label="Let AI agents help with builds" hint="Off by default. Agents can read logs and, when you confirm, apply patches. See the README section 'Agent tools'.">
+        <Group title={t("settings.agents.title")}>
+          <Row label={t("settings.agents.access")} hint={t("settings.agents.hint")}>
             <Switch
               checked={snap.settings.agent_access}
               onCheckedChange={(v) => (v ? turnOnAgents() : void run({ type: "set_agent_access", enabled: false }))}
-              aria-label="Let AI agents help with builds"
+              aria-label={t("settings.agents.access")}
             />
           </Row>
           <ResponsibilityDialog
@@ -133,35 +155,47 @@ export function SettingsView() {
           />
         </Group>
 
-        <Group title="Updates">
+        <Group title={t("settings.updates.title")}>
           <Row
-            label={u.state === "available" ? `${u.tag} is available` : u.state === "downloaded" ? "The update is ready" : u.state === "checking" ? "Checking for updates…" : u.state === "downloading" ? "Downloading and verifying…" : u.state === "failed" ? "The update check failed" : "You're up to date"}
-            hint={u.restart_error ?? u.error ?? `Version ${snap.version}`}
+            label={
+              u.state === "available"
+                ? t("settings.updates.available", { tag: u.tag ?? "" })
+                : u.state === "downloaded"
+                  ? t("settings.updates.ready")
+                  : u.state === "checking"
+                    ? t("settings.updates.checking")
+                    : u.state === "downloading"
+                      ? t("settings.updates.downloading")
+                      : u.state === "failed"
+                        ? t("settings.updates.failed")
+                        : t("settings.updates.current")
+            }
+            hint={u.restart_error ?? u.error ?? t("settings.updates.version", { version: snap.version })}
           >
-            {u.state === "available" && <Button size="sm" variant="primary" disabled={busy} onClick={() => void run({ type: "download_update" })}>Update and restart</Button>}
-            {u.state === "downloaded" && <Button size="sm" variant="primary" disabled={busy} onClick={() => void run({ type: "restart_to_update" })}>Restart now</Button>}
+            {u.state === "available" && <Button size="sm" variant="primary" disabled={busy} onClick={() => void run({ type: "download_update" })}>{t("settings.updates.install")}</Button>}
+            {u.state === "downloaded" && <Button size="sm" variant="primary" disabled={busy} onClick={() => void run({ type: "restart_to_update" })}>{t("settings.updates.restart")}</Button>}
             {(u.state === "checking" || u.state === "downloading") && <Spinner />}
-            {!["available", "downloaded", "checking", "downloading"].includes(u.state) && <Button size="sm" onClick={() => void run({ type: "check_update" })}>Check now</Button>}
-            <Button size="sm" variant="ghost" onClick={() => void openUrl(u.releases)}>Release notes</Button>
+            {!["available", "downloaded", "checking", "downloading"].includes(u.state) && <Button size="sm" onClick={() => void run({ type: "check_update" })}>{t("settings.updates.check")}</Button>}
+            <Button size="sm" variant="ghost" onClick={() => void openUrl(u.releases)}>{t("settings.updates.notes")}</Button>
           </Row>
-          <Row label="Warn before updating a project" hint="Shows what an update replaces, and that the previous build can be restored once.">
+          <Row label={t("settings.updates.warn")} hint={t("settings.updates.warnHint")}>
             <Switch
               checked={!snap.settings.skip_update_warning}
               onCheckedChange={(v) => void run({ type: "set_update_warning", show: v })}
-              aria-label="Warn before updating a project"
+              aria-label={t("settings.updates.warn")}
             />
           </Row>
         </Group>
 
-        <Group title="About">
-          <Row label={`${snap.brand.name} by the ${snap.brand.team}`} hint="The library comes from VIPortLive, built on PortWatch's tracker. The projects are their authors' work, built on VIctory by Marvisak and its contributors.">
+        <Group title={t("settings.about.title")}>
+          <Row label={t("settings.about.by", { name: snap.brand.name, team: snap.brand.team })} hint={t("settings.about.credits")}>
             <Button size="sm" variant="ghost" onClick={() => void openUrl(snap.brand.site)}><ExternalLink /> {snap.brand.site_label}</Button>
           </Row>
-          <Row label="Based on Mandyhub by Zettrox" hint="Free software under the GNU General Public License v3 or later. Redesign of the original by ellion369; save picker, checkpoints, presets and build tracking by TheGameOnAddict.">
-            <Button size="sm" variant="ghost" onClick={() => void openUrl(snap.brand.source)}><ExternalLink /> Source code</Button>
+          <Row label={t("settings.about.basedOn")} hint={t("settings.about.license")}>
+            <Button size="sm" variant="ghost" onClick={() => void openUrl(snap.brand.source)}><ExternalLink /> {t("settings.about.source")}</Button>
           </Row>
-          <Row label="Legal notice" hint="You provide your own copy of the game, and you are responsible for what you install, build and run. VILauncher only manages the projects.">
-            <Button size="sm" variant="ghost" onClick={() => useStore.getState().open({ kind: "notice" })}>Read</Button>
+          <Row label={t("settings.about.legal")} hint={t("settings.about.legalHint")}>
+            <Button size="sm" variant="ghost" onClick={() => useStore.getState().open({ kind: "notice" })}>{t("common.read")}</Button>
           </Row>
         </Group>
       </div>
@@ -169,21 +203,18 @@ export function SettingsView() {
   )
 }
 
-/** Sizes in KB, MB, GB or TB with one decimal. */
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  const units = ["KB", "MB", "GB", "TB"]
-  let value = bytes / 1024
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024
-    unit++
-  }
-  return `${value.toFixed(1)} ${units[unit]}`
+function LanguageRow() {
+  const t = useT()
+  return (
+    <Row label={t("settings.language.label")} hint={t("settings.language.hint")}>
+      <LanguageSelect />
+    </Row>
+  )
 }
 
 /** What each project takes on disk, and the safe parts to clear. Saves are never offered. */
 function DiskSpace() {
+  const t = useT()
   const busy = useStore((s) => s.snap!.job.running)
   const [view, setView] = useState<StorageView | null>(null)
   const [scanning, setScanning] = useState(false)
@@ -209,22 +240,24 @@ function DiskSpace() {
     setArmed(null)
     await run(
       kind === "cache" ? { type: "clear_cache", repo } : { type: "clear_previous", repo },
-      kind === "cache" ? "Shader cache cleared" : "Previous build cleared",
+      kind === "cache" ? t("settings.disk.cacheCleared") : t("settings.disk.previousCleared"),
     )
     await scan()
   }
 
   return (
-    <Group
-      title="Disk space"
-      description="What VILauncher keeps on this PC. Saves are always kept. Clearing a shader cache makes its next Play slow again while it is rebuilt."
-    >
+    <Group title={t("settings.disk.title")} description={t("settings.disk.description")}>
       <Row
-        label={view ? `${formatBytes(view.total_bytes)} in use` : "Measuring…"}
-        hint={view && `${formatBytes(view.other_bytes)} outside the projects (checkpoints, logs)${view.free_bytes != null ? `. ${formatBytes(view.free_bytes)} free on the drive` : ""}.`}
+        label={view ? t("settings.disk.inUse", { size: formatBytes(view.total_bytes) }) : t("settings.disk.measuring")}
+        hint={
+          view &&
+          (view.free_bytes != null
+            ? t("settings.disk.outsideFree", { size: formatBytes(view.other_bytes), free: formatBytes(view.free_bytes) })
+            : t("settings.disk.outside", { size: formatBytes(view.other_bytes) }))
+        }
       >
         <Button size="sm" variant="ghost" disabled={scanning} onClick={() => void scan()}>
-          {scanning ? <Spinner /> : <RefreshCw />} Refresh
+          {scanning ? <Spinner /> : <RefreshCw />} {t("common.refresh")}
         </Button>
       </Row>
       {view && (
@@ -232,12 +265,12 @@ function DiskSpace() {
           <table className="w-full min-w-[560px] text-secondary">
             <thead>
               <tr className="text-left text-fg-3">
-                <th className="pb-2 font-normal">Project</th>
-                <th className="pb-2 text-right font-normal">Sources</th>
-                <th className="pb-2 text-right font-normal">Builds</th>
-                <th className="pb-2 text-right font-normal">Previous build</th>
-                <th className="pb-2 text-right font-normal">Shader cache</th>
-                <th className="pb-2 text-right font-normal">Saves (kept)</th>
+                <th className="pb-2 font-normal">{t("settings.disk.project")}</th>
+                <th className="pb-2 text-right font-normal">{t("settings.disk.sources")}</th>
+                <th className="pb-2 text-right font-normal">{t("settings.disk.builds")}</th>
+                <th className="pb-2 text-right font-normal">{t("settings.disk.previous")}</th>
+                <th className="pb-2 text-right font-normal">{t("settings.disk.cache")}</th>
+                <th className="pb-2 text-right font-normal">{t("settings.disk.saves")}</th>
               </tr>
             </thead>
             <tbody>
@@ -258,10 +291,10 @@ function DiskSpace() {
                       <td colSpan={6} className="pb-3">
                         <div className="flex flex-wrap justify-end gap-2">
                           <Button size="sm" variant="ghost" disabled={busy || scanning || row.previous === 0} onClick={() => void clear("previous", row.repo, previousKey)}>
-                            {armed === previousKey ? "Confirm" : "Clear previous build"}
+                            {armed === previousKey ? t("common.confirm") : t("settings.disk.clearPrevious")}
                           </Button>
                           <Button size="sm" variant="ghost" disabled={busy || scanning || row.cache === 0} onClick={() => void clear("cache", row.repo, cacheKey)}>
-                            {armed === cacheKey ? "Confirm" : "Clear shader cache"}
+                            {armed === cacheKey ? t("common.confirm") : t("settings.disk.clearCache")}
                           </Button>
                         </div>
                       </td>
@@ -282,14 +315,16 @@ function Dot({ ok }: { ok: boolean }) {
 }
 
 function FilesStatus() {
+  const t = useT()
   const f = useStore((s) => s.snap!.files)
-  if (!f.chosen) return <span className="text-secondary text-fg-3">No folder chosen</span>
-  if (f.ok) return <span className="flex items-center gap-2 text-secondary text-ok"><Dot ok /> All game files found</span>
-  if (f.unplugged) return <span className="flex items-center gap-2 text-secondary text-bad"><Dot ok={false} /> The drive with your game files is not connected</span>
-  if (f.empty) return <span className="flex items-center gap-2 text-secondary text-bad"><Dot ok={false} /> This folder is empty</span>
+  if (!f.chosen) return <span className="text-secondary text-fg-3">{t("settings.gameFiles.none")}</span>
+  if (f.ok) return <span className="flex items-center gap-2 text-secondary text-ok"><Dot ok /> {t("settings.gameFiles.ok")}</span>
+  if (f.unplugged) return <span className="flex items-center gap-2 text-secondary text-bad"><Dot ok={false} /> {t("settings.gameFiles.unplugged")}</span>
+  if (f.empty) return <span className="flex items-center gap-2 text-secondary text-bad"><Dot ok={false} /> {t("settings.gameFiles.empty")}</span>
   return (
     <span className="flex max-w-80 flex-wrap items-center justify-end gap-x-2 text-secondary text-bad">
-      <Dot ok={false} /> Missing <span className="font-mono text-caption text-fg-2">{f.missing.join(", ")}</span>
+      <Dot ok={false} />
+      <Trans k="settings.gameFiles.missing" values={{ files: f.missing.join(", ") }} tags={{ files: (list) => <span className="font-mono text-caption text-fg-2">{list}</span> }} />
     </span>
   )
 }

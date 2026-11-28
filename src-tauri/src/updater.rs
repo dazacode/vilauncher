@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use crate::brand::{RELEASE_ASSET as ASSET, REPOSITORY};
 
-pub const RELEASES: &str = "https://github.com/dazacode/vilauncher/releases";
+pub const RELEASES: &str = "https://github.com/arno721/vilauncher/releases";
 const MAX_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Deserialize)]
@@ -58,7 +58,7 @@ impl Updater {
             Ok(Err(error)) => State::Failed(error),
             Err(mpsc::TryRecvError::Empty) => return,
             Err(mpsc::TryRecvError::Disconnected) => {
-                State::Failed("Update task stopped unexpectedly.".into())
+                State::Failed(msg_str!("Update task stopped unexpectedly.").into())
             }
         };
         self.result = None;
@@ -134,9 +134,10 @@ fn check_release() -> Result<State, String> {
         Err(ureq::Error::Status(404, _)) => return Ok(State::Current),
         Err(error) => return Err(error.to_string()),
     };
-    let available =
-        version(&release.tag_name).ok_or("The release tag is not a supported version.")?;
-    let current = version(env!("CARGO_PKG_VERSION")).ok_or("The installed version is invalid.")?;
+    let available = version(&release.tag_name)
+        .ok_or(msg_str!("The release tag is not a supported version."))?;
+    let current = version(env!("CARGO_PKG_VERSION"))
+        .ok_or(msg_str!("The installed version is invalid."))?;
     if available > current {
         Ok(State::Available(release))
     } else {
@@ -149,14 +150,14 @@ fn download_release(release: &Release) -> Result<DownloadedUpdate, String> {
         .assets
         .iter()
         .find(|asset| asset.name == ASSET)
-        .ok_or_else(|| format!("This release has no {ASSET} download."))?;
+        .ok_or_else(|| msg!("This release has no {file} download.", file = ASSET))?;
     let digest = asset
         .digest
         .as_deref()
         .and_then(|digest| digest.strip_prefix("sha256:"))
-        .ok_or("GitHub did not provide a SHA-256 checksum for the executable.")?;
+        .ok_or(msg_str!("GitHub did not provide a SHA-256 checksum for the executable."))?;
     if asset.size == 0 || asset.size > MAX_BYTES {
-        return Err("The executable size is outside the supported limit.".into());
+        return Err(msg_str!("The executable size is outside the supported limit.").into());
     }
     let url = format!("{RELEASES}/download/{}/{ASSET}", release.tag_name);
     let response = agent()
@@ -170,7 +171,7 @@ fn download_release(release: &Release) -> Result<DownloadedUpdate, String> {
         .read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
     if !matches_asset(&bytes, asset.size, digest) {
-        return Err("The download did not match GitHub’s size and SHA-256 checksum.".into());
+        return Err(msg_str!("The download did not match GitHub’s size and SHA-256 checksum.").into());
     }
     let folder = crate::default_workspace()
         .join("updates")
@@ -195,49 +196,49 @@ pub fn restart_with(update: &DownloadedUpdate) -> Result<(), String> {
     let staged = executable.with_extension(format!("vilauncher-{}.tmp", std::process::id()));
     let backup = executable.with_extension("vilauncher-previous.exe");
     let source = fs::File::open(&update.path)
-        .map_err(|error| format!("Could not open the downloaded update: {error}"))?;
+        .map_err(|error| msg!("Could not open the downloaded update: {error}"))?;
     let mut bytes = Vec::new();
     source
         .take(update.size + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
     if !matches_asset(&bytes, update.size, &update.digest) {
-        return Err(
+        return Err(msg_str!(
             "The downloaded update changed on disk. Check for updates and download it again."
-                .into(),
-        );
+        )
+        .into());
     }
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(&staged)
-        .map_err(|error| format!("Could not stage the update beside VILauncher: {error}"))?;
+        .map_err(|error| msg!("Could not stage the update beside VILauncher: {error}"))?;
     let write_result = file.write_all(&bytes).and_then(|_| file.sync_all());
     drop(file);
     let result = (|| -> Result<(), String> {
-        write_result.map_err(|error| format!("Could not save the staged update: {error}"))?;
+        write_result.map_err(|error| msg!("Could not save the staged update: {error}"))?;
         match fs::remove_file(&backup) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => {
-                return Err(format!(
+                return Err(msg!(
                     "Could not remove the previous update backup: {error}"
                 ))
             }
         }
         fs::rename(&executable, &backup)
-            .map_err(|error| format!("Could not move the running launcher aside: {error}"))?;
+            .map_err(|error| msg!("Could not move the running launcher aside: {error}"))?;
         let restore = |message: String| match fs::rename(&backup, &executable) {
             Ok(()) => message,
-            Err(error) => format!(
-                "{message} Could not restore the previous version: {error}. Backup: {}",
-                backup.display()
+            Err(error) => msg!(
+                "{message} Could not restore the previous version: {error}. Backup: {path}",
+                path = backup.display()
             ),
         };
         fs::rename(&staged, &executable)
-            .map_err(|error| restore(format!("Could not put the update in place: {error}")))?;
+            .map_err(|error| restore(msg!("Could not put the update in place: {error}")))?;
         if let Err(error) = std::process::Command::new(&executable).spawn() {
-            return Err(restore(format!("Could not start the new version: {error}")));
+            return Err(restore(msg!("Could not start the new version: {error}")));
         }
         Ok(())
     })();

@@ -2,6 +2,7 @@
 //! read from a project's PowerShell launch scripts (scripts/play*.ps1).
 
 use super::{project_key, repo_dir, LaunchPreset, Project, ProjectLaunch};
+use crate::i18n::localize;
 use crate::script_preset;
 use serde::Serialize;
 use std::fs::File;
@@ -68,7 +69,8 @@ impl PlayPresetPicker {
         })
     }
 
-    /// The choices as the window shows them.
+    /// The choices as the window shows them, in the player's language (a
+    /// saved preset's own name stays as the player wrote it).
     pub(crate) fn describe(&self) -> PlayChoice {
         let options = self
             .options
@@ -77,20 +79,23 @@ impl PlayPresetPicker {
             .map(|(index, preset)| {
                 let (title, detail) = match preset.repo_script.as_deref() {
                     Some(script) if is_custom_script(script) => (
-                        "Detected custom script".to_owned(),
+                        localize(msg_str!("Detected custom script")),
                         if self.recommended == Some(index) {
-                            format!("{script}.ps1 · Preselected for this build")
+                            msg!("{script}.ps1 · Preselected for this build")
                         } else {
-                            format!("{script}.ps1 · Found in the project")
+                            msg!("{script}.ps1 · Found in the project")
                         },
                     ),
                     Some(script) => (
-                        "Standard repo launch".to_owned(),
-                        format!("{script}.ps1 · The repository's standard settings"),
+                        localize(msg_str!("Standard repo launch")),
+                        msg!("{script}.ps1 · The repository's standard settings"),
                     ),
-                    None => (preset.name.clone(), "A saved preset.".to_owned()),
+                    None => (preset.name.clone(), msg_str!("A saved preset.").to_owned()),
                 };
-                PlayOption { title, detail }
+                PlayOption {
+                    title,
+                    detail: localize(&detail),
+                }
             })
             .collect();
         PlayChoice {
@@ -212,18 +217,18 @@ pub(crate) fn store(
 }
 
 fn read_file(path: &Path) -> Result<String, String> {
-    let file = File::open(path).map_err(|error| format!("Could not open preset: {error}"))?;
+    let file = File::open(path).map_err(|error| msg!("Could not open preset: {error}"))?;
     let mut text = String::new();
     file.take((MAX_PRESET_BYTES + 1) as u64)
         .read_to_string(&mut text)
-        .map_err(|error| format!("Could not read preset: {error}"))?;
+        .map_err(|error| msg!("Could not read preset: {error}"))?;
     Ok(text)
 }
 
 pub(crate) fn import_file(path: &Path) -> Result<LaunchPreset, String> {
     let text = read_file(path)?;
     if text.len() > MAX_PRESET_BYTES {
-        return Err("Preset or script exceeds 128 KiB.".into());
+        return Err(msg_str!("Preset or script exceeds 128 KiB.").into());
     }
     if !path
         .extension()
@@ -248,15 +253,15 @@ pub(crate) fn import_file(path: &Path) -> Result<LaunchPreset, String> {
 
 pub(crate) fn decode(json: &str) -> Result<LaunchPreset, String> {
     if json.len() > MAX_PRESET_BYTES {
-        return Err("Preset exceeds 128 KiB.".into());
+        return Err(msg_str!("Preset exceeds 128 KiB.").into());
     }
     serde_json::from_str(json.trim_start_matches('\u{feff}'))
-        .map_err(|error| format!("Invalid preset JSON: {error}"))
+        .map_err(|error| msg!("Invalid preset JSON: {error}"))
 }
 
 pub(crate) fn encode(preset: &LaunchPreset) -> Result<String, String> {
     if preset.name.trim().is_empty() || preset.name.chars().any(char::is_control) {
-        return Err("Enter a preset name on one line.".into());
+        return Err(msg_str!("Enter a preset name on one line.").into());
     }
     if preset.args.contains('\0')
         || preset
@@ -264,14 +269,14 @@ pub(crate) fn encode(preset: &LaunchPreset) -> Result<String, String> {
             .as_deref()
             .is_some_and(|switches| switches.contains('\0'))
     {
-        return Err("Launch settings contain a null character.".into());
+        return Err(msg_str!("Launch settings contain a null character.").into());
     }
     let mut portable = preset.clone();
     portable.projects.clear();
     portable.repo_script = None;
     let json = serde_json::to_string_pretty(&portable).map_err(|error| error.to_string())?;
     if json.len() > MAX_PRESET_BYTES {
-        return Err("Preset exceeds 128 KiB.".into());
+        return Err(msg_str!("Preset exceeds 128 KiB.").into());
     }
     Ok(json)
 }

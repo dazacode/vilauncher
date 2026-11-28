@@ -2,24 +2,32 @@ import { Group, Row } from "@/components/ui/group"
 import { Segmented } from "@/components/ui/segmented"
 import { Select } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { graphicsMode, MODES, OUTPUTS, withMode } from "@/lib/format"
+import { useT } from "@/i18n"
+import { graphicsMode, MODES, modeDetail, modeLabel, OUTPUTS, outputLabel, withMode } from "@/lib/format"
 import { run } from "@/lib/store"
 import type { Graphics, Project } from "@/lib/types"
 
+/** The console profiles: product names, the same in every language. */
+const CONSOLES = [
+  { value: "x", label: "Series X" }, // i18n-ignore: product name
+  { value: "s", label: "Series S" }, // i18n-ignore: product name
+] as const
+
 export function GraphicsTab({ project: p }: { project: Project }) {
+  const t = useT()
   if (p.standalone) {
-    return <p className="text-body text-fg-3">This project runs on its own: graphics settings apply to builds that run the game.</p>
+    return <p className="text-body text-fg-3">{t("library.graphics.standalone")}</p>
   }
   const g = p.launch.graphics
   const set = (graphics: Graphics) => void run({ type: "set_project_graphics", repo: p.repo, graphics })
   return (
     <div className="max-w-[760px] space-y-8">
       <Group>
-        <Row label="Use my default graphics" hint={p.launch.graphics_override ? "This project has its own settings." : "Change the defaults in Settings, or any setting below for this project only."}>
+        <Row label={t("library.graphics.useDefaults")} hint={p.launch.graphics_override ? t("library.graphics.ownSettings") : t("library.graphics.defaultsHint")}>
           <Switch
             checked={!p.launch.graphics_override}
             onCheckedChange={(on) => void run({ type: "set_project_graphics", repo: p.repo, graphics: on ? null : g })}
-            aria-label="Use my default graphics"
+            aria-label={t("library.graphics.useDefaults")}
           />
         </Row>
       </Group>
@@ -30,34 +38,40 @@ export function GraphicsTab({ project: p }: { project: Project }) {
 
 /** The graphics controls, shared by a project and the defaults in Settings. */
 export function GraphicsGroups({ graphics: g, onChange }: { graphics: Graphics; onChange(g: Graphics): void }) {
+  const t = useT()
   const mode = graphicsMode(g)
   return (
     <>
-      <Group title="Quality" description="These may not work with every project or on older PCs. If a game won't start or looks wrong, choose Best quality and turn the fixes off.">
-        <Row label="Preset" hint={mode ? MODES.find((m) => m.id === mode)!.detail : `Render scale ${Math.round(g.render_scale * 100)}%`}>
-          <Segmented label="Quality preset" value={mode} options={MODES.map((m) => ({ value: m.id, label: m.label }))} onChange={(id) => onChange(withMode(g, id))} />
-        </Row>
-        <Row label="Console profile" hint="Series S renders at the scale above and upscales.">
-          <Select
-            label="Console profile"
-            value={g.series_s ? "s" : "x"}
-            options={[{ value: "x", label: "Series X" }, { value: "s", label: "Series S" }]}
-            onChange={(v) => onChange({ ...g, series_s: v === "s" })}
+      <Group title={t("library.graphics.quality")} description={t("library.graphics.qualityHint")}>
+        <Row label={t("library.graphics.preset")} hint={mode ? modeDetail(mode) : t("library.graphics.renderScale", { percent: Math.round(g.render_scale * 100) })}>
+          <Segmented
+            label={t("library.graphics.presetLabel")}
+            value={mode}
+            options={MODES.map((m) => ({ value: m.id, label: modeLabel(m.id) }))}
+            onChange={(id) => onChange(withMode(g, id))}
           />
         </Row>
-        <Row label="Output resolution" hint="Needs support in the build.">
-          <Select label="Output resolution" value={g.output} options={OUTPUTS.map((o) => ({ value: o.id, label: o.label }))} onChange={(output) => onChange({ ...g, output })} />
+        <Row label={t("library.graphics.console")} hint={t("library.graphics.consoleHint")}>
+          <Select label={t("library.graphics.console")} value={g.series_s ? "s" : "x"} options={CONSOLES} onChange={(v) => onChange({ ...g, series_s: v === "s" })} />
+        </Row>
+        <Row label={t("library.graphics.output")} hint={t("library.graphics.outputHint")}>
+          <Select
+            label={t("library.graphics.output")}
+            value={g.output}
+            options={OUTPUTS.map((id) => ({ value: id, label: outputLabel(id) }))}
+            onChange={(output) => onChange({ ...g, output })}
+          />
         </Row>
       </Group>
-      <Group title="Fixes and display">
-        <Row label="8 GB graphics card fix" hint="Smaller textures, and grey in place of missing ones.">
-          <Switch checked={g.fix_8gb} onCheckedChange={(fix_8gb) => onChange({ ...g, fix_8gb })} aria-label="8 GB graphics card fix" />
+      <Group title={t("library.graphics.fixes")}>
+        <Row label={t("library.graphics.fix8gb")} hint={t("library.graphics.fix8gbHint")}>
+          <Switch checked={g.fix_8gb} onCheckedChange={(fix_8gb) => onChange({ ...g, fix_8gb })} aria-label={t("library.graphics.fix8gb")} />
         </Row>
-        <Row label="Brighter shadows" hint="A steady ambient light where ray tracing doesn't run.">
-          <Switch checked={g.bright_shadows} onCheckedChange={(bright_shadows) => onChange({ ...g, bright_shadows })} aria-label="Brighter shadows" />
+        <Row label={t("library.graphics.brightShadows")} hint={t("library.graphics.brightShadowsHint")}>
+          <Switch checked={g.bright_shadows} onCheckedChange={(bright_shadows) => onChange({ ...g, bright_shadows })} aria-label={t("library.graphics.brightShadows")} />
         </Row>
-        <Row label="Borderless fullscreen" hint="The game's window covers its whole monitor, with no frame.">
-          <Switch checked={g.fullscreen} onCheckedChange={(fullscreen) => onChange({ ...g, fullscreen })} aria-label="Borderless fullscreen" />
+        <Row label={t("library.graphics.fullscreen")} hint={t("library.graphics.fullscreenHint")}>
+          <Switch checked={g.fullscreen} onCheckedChange={(fullscreen) => onChange({ ...g, fullscreen })} aria-label={t("library.graphics.fullscreen")} />
         </Row>
       </Group>
     </>

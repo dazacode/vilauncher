@@ -14,6 +14,10 @@ On a failure, each failing step prints its last 40 lines with colour codes remov
 
 The tree often has other people's uncommitted edits. Do not revert or reformat files you did not change in this task, and do not commit unless asked.
 
+## Languages
+
+The window speaks English, zh-TW and zh-CN (docs/I18N.md). UI text goes through `t` / `<Trans>` from `@/i18n` with its English in `src/i18n/messages/en/<namespace>.ts` and a translation in every other language; launcher messages that reach the window are marked `msg!` / `msg_str!` in Rust and translated in `src-tauri/locales/*/*.json`. `pnpm i18n:check` and `cargo test` fail on a missing translation or English left in UI code. Logs, problem reports and the agent tool stay English.
+
 ## Layout
 
 - `src/` React UI. `src/dev/mock.ts` is the browser mock backend; keep it in step with `src/lib/types.ts`.

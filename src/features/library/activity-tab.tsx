@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
+import { useT } from "@/i18n"
 import { copyText, getBackend, openUrl, saveFile } from "@/lib/api"
 import { run, useStore } from "@/lib/store"
 import type { Project, ReportView } from "@/lib/types"
@@ -12,6 +13,7 @@ import type { Project, ReportView } from "@/lib/types"
  * Nothing is sent by the launcher; the player reads and submits the issue on GitHub.
  */
 function ReportBar({ project }: { project: Project }) {
+  const t = useT()
   const [busy, setBusy] = useState(false)
   const fetchReport = async () => {
     setBusy(true)
@@ -23,9 +25,7 @@ function ReportBar({ project }: { project: Project }) {
   }
   return (
     <div className="space-y-2 rounded-lg border border-line bg-fill-1 p-3">
-      <p className="text-caption text-fg-2">
-        Report this to GitHub. The issue opens with the log filled in. Names and folders are removed, but read it before you submit: nothing is sent until you do.
-      </p>
+      <p className="text-caption text-fg-2">{t("library.report.text")}</p>
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
@@ -36,7 +36,7 @@ function ReportBar({ project }: { project: Project }) {
             if (r) void openUrl(r.launcher_url)
           }}
         >
-          Report to VILauncher
+          {t("library.report.to", { name: "VILauncher" })}
         </Button>
         {project.repo.split("/").length === 2 && !project.repo.includes("://") && (
           <Button
@@ -48,7 +48,7 @@ function ReportBar({ project }: { project: Project }) {
               if (r?.build_url) void openUrl(r.build_url)
             }}
           >
-            Report to {project.name}
+            {t("library.report.to", { name: project.name })}
           </Button>
         )}
         <Button
@@ -57,10 +57,10 @@ function ReportBar({ project }: { project: Project }) {
           disabled={busy}
           onClick={async () => {
             const r = await fetchReport()
-            if (r) void copyText(r.text).then(() => toast.success("Report copied"))
+            if (r) void copyText(r.text).then(() => toast.success(t("library.report.copied")))
           }}
         >
-          <Copy /> Copy report
+          <Copy /> {t("library.report.copy")}
         </Button>
       </div>
     </div>
@@ -68,6 +68,7 @@ function ReportBar({ project }: { project: Project }) {
 }
 
 export function ActivityTab({ project }: { project: Project }) {
+  const t = useT()
   const job = useStore((s) => s.snap!.job)
   const [lines, setLines] = useState<string[]>([])
   const [omitted, setOmitted] = useState(0)
@@ -91,7 +92,7 @@ export function ActivityTab({ project }: { project: Project }) {
   useEffect(() => {
     if (stick.current && box.current) box.current.scrollTop = box.current.scrollHeight
   }, [lines])
-  const status = !job.stage ? "Nothing running" : job.stage
+  const status = !job.stage ? t("library.activity.nothing") : job.stage
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -99,32 +100,31 @@ export function ActivityTab({ project }: { project: Project }) {
         <p className={job.failed ? "text-body text-bad" : "text-body text-fg-2"}>{status}</p>
         <div className="ml-auto flex gap-1">
           {!job.running && project.installed && (
-            <Button size="sm" variant="ghost" title="Check every known problem, fix it and verify the result" onClick={() => void run({ type: "fix", repo: project.repo })}>
-              <Wrench /> Fix and verify
+            <Button size="sm" variant="ghost" title={t("library.activity.fixTitle")} onClick={() => void run({ type: "fix", repo: project.repo })}>
+              <Wrench /> {t("library.fix")}
             </Button>
           )}
           {job.stoppable && (
-            <Button size="sm" variant="danger" onClick={() => void run({ type: "stop" })}><Square /> Stop</Button>
+            <Button size="sm" variant="danger" onClick={() => void run({ type: "stop" })}><Square /> {t("library.action.stop")}</Button>
           )}
-          <Button size="sm" variant="ghost" disabled={!lines.length} onClick={() => void copyText(lines.join("\n")).then(() => toast.success("Log copied"))}><Copy /> Copy</Button>
+          <Button size="sm" variant="ghost" disabled={!lines.length} onClick={() => void copyText(lines.join("\n")).then(() => toast.success(t("library.activity.logCopied")))}><Copy /> {t("common.copy")}</Button>
           <Button
             size="sm"
             variant="ghost"
             disabled={!lines.length}
             onClick={async () => {
-              const path = await saveFile("Export the activity log", "vilauncher.log", [{ name: "Log", extensions: ["log", "txt"] }])
-              if (path) void run({ type: "export_log", path }, "Log exported")
+              // i18n-ignore: the file's default name
+              const path = await saveFile(t("library.activity.exportTitle"), "vilauncher.log", [{ name: t("library.activity.exportFilter"), extensions: ["log", "txt"] }])
+              if (path) void run({ type: "export_log", path }, t("library.activity.exported"))
             }}
           >
-            <Download /> Export
+            <Download /> {t("library.activity.export")}
           </Button>
         </div>
       </div>
       {job.failed && !job.running && <ReportBar project={project} />}
-      {omitted > 0 && <p className="text-caption text-fg-3">{omitted} earlier lines scrolled out of the log.</p>}
-      <p className="text-caption text-fg-3">
-        Fix and verify checks every known problem, fixes the ones it can and checks each result. It reads the project's own notes for the switches it recommends, and can rebuild the program, install missing tools or lower settings; rendering and frame rate are not tuned beyond that.
-      </p>
+      {omitted > 0 && <p className="text-caption text-fg-3">{t("library.activity.omitted", { count: omitted })}</p>}
+      <p className="text-caption text-fg-3">{t("library.activity.fixExplain")}</p>
       <pre
         ref={box}
         data-selectable
@@ -134,7 +134,7 @@ export function ActivityTab({ project }: { project: Project }) {
         }}
         className="h-[420px] overflow-auto rounded-lg border border-line bg-black/35 p-4 font-mono text-caption leading-5 whitespace-pre-wrap text-fg-2"
       >
-        {lines.length ? lines.join("\n") : <span className="text-fg-4">The log of installs, builds and games shows here.</span>}
+        {lines.length ? lines.join("\n") : <span className="text-fg-4">{t("library.activity.empty")}</span>}
       </pre>
     </div>
   )

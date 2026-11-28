@@ -4,13 +4,13 @@
 /// The launcher's name, in the title bar, the folders and the updater.
 pub const NAME: &str = "VILauncher";
 /// Who makes it.
-pub const TEAM: &str = "VIPortLive team";
+pub const TEAM: &str = msg_str!("VIPortLive team");
 /// The site the launcher belongs to.
 pub const SITE: &str = "https://viportlive.com";
 pub const SITE_LABEL: &str = "viportlive.com";
 /// The launcher's own code and releases on GitHub (`owner/name`).
-pub const REPOSITORY: &str = "dazacode/vilauncher";
-pub const SOURCE_URL: &str = "https://github.com/dazacode/vilauncher";
+pub const REPOSITORY: &str = "arno721/vilauncher";
+pub const SOURCE_URL: &str = "https://github.com/arno721/vilauncher";
 /// The release download the updater looks for.
 pub const RELEASE_ASSET: &str = "VILauncher.exe";
 
