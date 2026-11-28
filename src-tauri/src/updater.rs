@@ -499,10 +499,16 @@ fn the_system_s_asset_is_picked_from_a_release() {
             },
         ],
     };
-    assert_eq!(
-        pick_asset(&release, ASSET).unwrap().size,
-        if cfg!(windows) { 1 } else { 2 }
-    );
+    // Windows updates with VILauncher.exe, macOS with its archive; Linux updates from the
+    // Releases page, so no asset is picked there.
+    let picked = pick_asset(&release, ASSET);
+    if cfg!(windows) {
+        assert_eq!(picked.unwrap().size, 1);
+    } else if cfg!(target_os = "macos") {
+        assert_eq!(picked.unwrap().size, 2);
+    } else {
+        assert!(picked.is_err());
+    }
     assert!(pick_asset(&release, "VILauncher-linux").is_err());
 }
 
