@@ -22,6 +22,7 @@ mod launcher;
 mod notify;
 mod patches;
 mod platform;
+mod play_stats;
 mod previous;
 mod report;
 mod rust_project;
@@ -79,8 +80,12 @@ fn act(
 }
 
 #[tauri::command]
-fn log(from: usize, state: tauri::State<'_, Shared>) -> launcher::LogView {
-    state.app.lock().unwrap().log_from(from)
+fn log(from: usize, repo: Option<String>, state: tauri::State<'_, Shared>) -> launcher::LogView {
+    state
+        .app
+        .lock()
+        .unwrap()
+        .project_log_from(repo.as_deref(), from)
 }
 
 fn main() {

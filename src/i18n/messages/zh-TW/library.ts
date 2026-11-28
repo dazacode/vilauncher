@@ -8,6 +8,11 @@ export default {
   },
   loading: "正在載入專案庫",
   hero: {
+    playtime: "遊玩時間",
+    personalFps: "個人平均幀率",
+    resetPersonalFps: "重設個人幀率",
+    exclude60Fps: "排除恰好 60 FPS 的讀數",
+    include60Fps: "納入恰好 60 FPS 的讀數",
     imported: "匯入的建置版本",
     addedByLink: "透過連結新增",
     verified: "已驗證",

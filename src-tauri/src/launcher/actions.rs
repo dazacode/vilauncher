@@ -16,6 +16,12 @@ pub(crate) enum Action {
         repo: Option<String>,
     },
     RefreshProjects,
+    ResetPersonalFps {
+        repo: String,
+    },
+    SetIncludeExact60Fps {
+        include: bool,
+    },
     SetGpuFilter {
         value: usize,
     },
@@ -199,6 +205,7 @@ pub(crate) enum Action {
     },
     ExportLog {
         path: String,
+        repo: Option<String>,
     },
     CheckUpdate,
     DownloadUpdate,
@@ -268,6 +275,15 @@ impl App {
                 self.refresh_projects(&ctx);
                 Value::Null
             }
+            Action::ResetPersonalFps { repo } => {
+                self.project(&repo)?;
+                self.saved.play_stats.reset_fps(&project_key(&repo));
+                Value::Null
+            }
+            Action::SetIncludeExact60Fps { include } => {
+                self.saved.include_exact_60_fps = include;
+                Value::Null
+            }
             Action::SetGpuFilter { value } => {
                 self.saved.gpu_filter = value.min(2);
                 Value::Null
@@ -280,8 +296,12 @@ impl App {
                 // Nothing is sent: the report is text, and the links open GitHub's issue form.
                 let p = self.project(&repo)?;
                 let (stage, log) = {
-                    let job = self.job.lock().unwrap();
-                    (job.stage.clone(), job.log.clone())
+                    self.project_job(&repo)
+                        .map(|job| {
+                            let job = job.lock().unwrap();
+                            (job.stage.clone(), job.log.clone())
+                        })
+                        .unwrap_or_default()
                 };
                 let system = self.system.lock().unwrap().clone().unwrap_or_default();
                 let mut private = crate::report::private_paths(&workspace());
@@ -310,7 +330,7 @@ impl App {
                 tier,
             } => {
                 self.saved.show_nuked = show_nuked;
-                self.saved.list_sort = sort.min(4);
+                self.saved.list_sort = sort.min(5);
                 self.saved.list_tier = tier.min(2);
                 Value::Null
             }
@@ -328,6 +348,14 @@ impl App {
             }
             Action::Install { repo } => {
                 let p = self.project(&repo)?;
+                if self.job.lock().unwrap().running
+                    || self
+                        .builds
+                        .get(&p.repo)
+                        .is_some_and(|job| job.lock().unwrap().running)
+                {
+                    return Err(msg_str!("Wait for the current job to finish.").into());
+                }
                 // An update resets the project's code, which would drop an add-on's patches
                 // while its switches stayed on. Turn the add-ons off first.
                 let on = self
@@ -352,6 +380,9 @@ impl App {
             }
             Action::Play { repo } => {
                 let p = self.project(&repo)?;
+                if self.job_running().0 {
+                    return Err(msg_str!("Wait for the current job to finish.").into());
+                }
                 let launch = self.saved.project_launch.get(&project_key(&p.repo));
                 match PlayPresetPicker::for_project(&p, &self.saved.launch_presets, launch) {
                     Some(picker) => json!({ "next": "presets", "choice": picker.describe() }),
@@ -360,7 +391,7 @@ impl App {
             }
             Action::ConfirmPreset { repo, index } => {
                 let p = self.project(&repo)?;
-                if self.job.lock().unwrap().running {
+                if self.job_running().0 {
                     return Err(msg_str!("Wait for the current job to finish.").into());
                 }
                 let launch = self.saved.project_launch.get(&project_key(&p.repo));
@@ -377,6 +408,9 @@ impl App {
             }
             Action::StartWithSave { repo, choice } => {
                 let p = self.project(&repo)?;
+                if self.job_running().0 {
+                    return Err(msg_str!("Wait for the current job to finish.").into());
+                }
                 // Looked at right now: the drive may have been unplugged since the last check.
                 self.files_checked = None;
                 self.check_files();
@@ -401,13 +435,14 @@ impl App {
             }
             Action::Rollback { repo } => {
                 let p = self.project(&repo)?;
-                if self.job.lock().unwrap().running {
+                if self.job_running().0 {
                     return Err(msg_str!("Wait for the current job to finish.").into());
                 }
                 if previous::previous_commit(&previous_dir(&p.repo)).is_none() {
-                    return Err(
-                        msg_str!("There is no previous build to restore for this project.").into(),
-                    );
+                    return Err(msg_str!(
+                        "There is no previous build to restore for this project."
+                    )
+                    .into());
                 }
                 self.start(&ctx, p, Kind::Rollback);
                 Value::Null
@@ -489,6 +524,14 @@ impl App {
                 Value::Null
             }
             Action::RemoveCustom { repo } => {
+                if self
+                    .builds
+                    .get(&repo)
+                    .is_some_and(|job| job.lock().unwrap().running)
+                {
+                    return Err(msg_str!("Wait for the current job to finish.").into());
+                }
+                self.builds.0.remove(&ProjectBuilds::key(&repo));
                 self.saved.custom.retain(|q| q.repo != repo);
                 if self.saved.selected.as_deref() == Some(repo.as_str()) {
                     self.saved.selected = None;
@@ -721,6 +764,9 @@ impl App {
                 json!(detected.map(|d| d.name))
             }
             Action::ChooseInstallDir { path } => {
+                if self.job_running().0 {
+                    return Err(msg_str!("Wait for the current job to finish.").into());
+                }
                 self.choose_install_dir(PathBuf::from(path).join(brand::FOLDER));
                 Value::Null
             }
@@ -729,6 +775,9 @@ impl App {
                 Value::Null
             }
             Action::ConfirmMove { answer } => {
+                if self.job_running().0 {
+                    return Err(msg_str!("Wait for the current job to finish.").into());
+                }
                 if let Some((old, new)) = self.pending_move.take() {
                     match answer.as_str() {
                         "move" => {
@@ -774,8 +823,8 @@ impl App {
                 }
                 Value::Null
             }
-            Action::ExportLog { path } => {
-                std::fs::write(&path, self.whole_log())
+            Action::ExportLog { path, repo } => {
+                std::fs::write(&path, self.whole_log(repo.as_deref()))
                     .map_err(|error| msg!("Could not export the log: {error}"))?;
                 Value::Null
             }
@@ -788,7 +837,7 @@ impl App {
                 Value::Null
             }
             Action::RestartToUpdate => {
-                if self.job.lock().unwrap().running {
+                if self.job_running().0 {
                     return Err(msg_str!("Wait for the current job to finish first.").into());
                 }
                 let updater::State::Downloaded(update) = &self.updater.state else {
@@ -896,7 +945,7 @@ impl App {
     /// Turns an add-on on or off for a project (addons.rs). Turning on runs the add-on's
     /// patches on the project's code, so it needs the player's confirmation.
     fn set_addon(&mut self, repo: &str, id: &str, on: bool, confirmed: bool) -> Result<(), String> {
-        if self.job.lock().unwrap().running {
+        if self.job_running().0 {
             return Err("Wait for the current job to finish.".into());
         }
         let p = self.project(repo)?;

@@ -382,11 +382,12 @@ function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: 
   const alias = useAlias()(p)
   const selected = snap.selected === p.repo
   const setView = useStore((s) => s.setView)
-  const working = snap.job.running && snap.job.repo === p.repo
+  const job = p.build_job ?? (snap.job.repo === p.repo ? snap.job : null)
+  const working = !!job?.running
   let line: React.ReactNode
   let tone = "text-fg-3"
   if (working) {
-    line = <><Spinner className="size-3 text-accent-fg" /> {shortStage(snap.job.stage_kind, snap.job.stage)}</>
+    line = <><Spinner className="size-3 text-accent-fg" /> {shortStage(job.stage_kind, job.stage)}</>
     tone = "text-accent-fg"
   } else if (p.listing.nuked) {
     line = t("shell.row.takenDown")
@@ -437,6 +438,11 @@ function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: 
         </span>
         <span className={cn("flex items-center gap-1 truncate text-caption", tone)}>{line}</span>
       </span>
+      {p.personal_fps != null && (
+        <span className="relative shrink-0 rounded-md bg-fill-2 px-1.5 py-0.5 text-caption tabular-nums text-fg-2" title={t("library.hero.personalFps")}>
+          {p.personal_fps.toFixed(1)} fps
+        </span>
+      )}
     </button>
   )
 }

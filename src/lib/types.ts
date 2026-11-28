@@ -57,6 +57,9 @@ export interface Project {
   owner: string | null
   gpu: string[]
   fps: number | null
+  personal_fps: number | null
+  playtime: string | null
+  build_job: Snapshot["job"] | null
   render: number | null
   verified: boolean
   summary: string
@@ -129,6 +132,7 @@ export interface Snapshot {
     show_nuked: boolean
     /** 0 VIPortLive's order, 1 name, 2 frame rate, 3 stars, 4 recent commits. */
     list_sort: number
+    include_exact_60_fps: boolean
     /** 0 all, 1 tracked, 2 watchlist. */
     list_tier: number
     spec_ram_gb: number | null
@@ -156,6 +160,7 @@ export interface Snapshot {
   tools: { ready: boolean; missing: string[] } | null
   job: {
     running: boolean
+    generation: number
     repo: string | null
     /** What the job is doing, in the player's language. */
     stage: string
@@ -166,6 +171,7 @@ export interface Snapshot {
     log_lines: number
     import_error: string | null
   }
+  active_builds: number
   updater: {
     state: "idle" | "checking" | "current" | "available" | "downloading" | "downloaded" | "failed"
     tag: string | null
@@ -257,6 +263,8 @@ export type ResponsibilityId = "import-repo" | "agent-access" | "agent-patch"
 export type Action =
   | { type: "select"; repo: string | null }
   | { type: "refresh_projects" }
+  | { type: "reset_personal_fps"; repo: string }
+  | { type: "set_include_exact60_fps"; include: boolean }
   | { type: "set_gpu_filter"; value: number }
   | { type: "set_list_options"; show_nuked: boolean; sort: number; tier: number }
   | { type: "report"; repo: string }
@@ -307,7 +315,7 @@ export type Action =
   | { type: "use_default_install_dir" }
   | { type: "confirm_move"; answer: "move" | "keep" | "cancel" }
   | { type: "open"; what: "project_folder" | "backgrounds" | "workspace" | "update"; repo?: string }
-  | { type: "export_log"; path: string }
+  | { type: "export_log"; path: string; repo?: string }
   | { type: "check_update" }
   | { type: "download_update" }
   | { type: "restart_to_update" }

@@ -8,6 +8,11 @@ export default {
   },
   loading: "正在加载项目库",
   hero: {
+    playtime: "游玩时间",
+    personalFps: "个人平均帧率",
+    resetPersonalFps: "重置个人帧率",
+    exclude60Fps: "排除恰好 60 FPS 的读数",
+    include60Fps: "纳入恰好 60 FPS 的读数",
     imported: "导入的构建版本",
     addedByLink: "通过链接添加",
     verified: "已验证",

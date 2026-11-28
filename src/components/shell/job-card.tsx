@@ -15,13 +15,16 @@ export function JobCard() {
   const alias = useAlias()
   const still = useReducedMotion()
   const [dismissed, setDismissed] = useState<string | null>(null)
-  const job = snap?.job
+  const projects = snap ? allProjects(snap) : []
+  const builds = projects.filter((project) => project.build_job?.running)
+  const activeBuild = builds.find((project) => project.repo === snap?.selected) ?? builds[0]
+  const job = activeBuild?.build_job ?? snap?.job
   const key = job ? `${job.repo}|${job.stage}` : ""
   useEffect(() => {
     if (job?.running) setDismissed(null)
   }, [job?.running])
   const show = !!job && !!job.stage && dismissed !== key && job.stage_kind !== "playing"
-  const project = snap && job?.repo ? allProjects(snap).find((p) => p.repo === job.repo) : undefined
+  const project = job?.repo ? projects.find((p) => p.repo === job.repo) : undefined
   const title = project ? alias(project).name : "VILauncher"
   return (
     <AnimatePresence initial={false}>
@@ -69,6 +72,19 @@ export function JobCard() {
               )}
             </div>
             <p className="mt-1 line-clamp-2 pl-6 text-caption text-fg-3">{job.stage}</p>
+            {builds.length > 1 && (
+              <ul className="mt-1 pl-6 text-caption text-fg-3">
+                {builds.filter((p) => p.repo !== job.repo).map((p) => (
+                  <li key={p.repo}>
+                    <button type="button" className="w-full truncate text-left hover:underline" onClick={() => {
+                      void run({ type: "select", repo: p.repo })
+                      setView("library")
+                      setTab("activity")
+                    }}>{alias(p).name} · {p.build_job?.stage}</button>
+                  </li>
+                ))}
+              </ul>
+            )}
             {job.running && (
               <div className="mt-2 ml-6 h-1 overflow-hidden rounded-full bg-fill-3">
                 {still ? (

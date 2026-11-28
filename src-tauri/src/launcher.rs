@@ -20,6 +20,8 @@ use std::time::Instant;
 
 mod actions;
 mod presets;
+#[cfg(all(test, windows))]
+mod parallel_install_tests;
 mod reported;
 mod view;
 
@@ -140,7 +142,7 @@ pub(crate) struct Saved {
     gpu_filter: usize,
     /// Show the projects VIPortLive took down. Off: hidden; on: listed, and they open VIPortLive's page.
     show_nuked: bool,
-    /// The list's order: 0 VIPortLive's own, 1 name, 2 frame rate, 3 stars, 4 recent commits.
+    /// The list's order: catalog, name, reported FPS, stars, recent commits, personal FPS.
     list_sort: usize,
     /// Which projects to list: 0 all, 1 tracked, 2 watchlist.
     list_tier: usize,
@@ -155,6 +157,8 @@ pub(crate) struct Saved {
     launch_args: String,
     project_launch: std::collections::BTreeMap<String, ProjectLaunch>,
     launch_presets: Vec<LaunchPreset>,
+    play_stats: crate::play_stats::History,
+    include_exact_60_fps: bool,
     /// The version of the legal notice the player agreed to (0: not yet).
     notice_accepted: u32,
     /// Skip the warning shown before an update replaces a build (off: it is shown).
@@ -432,6 +436,9 @@ fn project_launch_overrides_are_independent_and_can_be_empty() {
 #[derive(Default)]
 pub(crate) struct Job {
     running: bool,
+    play_stats: Option<crate::play_stats::History>,
+    session: Option<crate::play_stats::Session>,
+    generation: u64,
     /// The project the job works on.
     repo: Option<String>,
     stage: String,
@@ -467,6 +474,7 @@ struct Launch {
     /// `VICTORY_*` lines: the player's switches and the graphics fixes.
     extra: String,
     use_script_defaults: bool,
+    foxhound_preset: bool,
     fullscreen: bool,
     warm_first: bool,
     pipelines: bool,
@@ -545,6 +553,8 @@ pub(crate) struct App {
     pub(crate) updater: updater::Updater,
     projects: ProjectsSlot,
     pub(crate) job: Arc<Mutex<Job>>,
+    builds: ProjectBuilds,
+    next_generation: u64,
     files: Vec<(&'static str, bool)>,
     files_for: String,
     /// A new install folder waiting for "move the projects there?" (from, to).
@@ -572,6 +582,66 @@ pub(crate) struct App {
     pub(crate) system: Arc<Mutex<Option<crate::system::SystemInfo>>>,
     /// The system's languages in order of preference, as the window reported them.
     pub(crate) system_languages: Vec<String>,
+}
+
+#[derive(Default)]
+struct ProjectBuilds(std::collections::BTreeMap<String, Arc<Mutex<Job>>>);
+
+impl ProjectBuilds {
+    fn key(repo: &str) -> String {
+        // Use the install folder identity, including Windows' case insensitivity.
+        slug(repo).to_ascii_lowercase()
+    }
+
+    fn get(&self, repo: &str) -> Option<&Arc<Mutex<Job>>> {
+        self.0.get(&Self::key(repo))
+    }
+
+    fn start(&mut self, repo: &str, generation: u64) -> Option<Arc<Mutex<Job>>> {
+        if self
+            .get(repo)
+            .is_some_and(|job| job.lock().unwrap().running)
+        {
+            return None;
+        }
+        let job = Arc::new(Mutex::new(Job {
+            running: true,
+            generation,
+            repo: Some(repo.to_owned()),
+            ..Job::default()
+        }));
+        self.0.insert(Self::key(repo), job.clone());
+        Some(job)
+    }
+
+    fn running(&self) -> usize {
+        self.0
+            .values()
+            .filter(|job| job.lock().unwrap().running)
+            .count()
+    }
+}
+
+#[test]
+fn parallel_builds_reserve_each_install_folder_and_keep_separate_logs() {
+    let mut builds = ProjectBuilds::default();
+    let first = builds.start("owner/example", 1).unwrap();
+    let second = builds.start("owner/other", 2).unwrap();
+    assert!(builds.start("Owner/EXAMPLE", 3).is_none());
+    first.lock().unwrap().log.push("first".into());
+    second.lock().unwrap().log.push("second".into());
+    assert_eq!(builds.running(), 2);
+    assert_eq!(
+        builds.get("owner/example").unwrap().lock().unwrap().log,
+        ["first"]
+    );
+    assert_eq!(
+        builds.get("owner/other").unwrap().lock().unwrap().log,
+        ["second"]
+    );
+    first.lock().unwrap().running = false;
+    assert_eq!(builds.running(), 1);
+    assert!(builds.start("owner/example", 3).is_some());
 }
 
 /// How often installed projects are checked for updates: every 15 minutes.
@@ -736,8 +806,33 @@ fn finds_a_unique_nested_victory_workspace_and_prefers_the_root() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
-/// Checks a cloned repo's Cargo.toml for a custom build profile (e.g. `diag`).
+fn documented_scarlet_script(root: &Path) -> Option<&'static str> {
+    let readme = std::fs::read_to_string(root.join("README.md"))
+        .ok()?
+        .to_ascii_lowercase()
+        .replace('/', "\\");
+    if !readme
+        .lines()
+        .any(|line| line.trim() == "cargo build --release --bin victory")
+    {
+        return None;
+    }
+    ["scarlet-fps", "play-3070"].into_iter().find(|stem| {
+        let argument = format!(".\\scripts\\{stem}.ps1");
+        root.join("scripts").join(format!("{stem}.ps1")).is_file()
+            && readme.lines().any(|line| {
+                let mut words = line.split_whitespace();
+                matches!(words.next(), Some("powershell" | "powershell.exe" | "pwsh"))
+                    && words.any(|word| word.trim_matches(['"', '\'']) == argument)
+            })
+    })
+}
+
+/// Chooses the project's build profile, honoring a documented Scarlet release build.
 fn detect_build_profile(repo_dir: &Path) -> &'static str {
+    if documented_scarlet_script(repo_dir).is_some() {
+        return "release";
+    }
     let cargo_toml = repo_dir.join("Cargo.toml");
     if let Ok(text) = std::fs::read_to_string(&cargo_toml) {
         if text.contains("[profile.diag]") {
@@ -1261,6 +1356,9 @@ pub(crate) fn hide_window(c: &mut Command) {
 
 impl App {
     fn import_build_zip(&mut self, ctx: &Ctx, input: PathBuf) {
+        if self.builds.running() > 0 {
+            return;
+        }
         let name = input
             .file_stem()
             .and_then(|name| name.to_str())
@@ -1347,6 +1445,8 @@ impl App {
             updater: updater::Updater::default(),
             projects: Arc::new(Mutex::new(None)),
             job: Arc::new(Mutex::new(Job::default())),
+            builds: ProjectBuilds::default(),
+            next_generation: 0,
             files: Vec::new(),
             files_for: String::new(),
             pending_move: None,
@@ -1483,6 +1583,13 @@ impl App {
             return None;
         }
         // Not while this project is being installed or updated.
+        if self
+            .builds
+            .get(&p.repo)
+            .is_some_and(|job| job.lock().unwrap().running)
+        {
+            return None;
+        }
         {
             let j = self.job.lock().unwrap();
             if j.running && j.repo.as_deref() == Some(p.repo.as_str()) {
@@ -1510,7 +1617,14 @@ impl App {
     /// Development only: whether the current job runs, and its stage.
     pub(crate) fn job_running(&self) -> (bool, String) {
         let job = self.job.lock().unwrap();
-        (job.running, job.stage.clone())
+        (job.running || self.builds.running() > 0, job.stage.clone())
+    }
+
+    fn project_job(&self, repo: &str) -> Option<&Arc<Mutex<Job>>> {
+        if let Some(build) = self.builds.get(repo) {
+            return Some(build);
+        }
+        (self.job.lock().unwrap().repo.as_deref() == Some(repo)).then_some(&self.job)
     }
 
     /// Development only: whether the project list has arrived.
@@ -1523,29 +1637,44 @@ impl App {
     }
 
     fn start(&mut self, ctx: &Ctx, p: Project, kind: Kind) {
-        let job = self.job.clone();
-        {
-            let mut j = job.lock().unwrap();
-            if j.running {
+        if self.job.lock().unwrap().running {
+            return;
+        }
+        self.next_generation += 1;
+        let job = if kind == Kind::Install {
+            let Some(job) = self.builds.start(&p.repo, self.next_generation) else {
+                return;
+            };
+            job
+        } else {
+            if self.builds.running() > 0 {
                 return;
             }
-            let last: Vec<String> = if j.log.is_empty() {
-                // After a restart, the last run's output is read from where the crash saved it.
-                std::fs::read_to_string(
-                    workspace()
-                        .join("data")
-                        .join(slug(&p.repo))
-                        .join("last-run.txt"),
-                )
-                .map(|text| text.lines().map(str::to_owned).collect())
-                .unwrap_or_default()
-            } else {
-                j.log.iter().rev().take(800).rev().cloned().collect()
-            };
+            self.builds.0.remove(&ProjectBuilds::key(&p.repo));
+            self.job.clone()
+        };
+        {
+            let mut j = job.lock().unwrap();
+            let last: Vec<String> =
+                if j.log.is_empty() || j.repo.as_deref() != Some(p.repo.as_str()) {
+                    // After a restart, the last run's output is read from where the crash saved it.
+                    std::fs::read_to_string(
+                        workspace()
+                            .join("data")
+                            .join(slug(&p.repo))
+                            .join("last-run.txt"),
+                    )
+                    .map(|text| text.lines().map(str::to_owned).collect())
+                    .unwrap_or_default()
+                } else {
+                    j.log.iter().rev().take(800).rev().cloned().collect()
+                };
             *j = Job {
                 running: true,
+                generation: self.next_generation,
                 stage: msg_str!("Starting").into(),
                 repo: Some(p.repo.clone()),
+                play_stats: matches!(kind, Kind::Play(_)).then(|| self.saved.play_stats.clone()),
                 last_log: last,
                 ..Default::default()
             };
@@ -1576,6 +1705,9 @@ impl App {
             use_script_defaults: settings.is_some_and(|settings| {
                 settings.switches.is_some() && settings.script_options.is_some()
             }),
+            foxhound_preset: settings.is_some_and(|settings| {
+                settings.confirmed_repo_script.as_deref() == Some("play-foxhound")
+            }),
             fullscreen: graphics.fullscreen,
             warm_first: self.saved.warm_before_play,
             pipelines: self.saved.warm_pipelines,
@@ -1599,7 +1731,6 @@ impl App {
             };
             {
                 let mut j = job.lock().unwrap();
-                j.running = false;
                 j.pid = None;
                 j.stoppable = false;
                 match r {
@@ -1660,6 +1791,7 @@ impl App {
                     state.activity = build_activity::BuildActivity::read(&target_dir(&p.repo));
                 }
             }
+            job.lock().unwrap().running = false;
             ctx.request_repaint();
         });
     }
@@ -1865,6 +1997,9 @@ fn build_project(
     cargo.current_dir(&workspace);
     if victory {
         cargo.args(["-p", "victory"]);
+        if documented_scarlet_script(&workspace).is_some() {
+            cargo.args(["--bin", "victory"]);
+        }
         run(job, ctx, &mut cargo)?;
         let executable = victory_program(&target.join(profile));
         if !executable.is_file() {
@@ -2011,6 +2146,7 @@ fn test_launch(dir: PathBuf) -> Launch {
         output: OutputResolution::Default,
         extra: String::new(),
         use_script_defaults: false,
+        foxhound_preset: false,
         fullscreen: false,
         warm_first: false,
         pipelines: false,
@@ -2972,6 +3108,165 @@ fn fix_known_problems(
     run_fixes(job, ctx, p, l, true)
 }
 
+fn nvidia_overlay_source(root: &Path) -> bool {
+    [
+        "Get-NVIDIA-DLSS.cmd",
+        "scripts/play-foxhound.ps1",
+        "apps/victory/src/play.rs",
+    ]
+    .iter()
+    .all(|file| root.join(file).is_file())
+}
+
+fn native_nvidia_args(l: &Launch, help: &str) -> Option<Vec<String>> {
+    let supports = |flag: &str| help.split_whitespace().any(|word| word == flag);
+    if ![
+        "--series-s",
+        "--res",
+        "--dlss",
+        "--set",
+        "--no-framegen-ready",
+    ]
+    .into_iter()
+    .all(supports)
+    {
+        return None;
+    }
+    let mut args = l.args.iter();
+    while let Some(arg) = args.next() {
+        let (flag, inline) = arg
+            .split_once('=')
+            .map_or((arg.as_str(), false), |(flag, _)| (flag, true));
+        if !supports(flag) {
+            return None;
+        }
+        match flag {
+            "--series-s" | "--no-framegen-ready" | "--preload" if !inline => (),
+            "--res" | "--dlss" | "--framegen" | "--fg-type" | "--fps" | "--set" => {
+                if !inline && args.next().is_none_or(|value| value.starts_with("--")) {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+    }
+    let has = |flag| l.args.iter().any(|arg| arg.split('=').next() == Some(flag));
+    let series_s = l.series_s || has("--series-s");
+    let mut native = Vec::new();
+    if l.series_s && !has("--series-s") {
+        native.push("--series-s".into());
+    }
+    if !has("--res") {
+        match l.output {
+            OutputResolution::P1080 => native.extend(["--res".into(), "1080to1440".into()]),
+            OutputResolution::P2160 => native.extend(["--res".into(), "4k".into()]),
+            OutputResolution::P936 => return None,
+            OutputResolution::P720 if !series_s => return None,
+            _ => (),
+        }
+    }
+    native.extend(l.args.iter().cloned());
+    Some(native)
+}
+
+fn native_nvidia_command(
+    exe: &Path,
+    root: &Path,
+    p: &Project,
+    l: &Launch,
+    args: &[String],
+) -> Command {
+    let baseline = if l.foxhound_preset {
+        std::fs::read_to_string(root.join("scripts/play-foxhound.ps1"))
+            .ok()
+            .and_then(|script| script_preset::parse(&script).ok())
+            .map(|(switches, _)| switches)
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let defaults: std::collections::BTreeMap<_, _> = baseline
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .collect();
+    let mut command = Command::new(exe);
+    command
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .arg("play")
+        .arg(l.game_dir.join(EXE_NAME));
+    let mut switches = std::collections::BTreeMap::new();
+    switches.insert("VICTORY_FULLSCREEN", if l.fullscreen { "1" } else { "0" });
+    for (key, value) in l.extra.lines().filter_map(|line| line.split_once('=')) {
+        let (key, value) = (key.trim(), value.trim());
+        if key.starts_with("VICTORY_")
+            && !matches!(
+                key,
+                "VICTORY_GAME_DIR" | "VICTORY_CACHE_DIR" | "VICTORY_DATA_DIR"
+            )
+            && !key.starts_with("VICTORY_MENU_")
+        {
+            if defaults.get(key).copied() == Some(value) {
+                switches.remove(key);
+            } else {
+                switches.insert(key, value);
+            }
+        }
+    }
+    let ws = workspace();
+    command
+        .env("VICTORY_GAME_DIR", &l.game_dir)
+        .env("VICTORY_DATA_DIR", ws.join("data").join(slug(&p.repo)))
+        .env("VICTORY_CACHE_DIR", ws.join("cache").join(slug(&p.repo)));
+    let streamline = root.join("nvidia-sdk/Streamline/bin/x64");
+    if std::env::var_os("VICTORY_STREAMLINE_DIR").is_none()
+        && streamline.join("sl.interposer.dll").is_file()
+    {
+        command.env("VICTORY_STREAMLINE_DIR", streamline);
+    }
+    for (key, value) in switches {
+        command.arg("--set").arg(format!("{key}={value}"));
+    }
+    command.args(args);
+    command
+}
+
+#[test]
+fn native_nvidia_play_keeps_f1_defaults_and_passes_profile_overrides() {
+    let root = std::env::temp_dir().join(format!("vilauncher-nvidia-play-{}", std::process::id()));
+    std::fs::create_dir_all(root.join("scripts")).unwrap();
+    let script = root.join("scripts/play-foxhound.ps1");
+    std::fs::write(&script, "$settings = @{\nVICTORY_DLSS = 'quality'\n}").unwrap();
+    let mut launch = test_launch(root.clone());
+    launch.foxhound_preset = true;
+    launch.extra = "VICTORY_DLSS=quality\nVICTORY_AMBIENT=0.6".into();
+    let help = "--series-s --res --dlss --set --no-framegen-ready";
+    let args = native_nvidia_args(&launch, help).unwrap();
+    let command = native_nvidia_command(
+        &root.join("victory.exe"),
+        &root,
+        &test_project(),
+        &launch,
+        &args,
+    );
+    let command_args: Vec<_> = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy())
+        .collect();
+    assert_eq!(command_args[0], "play");
+    assert!(command_args.iter().any(|arg| arg == "--series-s"));
+    assert!(command_args.iter().any(|arg| arg == "VICTORY_AMBIENT=0.6"));
+    assert!(!command_args
+        .iter()
+        .any(|arg| arg.starts_with("VICTORY_DLSS=")));
+    launch.args = vec!["--strict".into()];
+    assert!(native_nvidia_args(&launch, help).is_none());
+    assert!(native_nvidia_args(&launch, "").is_none());
+    std::fs::remove_file(script).unwrap();
+    std::fs::remove_dir(root.join("scripts")).unwrap();
+    std::fs::remove_dir(root).unwrap();
+}
+
 /// Starts the installed build of `p`, warming its shaders first when the player asked for that.
 fn play(
     job: &Arc<Mutex<Job>>,
@@ -3008,7 +3303,7 @@ fn play(
                 .join("last-run.txt"),
         );
         let result = run_with(job, ctx, &mut command, |pid| {
-            job.lock().unwrap().pid = Some(pid);
+            record_play_spawn(job, p, pid);
             if let Err(error) = build_activity::BuildActivity::record_run(&target_dir(&p.repo)) {
                 job.lock()
                     .unwrap()
@@ -3044,22 +3339,44 @@ fn play(
         return Err(problem);
     }
     stage(job, ctx, msg_str!("Playing"));
-    let mut c = Command::new(&exe);
-    c.arg("run").arg(l.game_dir.join(EXE_NAME)).arg("--execute");
-    let explicit_console = l
-        .args
-        .iter()
-        .take_while(|arg| arg.as_str() != "--")
-        .any(|arg| arg == "--console" || arg.starts_with("--console="));
-    if !explicit_console && (l.series_s || l.output != OutputResolution::Default) {
-        c.args([
-            "--console",
-            if l.series_s { "series-s" } else { "series-x" },
-        ]);
-    }
-    // The player's own: more `run` flags, and after `--` the game's.
-    c.args(&l.args);
-    victory_env(&mut c, p, l);
+    let root = repo_dir(&p.repo);
+    let root = cargo_workspace(&root).unwrap_or(root);
+    let native = if p.local_exe.is_none() && p.archive_exe.is_none() && nvidia_overlay_source(&root)
+    {
+        victory_help(&exe, "play")
+            .and_then(|help| native_nvidia_args(l, &help))
+            .map(|args| native_nvidia_command(&exe, &root, p, l, &args))
+    } else {
+        None
+    };
+    let mut c = if let Some(command) = native {
+        job.lock()
+            .unwrap()
+            .log
+            .push("Using native NVIDIA Play for saved F1 settings.".into());
+        command
+    } else {
+        let mut command = Command::new(&exe);
+        command
+            .arg("run")
+            .arg(l.game_dir.join(EXE_NAME))
+            .arg("--execute");
+        let explicit_console = l
+            .args
+            .iter()
+            .take_while(|arg| arg.as_str() != "--")
+            .any(|arg| arg == "--console" || arg.starts_with("--console="));
+        if !explicit_console && (l.series_s || l.output != OutputResolution::Default) {
+            command.args([
+                "--console",
+                if l.series_s { "series-s" } else { "series-x" },
+            ]);
+        }
+        // The player's own: more `run` flags, and after `--` the game's.
+        command.args(&l.args);
+        victory_env(&mut command, p, l);
+        command
+    };
     let project_data = workspace().join("data").join(slug(&p.repo));
     let data = saves::prepare(&project_data, choice)
         .map_err(|error| format!("Could not prepare saves: {error}"))?;
@@ -3076,7 +3393,7 @@ fn play(
             .join("last-run.txt"),
     );
     let result = run_with(job, ctx, &mut c, |pid| {
-        job.lock().unwrap().pid = Some(pid);
+        record_play_spawn(job, p, pid);
         if p.local_exe.is_none() {
             if let Err(error) = build_activity::BuildActivity::record_run(&target_dir(&p.repo)) {
                 job.lock()
@@ -3143,6 +3460,15 @@ fn run_with(
     run_with_output(job, ctx, c, spawned, Some)
 }
 
+fn record_play_spawn(job: &Arc<Mutex<Job>>, p: &Project, pid: u32) {
+    let mut job = job.lock().unwrap();
+    job.pid = Some(pid);
+    job.session = job
+        .play_stats
+        .take()
+        .map(|history| history.start(project_key(&p.repo)));
+}
+
 fn run_with_output(
     job: &Arc<Mutex<Job>>,
     ctx: &Ctx,
@@ -3173,6 +3499,9 @@ fn run_with_output(
                     continue;
                 };
                 let mut j = job.lock().unwrap();
+                if let Some(session) = &j.session {
+                    session.observe(&line);
+                }
                 j.log.push(line);
                 if j.log.len() > 4000 {
                     j.log.drain(..1000);
@@ -3185,10 +3514,19 @@ fn run_with_output(
     };
     let a = out.map(|o| pipe(Box::new(o), true));
     let b = err.map(|e| pipe(Box::new(e), false));
-    let status = child.wait().map_err(|e| e.to_string())?;
+    let status = child.wait().map_err(|e| e.to_string());
+    if let Some(session) = &job.lock().unwrap().session {
+        session.stop_clock();
+    }
     for t in [a, b].into_iter().flatten() {
         let _ = t.join();
     }
+    let mut j = job.lock().unwrap();
+    if let Some(session) = j.session.take() {
+        j.log.push(session.summary());
+    }
+    drop(j);
+    let status = status?;
     status
         .success()
         .then_some(())
@@ -3198,6 +3536,9 @@ fn run_with_output(
 impl App {
     /// Installs what is missing with winget, then looks again.
     fn start_tools(&mut self, ctx: &Ctx) {
+        if self.builds.running() > 0 {
+            return;
+        }
         let job = self.job.clone();
         {
             let mut j = job.lock().unwrap();
@@ -3264,6 +3605,9 @@ impl App {
 
     /// Moves every installed project from `old` to `new`, then uses `new`.
     fn start_move(&mut self, ctx: &Ctx, old: PathBuf, new: PathBuf) {
+        if self.builds.running() > 0 {
+            return;
+        }
         let job = self.job.clone();
         {
             let mut j = job.lock().unwrap();

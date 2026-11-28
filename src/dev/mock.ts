@@ -36,6 +36,8 @@ const state = {
   gpu: 0,
   showNuked: false,
   listSort: 0,
+  includeExact60Fps: false,
+  resetPersonalFps: new Set<string>(),
   listTier: 0,
   specRam: null as number | null,
   specVram: null as number | null,
@@ -73,6 +75,9 @@ function project(s: (typeof SAMPLE)[number], index: number): Project {
   const installed = state.installed.has(s.repo)
   return {
     ...s,
+    personal_fps: installed && !state.resetPersonalFps.has(s.repo) ? (state.includeExact60Fps ? 38.7 : 37.2) : null,
+    playtime: installed ? "1h 18m" : null,
+    build_job: null,
     highlights: index === 1 ? ["Open world renders lit, with textures, people and vehicles", "Plays through story missions without crashing"] : [],
     blockers: index === 1 ? ["About 3 fps in busy streets", "Needs 30 GB of system memory"] : [],
     listing: {
@@ -140,6 +145,7 @@ function snapshot(): Snapshot {
       gpu_filter: state.gpu,
       show_nuked: state.showNuked ?? false,
       list_sort: state.listSort ?? 0,
+      include_exact_60_fps: state.includeExact60Fps,
       list_tier: state.listTier ?? 0,
       spec_ram_gb: state.specRam ?? null,
       spec_vram_gb: state.specVram ?? null,
@@ -161,8 +167,10 @@ function snapshot(): Snapshot {
       ready: state.toolsReady,
       missing: state.toolsReady ? [] : [platform === "macos" ? "Xcode Command Line Tools" : "C++ build tools"],
     },
+    active_builds: 0,
     job: {
       running: !!state.job,
+      generation: 0,
       repo: state.job?.repo ?? null,
       stage: state.job?.stage ?? "",
       stage_kind: stageKind(state.job?.stage ?? ""),
@@ -184,6 +192,12 @@ async function act(a: Action): Promise<unknown> {
   switch (a.type) {
     case "select":
       state.selected = a.repo
+      break
+    case "reset_personal_fps":
+      state.resetPersonalFps.add(a.repo)
+      break
+    case "set_include_exact60_fps":
+      state.includeExact60Fps = a.include
       break
     case "set_gpu_filter":
       state.gpu = a.value
