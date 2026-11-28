@@ -45,6 +45,7 @@ export default {
   },
   row: {
     takenDown: "已下架 · 在 VIPortLive 上打开",
+    keptCopy: "已下架 · 已保留已安装的副本",
     update: "有可用更新",
     imported: "导入的构建版本",
     installedByLink: "已安装 · 通过链接添加",

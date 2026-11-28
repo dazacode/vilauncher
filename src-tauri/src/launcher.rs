@@ -134,6 +134,9 @@ pub(crate) struct Saved {
     later: Vec<(String, String)>,
     selected: Option<String>,
     custom: Vec<Project>,
+    /// Installed projects as the list last had them, kept after VIPortLive drops or takes them down.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    kept: Vec<Project>,
     series_s: bool,
     render_scale: f32,
     extra_env: String,
@@ -560,6 +563,8 @@ pub(crate) struct App {
     unplugged: bool,
     /// When the game files were last looked at.
     files_checked: Option<Instant>,
+    /// Whether the kept installs were checked against the list that is loaded now.
+    kept_synced: bool,
     /// The drive search: `None` idle, `Some(None)` searching, `Some(Some(r))` done.
     finding: FindingSlot,
     /// What is known about each project's install, by repo.
@@ -846,9 +851,42 @@ fn repo_state(p: &Project) -> RepoState {
         built: std::fs::read_to_string(built_file(&p.repo))
             .ok()
             .map(|s| s.trim().to_string()),
-        remote: remote_head(p),
+        // A taken-down project is not fetched from its repo again: its copy stays as it is.
+        remote: if p.listing.nuked.is_some() { None } else { remote_head(p) },
         activity: build_activity::BuildActivity::read(&target_dir(&p.repo)),
     }
+}
+
+/// The note on a kept install the list no longer carries. Settings only; the window shows its own wording.
+const REMOVED_NOTE: &str = "Removed from VIPortLive. The installed copy is kept.";
+
+/// The installs to keep, given the list: each installed project the list has, as it has it now;
+/// and each earlier kept project the list no longer has, while it is still installed (marked removed).
+/// A project that is no longer installed is dropped.
+fn keep_installed(
+    previous: &[Project],
+    list: &[Project],
+    installed: impl Fn(&str) -> bool,
+) -> Vec<Project> {
+    let mut kept: Vec<Project> = list
+        .iter()
+        .filter(|p| installed(&p.repo))
+        .cloned()
+        .collect();
+    for old in previous {
+        let key = project_key(&old.repo);
+        let listed = list.iter().any(|p| project_key(&p.repo) == key);
+        let already = kept.iter().any(|k| project_key(&k.repo) == key);
+        if listed || already || !installed(&old.repo) {
+            continue;
+        }
+        let mut gone = old.clone();
+        if gone.listing.nuked.is_none() {
+            gone.listing.nuked = Some(REMOVED_NOTE.into());
+        }
+        kept.push(gone);
+    }
+    kept
 }
 
 /// A folder from what the player typed or picked: quotes and spaces off, and
@@ -1375,6 +1413,7 @@ impl App {
             empty: false,
             unplugged: false,
             files_checked: None,
+            kept_synced: false,
             finding: Arc::new(Mutex::new(None)),
             repos: Arc::new(Mutex::new(std::collections::HashMap::new())),
             last_auto_check: None,
@@ -1418,6 +1457,7 @@ impl App {
 
     fn refresh_projects(&mut self, ctx: &Ctx) {
         *self.projects.lock().unwrap() = None;
+        self.kept_synced = false;
         let (slot, ctx) = (self.projects.clone(), ctx.clone());
         std::thread::spawn(move || {
             let r = fetch_projects();
@@ -1470,11 +1510,30 @@ impl App {
     }
 
     fn all_projects(&self) -> Vec<Project> {
+        let guard = self.projects.lock().unwrap();
+        let list: &[Project] = match &*guard {
+            Some(Ok(list)) => list,
+            _ => &[],
+        };
         let mut v: Vec<Project> = self.saved.custom.clone();
-        if let Some(Ok(list)) = &*self.projects.lock().unwrap() {
-            v.extend(list.iter().cloned());
-        }
+        v.extend(list.iter().cloned());
+        v.extend(self.kept_missing(list));
         v
+    }
+
+    /// Takes the installs the list has now into `saved.kept`, as the list has them.
+    fn sync_kept(&mut self, list: &[Project]) {
+        self.saved.kept = keep_installed(&self.saved.kept, list, project_installed);
+    }
+
+    /// Kept installs the list does not carry (dropped, or taken down and left out).
+    fn kept_missing(&self, list: &[Project]) -> Vec<Project> {
+        self.saved
+            .kept
+            .iter()
+            .filter(|k| !list.iter().any(|p| project_key(&p.repo) == project_key(&k.repo)))
+            .cloned()
+            .collect()
     }
 
     /// Looks again at `p`'s install and the newest version online.
@@ -2009,6 +2068,41 @@ fn uninstall_removes_read_only_files_too() {
     remove_tree_forcibly(&root.join("repo"), &|_| {}).unwrap();
     assert!(!root.join("repo").exists());
     std::fs::remove_dir_all(root).ok();
+}
+
+#[cfg(test)]
+fn listed_project(repo: &str) -> Project {
+    Project {
+        custom: false,
+        repo: repo.into(),
+        ..test_project()
+    }
+}
+
+#[test]
+fn an_installed_project_stays_when_the_list_drops_or_takes_it_down() {
+    let installed = |repo: &str| repo != "owner/uninstalled";
+    let list = [
+        listed_project("owner/kept"),
+        listed_project("owner/uninstalled"),
+    ];
+    // First look: only the installed one is kept, as the list has it.
+    let first = keep_installed(&[], &list, installed);
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].repo, "owner/kept");
+    assert!(first[0].listing.nuked.is_none());
+    // VIPortLive drops it: the copy stays, marked removed, so it can be played but not updated.
+    let dropped = keep_installed(&first, &[], installed);
+    assert_eq!(dropped.len(), 1);
+    assert_eq!(dropped[0].repo, "owner/kept");
+    assert_eq!(dropped[0].listing.nuked.as_deref(), Some(REMOVED_NOTE));
+    // It is listed again: the list's own entry replaces the copy.
+    let back = keep_installed(&dropped, &[listed_project("owner/kept")], installed);
+    assert_eq!(back.len(), 1);
+    assert!(back[0].listing.nuked.is_none());
+    // Uninstalled: nothing is kept any more.
+    let gone = keep_installed(&dropped, &[], |_| false);
+    assert!(gone.is_empty());
 }
 
 #[cfg(test)]
