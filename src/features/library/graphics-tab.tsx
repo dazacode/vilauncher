@@ -30,6 +30,13 @@ export function GraphicsTab({ project: p }: { project: Project }) {
             aria-label={t("library.graphics.useDefaults")}
           />
         </Row>
+        <Row label={t("library.graphics.keepGame")} hint={t("library.graphics.keepGameHint")}>
+          <Switch
+            checked={p.launch.keep_game_settings}
+            onCheckedChange={(value) => void run({ type: "set_project_keep_game_settings", repo: p.repo, value })}
+            aria-label={t("library.graphics.keepGame")}
+          />
+        </Row>
       </Group>
       <GraphicsGroups graphics={g} onChange={set} />
     </div>

@@ -102,6 +102,7 @@ export interface Project {
     selected_preset: string | null
     graphics: Graphics
     graphics_override: boolean
+    keep_game_settings: boolean
     notes: string
   }
 }
@@ -295,6 +296,7 @@ export type Action =
     }
   | { type: "set_default_graphics"; graphics: Graphics }
   | { type: "set_project_graphics"; repo: string; graphics: Graphics | null }
+  | { type: "set_project_keep_game_settings"; repo: string; value: boolean }
   | { type: "set_project_args"; repo: string; value: string | null }
   | { type: "set_project_switches"; repo: string; value: string | null }
   | { type: "set_script_option"; repo: string; option: keyof ScriptOptions; enabled: boolean }

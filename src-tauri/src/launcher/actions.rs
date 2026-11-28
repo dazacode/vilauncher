@@ -135,6 +135,11 @@ pub(crate) enum Action {
         repo: String,
         graphics: Option<GraphicsSettings>,
     },
+    /// Keeps the game's own F1 settings for resolution, render scale and upscaler (see launcher.rs).
+    SetProjectKeepGameSettings {
+        repo: String,
+        value: bool,
+    },
     SetProjectArgs {
         repo: String,
         value: Option<String>,
@@ -597,6 +602,11 @@ impl App {
                 self.tidy_launch(&repo);
                 Value::Null
             }
+            Action::SetProjectKeepGameSettings { repo, value } => {
+                self.launch_mut(&repo).keep_game_settings = value;
+                self.tidy_launch(&repo);
+                Value::Null
+            }
             Action::SetProjectArgs { repo, value } => {
                 self.launch_mut(&repo).args = value;
                 self.tidy_launch(&repo);
@@ -1043,6 +1053,7 @@ impl App {
                 && launch.graphics.is_none()
                 && launch.notes.is_empty()
                 && launch.addons.is_empty()
+                && !launch.keep_game_settings
                 && !launch.has_confirmed_preset()
         }) {
             self.saved.project_launch.remove(&key);

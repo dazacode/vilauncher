@@ -133,6 +133,8 @@ export default {
     useDefaults: "Use my default graphics",
     ownSettings: "This project has its own settings.",
     defaultsHint: "Change the defaults in Settings, or any setting below for this project only.",
+    keepGame: "Keep the game's own settings",
+    keepGameHint: "Resolution and render scale are set in the game's F1 menu. When on, the launcher does not send its own resolution, render scale or upscaler on each start.",
     quality: "Quality",
     qualityHint: "These may not work with every project or on older PCs. If a game won't start or looks wrong, choose Best quality and turn the fixes off.",
     preset: "Preset",

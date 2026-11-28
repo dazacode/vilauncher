@@ -46,6 +46,7 @@ const state = {
   log: mode === "job" ? Array.from({ length: 40 }, (_, i) => `   Compiling crate-${i} v0.${i}.0`) : [] as string[],
   graphics,
   overrides: new Map<string, Graphics>(),
+  keepGame: new Set<string>(),
   notes: new Map<string, string>(),
   warm: false,
   notice: params.get("notice") !== "0",
@@ -106,6 +107,7 @@ function project(s: (typeof SAMPLE)[number], index: number): Project {
       selected_preset: null,
       graphics: state.overrides.get(s.repo) ?? state.graphics,
       graphics_override: state.overrides.has(s.repo),
+      keep_game_settings: state.keepGame.has(s.repo),
       notes: state.notes.get(s.repo) ?? "",
     },
   }
@@ -263,6 +265,10 @@ async function act(a: Action): Promise<unknown> {
       }
     case "set_default_graphics":
       state.graphics = a.graphics
+      break
+    case "set_project_keep_game_settings":
+      if (a.value) state.keepGame.add(a.repo)
+      else state.keepGame.delete(a.repo)
       break
     case "set_project_graphics":
       if (a.graphics) state.overrides.set(a.repo, a.graphics)

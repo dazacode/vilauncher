@@ -213,6 +213,10 @@ pub(crate) struct ProjectLaunch {
     confirmed_repo_script: Option<String>,
     graphics: Option<GraphicsSettings>,
     notes: String,
+    /// Keep the game's own F1 settings for resolution, render scale and upscaler: the
+    /// launcher then does not send those settings on each start (they would overwrite F1).
+    #[serde(default)]
+    keep_game_settings: bool,
     /// Add-ons turned on for this project, with what turning them off puts back (addons.rs).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     addons: std::collections::BTreeMap<String, crate::addons::Applied>,
@@ -374,6 +378,27 @@ fn the_game_program_must_start_like_a_windows_program() {
 
 #[cfg(test)]
 #[test]
+fn keeping_the_game_settings_leaves_the_render_variables_unset() {
+    let root = std::env::temp_dir().join(format!("vl-keep-f1-{}", std::process::id()));
+    let mut launch = test_launch(root.clone());
+    launch.series_s = true;
+    launch.output = OutputResolution::P1080;
+    let project = test_project();
+    let names = |launch: &Launch| {
+        let mut c = Command::new("victory");
+        victory_env(&mut c, &project, launch);
+        c.get_envs()
+            .map(|(key, _)| key.to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+    };
+    assert!(names(&launch).iter().any(|key| key == "VICTORY_RENDER_SCALE"));
+    launch.keep_game_settings = true;
+    let kept = names(&launch);
+    assert!(!kept.iter().any(|key| key == "VICTORY_RENDER_SCALE" || key == "VICTORY_OUTPUT" || key == "VICTORY_OWN_UPSCALER"));
+}
+
+#[cfg(test)]
+#[test]
 fn a_repo_with_no_rust_source_says_so() {
     // A repo that ships only ready-made programs has no Cargo.toml to build.
     let root = std::env::temp_dir().join(format!("vl-no-cargo-{}", std::process::id()));
@@ -475,6 +500,7 @@ struct Launch {
     extra: String,
     use_script_defaults: bool,
     foxhound_preset: bool,
+    keep_game_settings: bool,
     fullscreen: bool,
     warm_first: bool,
     pipelines: bool,
@@ -1700,6 +1726,11 @@ impl App {
             foxhound_preset: settings.is_some_and(|settings| {
                 settings.confirmed_repo_script.as_deref() == Some("play-foxhound")
             }),
+            keep_game_settings: self
+                .saved
+                .project_launch
+                .get(&project_key(&p.repo))
+                .is_some_and(|launch| launch.keep_game_settings),
             fullscreen: graphics.fullscreen,
             warm_first: self.saved.warm_before_play,
             pipelines: self.saved.warm_pipelines,
@@ -2133,6 +2164,7 @@ fn test_project() -> Project {
 fn test_launch(dir: PathBuf) -> Launch {
     Launch {
         game_dir: dir,
+        keep_game_settings: false,
         series_s: true,
         scale: 0.5,
         output: OutputResolution::Default,
@@ -2327,12 +2359,14 @@ fn victory_env(c: &mut Command, p: &Project, l: &Launch) {
             c.env(&k, &v);
         }
     }
-    if l.series_s {
-        c.env("VICTORY_OWN_UPSCALER", "1");
-        c.env("VICTORY_RENDER_SCALE", format!("{:.2}", l.scale));
-    }
-    if let Some(size) = l.output.dimensions() {
-        c.env("VICTORY_OUTPUT", size);
+    if !l.keep_game_settings {
+        if l.series_s {
+            c.env("VICTORY_OWN_UPSCALER", "1");
+            c.env("VICTORY_RENDER_SCALE", format!("{:.2}", l.scale));
+        }
+        if let Some(size) = l.output.dimensions() {
+            c.env("VICTORY_OUTPUT", size);
+        }
     }
     let ws = workspace();
     let data = ws.join("data").join(slug(&p.repo));
