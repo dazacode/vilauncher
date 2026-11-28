@@ -490,11 +490,7 @@ impl App {
                 Value::Null
             }
             Action::SetDefaultGraphics { graphics } => {
-                self.saved.series_s = graphics.series_s;
-                self.saved.render_scale = graphics.render_scale;
-                self.saved.fix_8gb = graphics.fix_8gb;
-                self.saved.bright_shadows = graphics.bright_shadows;
-                self.saved.fullscreen = graphics.fullscreen;
+                self.saved.set_default_graphics(graphics);
                 Value::Null
             }
             Action::SetProjectGraphics { repo, graphics } => {

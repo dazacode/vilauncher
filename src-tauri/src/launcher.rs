@@ -126,6 +126,8 @@ pub(crate) struct Saved {
     defaults_set: bool,
     /// Play in borderless fullscreen (off: a normal window). Off by default.
     fullscreen: bool,
+    /// Default output resolution for projects without their own graphics settings.
+    output: OutputResolution,
     /// Where projects are downloaded and built (empty: the default folder).
     install_dir: String,
     /// Updates put off with "Later": (repo, the new version's commit).
@@ -256,8 +258,17 @@ impl Saved {
             fix_8gb: self.fix_8gb,
             bright_shadows: self.bright_shadows,
             fullscreen: self.fullscreen,
-            output: OutputResolution::Default,
+            output: self.output,
         }
+    }
+
+    fn set_default_graphics(&mut self, graphics: GraphicsSettings) {
+        self.series_s = graphics.series_s;
+        self.render_scale = graphics.render_scale;
+        self.fix_8gb = graphics.fix_8gb;
+        self.bright_shadows = graphics.bright_shadows;
+        self.fullscreen = graphics.fullscreen;
+        self.output = graphics.output;
     }
 
     fn graphics_for(&self, repo: &str) -> GraphicsSettings {
@@ -287,6 +298,52 @@ impl Saved {
         }
         (split_args(args), extra)
     }
+}
+
+#[cfg(test)]
+#[test]
+fn default_graphics_round_trip_and_respect_project_overrides() {
+    // Settings written by older versions have no output field.
+    let mut saved: Saved = serde_json::from_str(r#"{"fullscreen":true}"#).unwrap();
+    assert_eq!(saved.default_graphics().output, OutputResolution::Default);
+    assert!(saved.default_graphics().fullscreen);
+    let mut graphics = saved.default_graphics();
+    graphics.series_s = true;
+    graphics.render_scale = 0.75;
+    graphics.fix_8gb = true;
+    graphics.bright_shadows = true;
+    graphics.fullscreen = false;
+
+    let mut local = graphics;
+    local.output = OutputResolution::P720;
+    saved.project_launch.insert(
+        "owner/custom".into(),
+        ProjectLaunch {
+            graphics: Some(local),
+            ..ProjectLaunch::default()
+        },
+    );
+
+    for output in [
+        OutputResolution::P720,
+        OutputResolution::P936,
+        OutputResolution::P1080,
+        OutputResolution::P1440,
+        OutputResolution::P2160,
+        OutputResolution::Default,
+    ] {
+        graphics.output = output;
+        saved.set_default_graphics(graphics);
+        assert!(saved.default_graphics() == graphics);
+        let json = serde_json::to_string(&saved).unwrap();
+        saved = serde_json::from_str(&json).unwrap();
+        assert!(saved.default_graphics() == graphics);
+        assert!(saved.graphics_for("owner/inherited") == graphics);
+        assert!(saved.graphics_for("Owner/Custom") == local);
+    }
+
+    saved.project_launch.get_mut("owner/custom").unwrap().graphics = None;
+    assert!(saved.graphics_for("owner/custom") == graphics);
 }
 
 #[cfg(test)]
