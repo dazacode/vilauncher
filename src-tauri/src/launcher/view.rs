@@ -138,6 +138,7 @@ struct LaunchView {
     selected_preset: Option<String>,
     graphics: GraphicsSettings,
     graphics_override: bool,
+    keep_game_settings: bool,
     notes: String,
 }
 
@@ -479,6 +480,7 @@ impl App {
                 selected_preset: launch.and_then(|l| l.selected_preset.clone()),
                 graphics: self.saved.graphics_for(&p.repo),
                 graphics_override: launch.is_some_and(|l| l.graphics.is_some()),
+                keep_game_settings: launch.is_some_and(|l| l.keep_game_settings),
                 notes: launch.map(|l| l.notes.clone()).unwrap_or_default(),
             },
         }
