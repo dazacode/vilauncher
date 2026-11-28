@@ -565,10 +565,7 @@ impl App {
         let owner = (kind == "git" && !p.repo.contains("://"))
             .then(|| p.repo.split('/').next().unwrap_or_default().to_owned());
         let web = p.web_url();
-        let reported = reported::parse(
-            std::iter::once(p.summary.as_str())
-                .chain(p.highlights.iter().chain(&p.blockers).map(String::as_str)),
-        );
+        let reported = self.reported(p);
         // Commit pressure: the PC's commit limit against the author's peak commit (Windows
         // only; None when either is not known, so the window shows "unknown").
         let commit_short = self
@@ -634,6 +631,28 @@ impl App {
                 notes: launch.map(|l| l.notes.clone()).unwrap_or_default(),
             },
         }
+    }
+
+    /// The memory `p`'s summary and lists report. Reading the text is about half of
+    /// a snapshot's cost, and the text changes only with the project list.
+    fn reported(&self, p: &Project) -> reported::Reported {
+        use std::hash::{Hash, Hasher};
+        let texts = || {
+            std::iter::once(p.summary.as_str())
+                .chain(p.highlights.iter().chain(&p.blockers).map(String::as_str))
+        };
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        texts().for_each(|t| t.hash(&mut hasher));
+        let key = hasher.finish();
+        let mut cache = self.reported_cache.lock().unwrap();
+        if let Some((hash, found)) = cache.get(&p.repo) {
+            if *hash == key {
+                return *found;
+            }
+        }
+        let found = reported::parse(texts());
+        cache.insert(p.repo.clone(), (key, found));
+        found
     }
 
     /// Whether `p` is installed, from disk, looked up again every 2 seconds.

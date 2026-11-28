@@ -19,9 +19,9 @@ import { NoticeDialog } from "./notice-dialog"
 export function Dialogs() {
   const dialog = useStore((s) => s.dialog)
   const open = useStore((s) => s.open)
-  const snap = useStore((s) => s.snap)
+  const ready = useStore((s) => s.snap !== null)
   const close = () => open(null)
-  if (!snap) return null
+  if (!ready) return null
   return (
     <>
       <ImportDialog open={dialog?.kind === "import"} onClose={close} />

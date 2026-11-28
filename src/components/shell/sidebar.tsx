@@ -1,6 +1,6 @@
 import { BadgeCheck, LayoutGrid, Plus, Search, Settings2, SlidersHorizontal } from "lucide-react"
 import { motion } from "motion/react"
-import { useEffect, useId, useRef, useState } from "react"
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { Popover } from "radix-ui"
 import { ProjectAvatar } from "@/components/art/project-avatar"
 import { Button } from "@/components/ui/button"
@@ -13,8 +13,9 @@ import { useT } from "@/i18n"
 import { assess, mainGpu, SORTS, sortLabel, sortProjects, withSpec } from "@/lib/compat"
 import { openUrl } from "@/lib/api"
 import { fps, gpuText, shortStage } from "@/lib/format"
-import { run, useAlias, useStore } from "@/lib/store"
-import type { Project, Snapshot } from "@/lib/types"
+import { type JobState, run, useAlias, useJob, useStore } from "@/lib/store"
+import { useShallow } from "zustand/react/shallow"
+import type { Project, Snapshot, SystemInfo } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { Brand } from "./brand"
 import { LauncherUpdate } from "@/features/shared/launcher-update"
@@ -25,7 +26,15 @@ const ROW = "[data-row]"
 
 export function Sidebar() {
   const t = useT()
-  const snap = useStore((s) => s.snap)
+  // The parts the list shows, each kept as the same object while it does not change: no new drawing per snapshot.
+  const snap = useStore(
+    useShallow((s) =>
+      s.snap
+        ? { list: s.snap.list, custom: s.snap.custom, settings: s.snap.settings, system: s.snap.system, selected: s.snap.selected, site: s.snap.brand.site }
+        : null,
+    ),
+  )
+  const job = useJob()
   const view = useStore((s) => s.view)
   const setView = useStore((s) => s.setView)
   const search = useStore((s) => s.search)
@@ -40,9 +49,12 @@ export function Sidebar() {
   const query = screenshot ? "" : search.trim().toLowerCase()
   const filter = snap?.settings.gpu_filter ?? 0
   const loading = !snap || snap.list.status === "loading"
-  const sections = snap ? group(snap, query, filter) : []
+  const sections = useMemo(() => (snap ? group(snap, query, filter) : []), [snap?.list, snap?.custom, snap?.settings, query, filter])
   const order = sections.flatMap((s) => s.rows.map((p) => p.repo))
   const active = cursor && order.includes(cursor) ? cursor : snap?.selected && order.includes(snap.selected) ? snap.selected : order[0]
+  // Worked out once for the whole list; unchanged parts of a snapshot keep their objects, so this holds between snapshots.
+  const system = useMemo(() => (snap ? withSpec(snap.system, snap.settings) : null), [snap?.system, snap?.settings])
+  const onRowFocus = useCallback((repo: string) => setCursor(repo), [])
 
   const rows = () => [...(listRef.current?.querySelectorAll<HTMLElement>(ROW) ?? [])]
   const onListKey = (e: React.KeyboardEvent) => {
@@ -102,7 +114,7 @@ export function Sidebar() {
             className="h-8 w-full rounded-md border border-line bg-fill-1 pr-3 pl-9 text-secondary text-fg placeholder:text-fg-3 transition-colors hover:border-line-2 focus-visible:border-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25"
           />
         </label>
-        {snap ? <FilterMenu snap={snap} /> : <Bone className="size-8 shrink-0 rounded-md" />}
+        {snap ? <FilterMenu settings={snap.settings} system={snap.system} /> : <Bone className="size-8 shrink-0 rounded-md" />}
       </div>
       <div
         ref={listRef}
@@ -124,7 +136,15 @@ export function Sidebar() {
             <Section key={s.id} title={t(`shell.list.sections.${s.id}`)}>
               {s.rows.map((p) => (
                 <li key={p.repo}>
-                  <Row project={p} snap={snap} tabbable={p.repo === active} onFocus={() => setCursor(p.repo)} />
+                  <Row
+                    project={p}
+                    selected={snap.selected === p.repo}
+                    job={p.build_job ?? (job?.repo === p.repo ? job : null)}
+                    system={system}
+                    site={snap.site}
+                    tabbable={p.repo === active}
+                    onFocus={onRowFocus}
+                  />
                 </li>
               ))}
             </Section>
@@ -158,7 +178,7 @@ export function Sidebar() {
  * There is no "recommended" group: fit is judged from memory figures that authors report, which
  * are too new and too uneven to rank builds on. A build that doesn't fit still shows its warning.
  */
-function group(snap: Snapshot, query: string, filter: number) {
+function group(snap: Pick<Snapshot, "list" | "custom" | "settings">, query: string, filter: number) {
   const s = snap.settings
   const keep = (p: Project) => {
     const text = !query || p.name.toLowerCase().includes(query) || p.repo.toLowerCase().includes(query)
@@ -177,9 +197,9 @@ function group(snap: Snapshot, query: string, filter: number) {
 }
 
 /** Filter, sort and the list's options, in one menu. Every choice is kept in the launcher's settings. */
-function FilterMenu({ snap }: { snap: Snapshot }) {
+const FilterMenu = memo(function FilterMenu({ settings, system }: { settings: Snapshot["settings"]; system: Snapshot["system"] }) {
   const t = useT()
-  const s = snap.settings
+  const s = settings
   const [open, setOpen] = useState(false)
   const [advanced, setAdvanced] = useState(false)
   const changed = [s.gpu_filter !== 0, s.show_nuked, s.list_sort !== 0, s.list_tier !== 0, s.spec_ram_gb != null || s.spec_vram_gb != null].filter(Boolean).length
@@ -273,7 +293,7 @@ function FilterMenu({ snap }: { snap: Snapshot }) {
               {t("shell.filter.advanced")}
               <span aria-hidden>{advanced ? "−" : "+"}</span>
             </button>
-            {advanced && <SpecFields snap={snap} />}
+            {advanced && <SpecFields settings={settings} system={system} />}
           </div>
           {changed > 0 && (
             <Button
@@ -293,14 +313,14 @@ function FilterMenu({ snap }: { snap: Snapshot }) {
       </Popover.Portal>
     </Popover.Root>
   )
-}
+})
 
 /** The player's RAM and video memory, for judging builds by hand. Empty: what the launcher found. */
-function SpecFields({ snap }: { snap: Snapshot }) {
+function SpecFields({ settings, system }: { settings: Snapshot["settings"]; system: Snapshot["system"] }) {
   const t = useT()
-  const s = snap.settings
-  const ram = snap.system?.ram_gb ?? null
-  const vram = mainGpu(snap.system)?.vram_gb ?? null
+  const s = settings
+  const ram = system?.ram_gb ?? null
+  const vram = mainGpu(system)?.vram_gb ?? null
   const save = (ram_gb: number | null, vram_gb: number | null) => void run({ type: "set_spec", ram_gb, vram_gb })
   return (
     <div className="space-y-2">
@@ -377,12 +397,22 @@ function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode; labe
   )
 }
 
-function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: Snapshot; tabbable: boolean; onFocus(): void }) {
+type RowProps = {
+  project: Project
+  selected: boolean
+  job: Pick<JobState, "running" | "stage" | "stage_kind"> | null
+  /** The PC, with the player's own RAM and video memory (withSpec). */
+  system: SystemInfo | null
+  site: string
+  tabbable: boolean
+  onFocus(repo: string): void
+}
+
+/** Drawn again only when its own project, job or selection changes (memo), not for every snapshot. */
+const Row = memo(function Row({ project: p, selected, job, system, site, tabbable, onFocus }: RowProps) {
   const t = useT()
   const alias = useAlias()(p)
-  const selected = snap.selected === p.repo
   const setView = useStore((s) => s.setView)
-  const job = p.build_job ?? (snap.job.repo === p.repo ? snap.job : null)
   const working = !!job?.running
   let line: React.ReactNode
   let tone = "text-fg-3"
@@ -402,7 +432,7 @@ function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: 
   } else {
     const f = fps(p)
     // Where a build doesn't fit the PC, its warning takes the place of the cards it runs on.
-    const verdict = assess(p, withSpec(snap.system, snap.settings))
+    const verdict = assess(p, system)
     if (verdict.level === "concern") tone = "text-warn"
     const detail = verdict.warning ?? (p.gpu.length ? gpuText(p.gpu) : null)
     line = [f != null ? `${f} fps` : null, detail].filter(Boolean).join(" · ") || t("shell.row.notMeasured")
@@ -412,12 +442,12 @@ function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: 
       type="button"
       data-row
       tabIndex={tabbable ? 0 : -1}
-      onFocus={onFocus}
+      onFocus={() => onFocus(p.repo)}
       aria-current={selected ? "true" : undefined}
       onClick={() => {
         // A taken-down project has nothing to install: its page on VIPortLive explains it. An installed copy still plays.
         if (p.listing.nuked && !p.installed) {
-          void openUrl(p.listing.id ? `${snap.brand.site}/projects/${p.listing.id}` : snap.brand.site)
+          void openUrl(p.listing.id ? `${site}/projects/${p.listing.id}` : site)
           return
         }
         setView("library")
@@ -445,7 +475,7 @@ function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: 
       )}
     </button>
   )
-}
+})
 
 /** A project name that shows itself whole in a tooltip when the row cuts it short. */
 function Name({ text, className }: { text: string; className?: string }) {
