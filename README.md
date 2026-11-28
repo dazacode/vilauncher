@@ -1,10 +1,16 @@
-<p align="center">
+<h1 align="center">
   <img src="assets/banner.png" alt="VILauncher by VIPortLive" width="960">
+</h1>
+
+<p align="center">
+  <b lang="en">English</b> ·
+  <a href="README.zh-TW.md" lang="zh-Hant" hreflang="zh-Hant">繁體中文</a> ·
+  <a href="README.zh-CN.md" lang="zh-Hans" hreflang="zh-Hans">简体中文</a>
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-ff4fa8"></a>
-  <a href="https://github.com/dazacode/vilauncher/actions/workflows/build.yml"><img alt="Build" src="https://github.com/dazacode/vilauncher/actions/workflows/build.yml/badge.svg"></a>
+  <a href="https://github.com/dazacode/vilauncher/actions/workflows/build.yml"><img alt="Build status" src="https://github.com/dazacode/vilauncher/actions/workflows/build.yml/badge.svg"></a>
   <a href="https://github.com/dazacode/vilauncher/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/dazacode/vilauncher?color=ff4fa8&cacheSeconds=300"></a>
 </p>
 
@@ -40,7 +46,7 @@ Mandyhub's settings and installed projects are carried over on first start, so n
 
 ## What's new
 
-The newest release, its notes and its downloads are always at [Releases](https://github.com/dazacode/vilauncher/releases/latest). The badges above update themselves: the release badge shows the newest version, and the build badge shows whether the `main` branch builds.
+The newest release, its notes and its downloads are always at [Releases](https://github.com/dazacode/vilauncher/releases/latest). The badges at the top update themselves: the release badge shows the newest version, and the build badge shows whether the `main` branch builds.
 
 ## Download
 
@@ -116,7 +122,7 @@ Saves live in `data` and are never touched by an update, a rollback or a cache c
 
 Needs Node.js 22, pnpm 10 and Rust stable. The UI also runs in a plain browser with a mock backend during development.
 
-```powershell
+```sh
 pnpm install
 pnpm tauri dev     # run with hot reload
 pnpm tauri build   # release build
@@ -130,7 +136,7 @@ Output:
 
 ### Check the build like CI
 
-```powershell
+```sh
 pnpm ci:check                                  # install, typecheck, translations, vite build, cargo test
 node scripts/ci.mjs --only typecheck,test      # run a subset
 node scripts/ci.mjs --tauri --keep-going       # also build the installer, run every step
