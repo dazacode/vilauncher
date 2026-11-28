@@ -412,6 +412,23 @@ fn a_repo_with_no_rust_source_says_so() {
 
 #[cfg(test)]
 #[test]
+fn a_program_without_victory_symbols_is_not_a_victory_fork() {
+    // RAZDA4A_XEN.exe exports D3D12SDKVersion and D3D12SDKPath and has a `run` command; a
+    // program without them (or one that is not a program at all) is run as it always was.
+    let root = std::env::temp_dir().join(format!("vl-fork-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let plain = root.join("game.exe");
+    std::fs::write(&plain, b"MZ\x90\x00 no symbols").unwrap();
+    assert!(!is_victory_fork(&plain));
+    let symbols = root.join("fork.exe");
+    std::fs::write(&symbols, b"MZ\x90\x00D3D12SDKVersion\0D3D12SDKPath\0").unwrap();
+    assert!(!is_victory_fork(&symbols));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(test)]
+#[test]
 fn project_launch_overrides_are_independent_and_can_be_empty() {
     let mut saved = Saved {
         launch_args: "--strict".into(),
@@ -2361,6 +2378,10 @@ fn victory_env(c: &mut Command, p: &Project, l: &Launch) {
                 for (key, value) in build_zip::launch_defaults(directory) {
                     c.env(key, value);
                 }
+                // A fork's own launch .bat (RAZDA4A XEN.bat) carries its tuned settings.
+                for (key, value) in build_zip::batch_defaults(directory) {
+                    c.env(key, value);
+                }
             }
         }
     }
@@ -2404,6 +2425,12 @@ fn victory_help(exe: &Path, subcommand: &str) -> Option<String> {
         .status
         .success()
         .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Whether a program is a VIctory fork under any name: it exports the Agility SDK symbols
+/// and its `run` command answers `--help`. Only then is it started with `run`.
+fn is_victory_fork(exe: &Path) -> bool {
+    crate::diagnose::exe_names_agility(exe) && victory_help(exe, "run").is_some()
 }
 
 /// Some forks open their pipeline bookkeeping files even before the first game run.
@@ -3311,7 +3338,10 @@ fn play(
     l: &mut Launch,
     choice: &saves::LaunchSave,
 ) -> Result<(), String> {
-    if p.runs_standalone() {
+    // A Victory fork shipped under another name (RAZDA4A_XEN.exe) is played the Victory way,
+    // not run bare: it exports the Agility symbols and has a `run` command.
+    let fork = p.archive_program().is_some_and(|exe| is_victory_fork(&exe));
+    if p.runs_standalone() && !fork {
         let raw = if let Some(exe) = p.archive_program() {
             exe
         } else {
@@ -3402,11 +3432,11 @@ fn play(
             .iter()
             .take_while(|arg| arg.as_str() != "--")
             .any(|arg| arg == "--console" || arg.starts_with("--console="));
-        if !explicit_console && (l.series_s || l.output != OutputResolution::Default) {
-            command.args([
-                "--console",
-                if l.series_s { "series-s" } else { "series-x" },
-            ]);
+        // A fork's own launch .bat runs it as Series S; the player's output choice still wins.
+        let fork_series_s = fork && l.output == OutputResolution::Default;
+        let series_s = l.series_s || fork_series_s;
+        if !explicit_console && (series_s || l.output != OutputResolution::Default) {
+            command.args(["--console", if series_s { "series-s" } else { "series-x" }]);
         }
         // The player's own: more `run` flags, and after `--` the game's.
         command.args(&l.args);

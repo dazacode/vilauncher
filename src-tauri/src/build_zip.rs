@@ -185,10 +185,91 @@ pub fn launch_defaults(directory: &Path) -> Vec<(String, String)> {
         .collect()
 }
 
+/// The `VICTORY_*` settings a fork's own launch `.bat` sets at its top level, e.g.
+/// `set "VICTORY_VSYNC=0"`. Indented lines (the bat's profile blocks inside `if`s) and
+/// values that expand a `%variable%` are skipped. Read only; the script is never run.
+pub fn batch_defaults(directory: &Path) -> Vec<(String, String)> {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return Vec::new();
+    };
+    let mut found: Vec<Vec<(String, String)>> = entries
+        .flatten()
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .to_ascii_lowercase()
+                .ends_with(".bat")
+        })
+        .filter(|entry| {
+            entry
+                .metadata()
+                .is_ok_and(|m| m.is_file() && m.len() <= 128 * 1024)
+        })
+        .filter_map(|entry| fs::read_to_string(entry.path()).ok())
+        .map(|text| parse_batch_defaults(&text))
+        .filter(|settings| !settings.is_empty())
+        .collect();
+    // Only a single launch script that sets settings is the project's; several are ambiguous.
+    if found.len() == 1 {
+        found.remove(0)
+    } else {
+        Vec::new()
+    }
+}
+
+fn parse_batch_defaults(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|line| {
+            let line = line.trim_end_matches('\r');
+            let assignment = line.strip_prefix("set \"")?.strip_suffix('"')?;
+            let (name, value) = assignment.split_once('=')?;
+            (name.starts_with("VICTORY_")
+                && name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
+                && !value.is_empty()
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || b"_.-".contains(&byte)))
+            .then(|| (name.to_owned(), value.to_owned()))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn a_forks_top_level_victory_settings_are_read_and_its_profile_blocks_are_not() {
+        // Indentation is written out: a `\` line continuation would strip it.
+        let text = [
+            "@echo off",
+            "set \"VICTORY_LOG=info\"",
+            "set \"VICTORY_FSR_PC=1\"",
+            "set \"VICTORY_FRAMEGEN_AHEAD=1\"",
+            "set \"VICTORY_FIDELITYFX_FRAMEGEN=%XEN_FRAMEGEN%\"",
+            "set \"VICTORY_KBM_PC=1\"",
+            "set \"VICTORY_SKIP_PIPELINES=240cb516c1af0bc3\"",
+            "if /I \"%XEN_PROFILE%\"==\"safe\" (",
+            "    set \"VICTORY_VSYNC=1\"",
+            ")",
+            "set \"FG_LABEL=ON\"",
+        ]
+        .join("\r\n");
+        assert_eq!(
+            parse_batch_defaults(&text),
+            vec![
+                ("VICTORY_LOG".to_string(), "info".to_string()),
+                ("VICTORY_FSR_PC".to_string(), "1".to_string()),
+                ("VICTORY_FRAMEGEN_AHEAD".to_string(), "1".to_string()),
+                ("VICTORY_KBM_PC".to_string(), "1".to_string()),
+                ("VICTORY_SKIP_PIPELINES".to_string(), "240cb516c1af0bc3".to_string()),
+            ]
+        );
+    }
 
     #[test]
     fn imports_nested_victory_with_support_files_and_rejects_traversal() {

@@ -187,6 +187,14 @@ fn hashes_near(lines: &[&str], start: usize, window: usize) -> Vec<String> {
     found
 }
 
+/// The file types a project's Agility version or hash may sit in: source, scripts,
+/// build manifests (MSBuild, CMake, Cargo), config and docs.
+const PROJECT_TEXT_EXTENSIONS: &[&str] = &[
+    "rs", "ps1", "cmd", "bat", "sh", "py", "js", "ts", "cs", "cpp", "cc", "c", "h", "hpp",
+    "lua", "toml", "json", "yml", "yaml", "ini", "cfg", "xml", "props", "targets", "csproj",
+    "vcxproj", "sln", "cmake", "md", "txt",
+];
+
 /// A project's own text files (source, scripts, manifests), capped so a large repo is
 /// still cheap to scan.
 fn project_text_files(repo: &Path) -> Vec<PathBuf> {
@@ -210,10 +218,15 @@ fn project_text_files(repo: &Path) -> Vec<PathBuf> {
                 ) {
                     walk(&path, depth - 1, left, files);
                 }
-            } else if matches!(
-                path.extension().and_then(|e| e.to_str()),
-                Some("rs" | "ps1" | "cmd" | "bat" | "toml" | "json" | "txt")
-            ) {
+            } else if path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|ext| {
+                    PROJECT_TEXT_EXTENSIONS
+                        .iter()
+                        .any(|known| ext.eq_ignore_ascii_case(known))
+                })
+            {
                 *left -= 1;
                 files.push(path);
             }
@@ -531,25 +544,28 @@ fn resolve_package(
     }
 
     // Fall back to Microsoft's list, newest first, when the project named no version
-    // or the one it named is gone.
+    // or the one it named is gone. Every version is tried: the project's hash may belong
+    // to an older package than the newest few.
     log("Reading Microsoft's package versions for the project's files.".to_string());
-    let mut scanned = 0;
     for version in package_versions()? {
-        if scanned >= 40 {
-            break;
-        }
         if version.is_empty() || tried.contains(&version) {
             continue;
         }
-        scanned += 1;
         tried.push(version.clone());
         if let Some(result) = attempt(&version)? {
             return Ok(result);
         }
     }
+    let wanted: Vec<String> = core_shas
+        .iter()
+        .map(|sha| sha.chars().take(12).collect())
+        .collect();
     Err(format!(
-        "No Microsoft D3D12 Agility SDK package among the {} tried holds the project's files.",
-        tried.len()
+        "No Microsoft D3D12 Agility SDK package among the {} tried has a D3D12Core.dll \
+         matching the project's hash ({}). The project's build may name a version the \
+         launcher cannot read; ask its maker for the Microsoft.Direct3D.D3D12 version.",
+        tried.len(),
+        wanted.join(" or ")
     ))
 }
 
@@ -1285,6 +1301,61 @@ mod tests {
         // A stray version that names neither the package nor a DLL is not picked up.
         std::fs::write(root.join("notes.txt"), "built against runtime 1.700.0\n").unwrap();
         assert_eq!(pinned_versions(&root), vec!["1.614.1"]);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn victory_nvidia_fetch_script_is_read_with_its_version_and_dll_hash_first() {
+        // scripts/get-d3d12.ps1 of trustno1-coder/VIctory-NVIDIA (df2daaf and later): the
+        // DLL's hash must come first after its name, and the package's version must be
+        // read so the launcher tries Microsoft's 1.614.1 package before the newest list.
+        let root = temp("victory-nvidia");
+        std::fs::write(
+            root.join("get-d3d12.ps1"),
+            "param(\n\
+             \x20   [string]$Version = '1.614.1',\n\
+             \x20   [string]$To = ''\n\
+             )\n\
+             # The SHA-256 of the copies tested: D3D12Core.dll 1.614.1.0 first, since launchers take the first hash after\n\
+             # that name as the DLL's (VILauncher's \"Fix and verify\" took the package's and then refused every package).\n\
+             $core = '8A23D826B25B4329522FF451CB52B7F2B34D7F2913CFEB878371CE8BD765FE2D'\n\
+             # The package it comes in, Microsoft.Direct3D.D3D12 1.614.1.\n\
+             $package = '9880AA91602DD51DD6CF7911A2BCA7A2323513B15338573CDE014B3356EEAFF2'\n\
+             $url = \"https://api.nuget.org/v3-flatcontainer/microsoft.direct3d.d3d12/$Version/microsoft.direct3d.d3d12.$Version.nupkg\"\n",
+        )
+        .unwrap();
+        assert_eq!(pinned_versions(&root), vec!["1.614.1"]);
+        let agility = agility_from_project(&root);
+        assert_eq!(agility.len(), 1);
+        assert_eq!(agility[0].0, "D3D12Core.dll");
+        let core = "8a23d826b25b4329522ff451cb52b7f2b34d7f2913cfeb878371ce8bd765fe2d";
+        let package = "9880aa91602dd51dd6cf7911a2bca7a2323513b15338573cde014b3356eeaff2";
+        assert_eq!(agility[0].1[0], core);
+        assert!(agility[0].1.iter().any(|sha| sha == package));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_version_in_an_msbuild_or_source_file_is_read() {
+        // A Visual Studio project names its package in a .csproj or .props file, and a
+        // C++ build may name it in a header; neither extension was scanned before.
+        let root = temp("msbuild");
+        std::fs::write(
+            root.join("Game.vcxproj"),
+            "<PackageReference Include=\"Microsoft.Direct3D.D3D12\" Version=\"1.616.0\" />\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("d3d12.h"),
+            "// Microsoft.Direct3D.D3D12 1.617.2 is the one built against.\n",
+        )
+        .unwrap();
+        // A binary-looking file type is still ignored.
+        std::fs::write(root.join("art.png"), "Microsoft.Direct3D.D3D12 1.999.0\n").unwrap();
+        // The order of the files is not fixed, so compare the set.
+        let mut found = pinned_versions(&root);
+        found.sort();
+        assert_eq!(found, vec!["1.616.0", "1.617.2"]);
         std::fs::remove_dir_all(root).unwrap();
     }
 
