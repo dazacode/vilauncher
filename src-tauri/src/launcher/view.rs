@@ -48,6 +48,36 @@ struct ListView {
     items: Vec<ProjectView>,
 }
 
+/// The keyboard-as-controller settings: on or off, and every control with its key.
+#[derive(Serialize)]
+pub(crate) struct ControllerKeysView {
+    on: bool,
+    controls: Vec<ControlView>,
+}
+
+#[derive(Serialize)]
+pub(crate) struct ControlView {
+    id: &'static str,
+    label: &'static str,
+    default_key: u16,
+    key: u16,
+}
+
+fn controller_keys_view(saved: &super::Saved) -> ControllerKeysView {
+    ControllerKeysView {
+        on: saved.controller_keys_on,
+        controls: crate::controller_keys::CONTROLS
+            .iter()
+            .map(|control| ControlView {
+                id: control.id,
+                label: control.label,
+                default_key: control.default_key,
+                key: crate::controller_keys::key_of(&saved.controller_key_bindings, control),
+            })
+            .collect(),
+    }
+}
+
 #[derive(Serialize)]
 pub(crate) struct ProjectView {
     name: String,
@@ -135,6 +165,7 @@ struct SettingsView {
     backgrounds_dir: String,
     skip_update_warning: bool,
     agent_access: bool,
+    controller_keys: ControllerKeysView,
     acknowledged: Vec<String>,
     /// The player's language choice; none: the system's.
     language: Option<String>,
@@ -287,6 +318,7 @@ impl App {
                 backgrounds_dir: crate::backgrounds::folder().display().to_string(),
                 skip_update_warning: self.saved.skip_update_warning,
                 agent_access: self.saved.agent_access,
+                controller_keys: controller_keys_view(&self.saved),
                 acknowledged: self.saved.acknowledged.clone(),
                 language: self.saved.language.clone(),
             },

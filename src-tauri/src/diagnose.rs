@@ -971,6 +971,17 @@ pub(crate) fn from_log(lines: &[String]) -> Vec<Finding> {
             data: None,
         });
     }
+    // The game's own crash reporter prints this when its code stops on an exception before
+    // or while the title starts. The usual cause is an experimental switch.
+    if has(&["VIctory: unhandled exception"]) {
+        found.push(Finding {
+            title: "The game stopped with an unhandled exception.".to_string(),
+            detail: "The game's code hit an exception (for example 0x80000003, a breakpoint trap) and closed. Open Launch options and clear the extra switches, then Play again. If it still stops, send the report: it has the exception and the game's crash files.".to_string(),
+            fix: None,
+            heavy: false,
+            data: None,
+        });
+    }
     if has(&[
         "DXGI_ERROR_DEVICE_REMOVED",
         "0x887A0005",
@@ -1476,6 +1487,19 @@ mod tests {
         // Unrelated log lines do not raise it.
         let other = vec!["shader model 6.5 compiled".to_string()];
         assert!(!from_log(&other).iter().any(|f| f.title.contains("shader model 6.6")));
+    }
+
+    #[test]
+    fn an_unhandled_exception_is_named_with_the_switches_as_the_likely_cause() {
+        let lines = vec!["VIctory: unhandled exception 0x80000003 at game_scarlett_master.exe+0x1ce6e13 on thread 3848".to_string()];
+        let found = from_log(&lines);
+        let hint = found
+            .iter()
+            .find(|f| f.title.contains("unhandled exception"))
+            .expect("an unhandled exception finding");
+        assert_eq!(hint.fix, None);
+        assert!(hint.detail.contains("Launch options"));
+        assert!(!from_log(&["all good".to_string()]).iter().any(|f| f.title.contains("unhandled exception")));
     }
 
     #[test]

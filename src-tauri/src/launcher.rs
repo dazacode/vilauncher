@@ -161,6 +161,10 @@ pub(crate) struct Saved {
     skip_update_warning: bool,
     /// Let AI agents read logs and, when the player confirms each step, apply patches. Off by default.
     agent_access: bool,
+    /// Keyboard keys drive the game's controller controls (controller_keys.rs). Off by default.
+    controller_keys_on: bool,
+    /// The key the player chose for a controller control, by control id; absent: the layer's own.
+    controller_key_bindings: std::collections::BTreeMap<String, u16>,
     /// Ids of the responsibility warnings the player accepted ("import-repo", "agent-access", "agent-patch").
     acknowledged: Vec<String>,
     /// The window's language as a tag ("en", "zh-TW", "zh-CN"); none: the system's.
@@ -1295,6 +1299,7 @@ impl App {
     }
 
     pub(crate) fn new(ctx: Ctx, mut saved: Saved) -> App {
+        crate::controller_keys::configure(saved.controller_keys_on, &saved.controller_key_bindings);
         if saved.render_scale <= 0.0 {
             saved.render_scale = 0.5;
         }
