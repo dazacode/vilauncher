@@ -1,5 +1,5 @@
 import { AlertCircle, CheckCircle2, Copy, Download, Square, Trash2, Wrench } from "lucide-react"
-import { useEffect, useRef, useState } from "react"
+import { memo, useEffect, useMemo, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
@@ -67,13 +67,44 @@ function ReportBar({ project }: { project: Project }) {
   )
 }
 
+/** Lines per block of the log on screen. */
+const BLOCK = 200
+
+/**
+ * The log in blocks of BLOCK lines, numbered by where they are in the whole log. A new line
+ * changes only the last block, so the browser lays out a few hundred lines again, not all of
+ * them (up to 4000, 20 times a second while a build prints); old lines falling off the top
+ * change only the first.
+ */
+function blocks(start: number, lines: string[]) {
+  const out: { key: number; text: string }[] = []
+  for (let i = 0; i < lines.length; ) {
+    const key = Math.floor((start + i) / BLOCK)
+    const end = Math.min(lines.length, (key + 1) * BLOCK - start)
+    const text = lines.slice(i, end).join("\n")
+    // A line feed at the end of a block draws no line: a blank last line keeps its place with a zero-width space.
+    out.push({ key, text: lines[end - 1] === "" ? text + "\u200b" : text })
+    i = end
+  }
+  return out
+}
+
+const LogBlock = memo(function LogBlock({ text }: { text: string }) {
+  return <div>{text}</div>
+})
+
 export function ActivityTab({ project }: { project: Project }) {
   const t = useT()
-  const snap = useStore((s) => s.snap!)
-  const job = project.build_job ?? (snap.job.repo === project.repo ? snap.job : null)
-  const logLines = job?.log_lines ?? 0
+  // This project's job; other projects' jobs draw nothing here.
+  const job = useStore((s) => project.build_job ?? (s.snap!.job.repo === project.repo ? s.snap!.job : null))
+  const anyBusy = useStore((s) => s.snap!.job.running || s.snap!.active_builds > 0)
+  // The log's length lives apart from the snapshot (store.ts), so only this follows each new line.
+  const logLines = useStore((s) => (job ? (s.logs[project.build_job ? project.repo : ""] ?? 0) : 0))
   const logKey = `${project.repo}:${job?.generation ?? 0}`
-  const [lines, setLines] = useState<string[]>([])
+  // The lines on screen, and where the first of them is in the whole log.
+  const [log, setLog] = useState<{ start: number; lines: string[] }>({ start: 0, lines: [] })
+  const lines = log.lines
+  const shown = useMemo(() => blocks(log.start, log.lines), [log])
   const [omitted, setOmitted] = useState(0)
   const box = useRef<HTMLPreElement>(null)
   const stick = useRef(true)
@@ -81,7 +112,7 @@ export function ActivityTab({ project }: { project: Project }) {
   useEffect(() => {
     if (have.current.key !== logKey || logLines < have.current.count) {
       have.current = { key: logKey, count: 0 }
-      setLines([])
+      setLog({ start: 0, lines: [] })
       setOmitted(0)
     }
     if (logLines === have.current.count) return
@@ -91,7 +122,11 @@ export function ActivityTab({ project }: { project: Project }) {
       if (cancelled) return
       have.current.count = view.from + view.lines.length
       setOmitted(view.omitted)
-      setLines((old) => [...(view.from === 0 ? [] : old), ...view.lines].slice(-4000))
+      const end = view.from + view.lines.length
+      setLog((old) => {
+        const kept = [...(view.from === 0 ? [] : old.lines), ...view.lines].slice(-4000)
+        return { start: end - kept.length, lines: kept }
+      })
     })
     return () => { cancelled = true }
   }, [logLines, logKey, project.repo])
@@ -106,12 +141,12 @@ export function ActivityTab({ project }: { project: Project }) {
         {job?.running ? <Spinner className="text-accent-fg" /> : job?.failed ? <AlertCircle className="size-4 text-bad" /> : job?.stage ? <CheckCircle2 className="size-4 text-ok" /> : null}
         <p className={job?.failed ? "text-body text-bad" : "text-body text-fg-2"}>{status}</p>
         <div className="ml-auto flex gap-1">
-          {!snap.job.running && !snap.active_builds && project.installed && (
+          {!anyBusy && project.installed && (
             <Button size="sm" variant="ghost" title={t("library.activity.fixTitle")} onClick={() => void run({ type: "fix", repo: project.repo })}>
               <Wrench /> {t("library.fix")}
             </Button>
           )}
-          {!snap.job.running && !snap.active_builds && project.installed && (
+          {!anyBusy && project.installed && (
             <Button size="sm" variant="ghost" title={t("library.activity.clearCacheTitle")} onClick={() => void run({ type: "clear_shader_cache", repo: project.repo })}>
               <Trash2 /> {t("library.activity.clearCache")}
             </Button>
@@ -157,7 +192,7 @@ export function ActivityTab({ project }: { project: Project }) {
         }}
         className="h-[420px] overflow-auto rounded-lg border border-line bg-black/35 p-4 font-mono text-caption leading-5 whitespace-pre-wrap text-fg-2"
       >
-        {lines.length ? lines.join("\n") : <span className="text-fg-4">{t("library.activity.empty")}</span>}
+        {lines.length ? shown.map((b) => <LogBlock key={b.key} text={b.text} />) : <span className="text-fg-4">{t("library.activity.empty")}</span>}
       </pre>
     </div>
   )

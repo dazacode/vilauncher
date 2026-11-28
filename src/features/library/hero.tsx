@@ -25,17 +25,19 @@ export function leadSentence(summary: string): string | null {
   return s && s.length <= 170 ? s : null
 }
 
+const NO_PICTURES: string[] = []
+
 export function Hero({ project: p }: { project: Project }) {
   const t = useT()
-  const snap = useStore((s) => s.snap)!
   const screenshot = useStore((s) => s.screenshot)
+  const backgrounds = useStore((s) => s.snap!.backgrounds)
   const alias = useAlias()(p)
-  const playing = snap.job.running && snap.job.stage_kind === "playing"
+  const playing = useStore((s) => s.snap!.job.running && s.snap!.job.stage_kind === "playing")
   const source = p.kind === "zip" ? t("library.hero.imported") : p.custom ? t("library.hero.addedByLink") : "VIPortLive"
   const lead = screenshot ? null : leadSentence(p.summary)
   return (
     <section className="relative isolate shrink-0" style={{ minHeight: "clamp(360px, 50vh, 520px)" }}>
-      <Aurora seed={p.repo} still={playing} pictures={screenshot ? [] : snap.backgrounds} art={alias.owner ? avatarUrl(alias.owner, 256) : null} />
+      <Aurora seed={p.repo} still={playing} pictures={screenshot ? NO_PICTURES : backgrounds} art={alias.owner ? avatarUrl(alias.owner, 256) : null} />
       <div className="relative z-10 flex h-full min-h-[inherit] max-w-[1280px] flex-col justify-end px-10 pt-16 pb-8">
         <div className="flex items-end gap-6">
           <ProjectAvatar project={p} owner={alias.owner} size={88} className="shadow-[0_12px_32px_-8px_rgb(0_0_0/0.6)]" />
@@ -105,10 +107,12 @@ function Stats({ project: p }: { project: Project }) {
 
 function MoreMenu({ project: p }: { project: Project }) {
   const t = useT()
-  const snap = useStore((s) => s.snap)!
   const open = useStore((s) => s.open)
   const screenshot = useStore((s) => s.screenshot)
-  const busy = snap.job.running || snap.active_builds > 0
+  const jobRunning = useStore((s) => s.snap!.job.running)
+  const busy = useStore((s) => s.snap!.job.running || s.snap!.active_builds > 0)
+  const include60 = useStore((s) => s.snap!.settings.include_exact_60_fps)
+  const filesOk = useStore((s) => s.snap!.files.ok)
   const warning = useUpdateWarning(p.repo)
   return (
     <Menu>
@@ -125,8 +129,8 @@ function MoreMenu({ project: p }: { project: Project }) {
             <MenuItem disabled={busy} onSelect={() => void run({ type: "reset_personal_fps", repo: p.repo })}>
               {t("library.hero.resetPersonalFps")}
             </MenuItem>
-            <MenuItem onSelect={() => void run({ type: "set_include_exact60_fps", include: !snap.settings.include_exact_60_fps })}>
-              {t(snap.settings.include_exact_60_fps ? "library.hero.exclude60Fps" : "library.hero.include60Fps")}
+            <MenuItem onSelect={() => void run({ type: "set_include_exact60_fps", include: !include60 })}>
+              {t(include60 ? "library.hero.exclude60Fps" : "library.hero.include60Fps")}
             </MenuItem>
           </>
         )}
@@ -136,12 +140,12 @@ function MoreMenu({ project: p }: { project: Project }) {
           </MenuItem>
         )}
         {p.installed && !p.standalone && p.kind !== "local" && (
-          <MenuItem disabled={busy || !snap.files.ok} onSelect={() => void run({ type: "warm", repo: p.repo })}>
+          <MenuItem disabled={busy || !filesOk} onSelect={() => void run({ type: "warm", repo: p.repo })}>
             <Wrench /> {t("library.menu.warm")}
           </MenuItem>
         )}
         {p.installed && p.kind === "git" && (
-          <MenuItem disabled={snap.job.running || !!p.build_job?.running} onSelect={warning.ask}>
+          <MenuItem disabled={jobRunning || !!p.build_job?.running} onSelect={warning.ask}>
             <RotateCcw /> {t("library.menu.reinstall")}
           </MenuItem>
         )}

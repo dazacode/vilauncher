@@ -1,24 +1,27 @@
 import { AlertCircle, CheckCircle2, Square, X } from "lucide-react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Tooltip } from "@/components/ui/tooltip"
 import { useT } from "@/i18n"
-import { allProjects, run, useAlias, useStore } from "@/lib/store"
+import { run, useAlias, useJob, useStore } from "@/lib/store"
+import { useShallow } from "zustand/react/shallow"
 import { cn } from "@/lib/utils"
 
 /** What the launcher is doing now, in the corner of the sidebar, like a download. */
 export function JobCard() {
   const t = useT()
-  const snap = useStore((s) => s.snap)
+  // The projects and the job, without the log's length: the card is not drawn again for each line a build prints.
+  const snap = useStore(useShallow((s) => (s.snap ? { list: s.snap.list, custom: s.snap.custom, selected: s.snap.selected } : null)))
+  const mainJob = useJob()
   const setTab = useStore((s) => s.setTab)
   const setView = useStore((s) => s.setView)
   const alias = useAlias()
   const still = useReducedMotion()
   const [dismissed, setDismissed] = useState<string | null>(null)
-  const projects = snap ? allProjects(snap) : []
+  const projects = useMemo(() => (snap ? [...snap.custom, ...snap.list.items] : []), [snap?.custom, snap?.list])
   const builds = projects.filter((project) => project.build_job?.running)
   const activeBuild = builds.find((project) => project.repo === snap?.selected) ?? builds[0]
-  const job = activeBuild?.build_job ?? snap?.job
+  const job = activeBuild?.build_job ?? mainJob
   const key = job ? `${job.repo}|${job.stage}` : ""
   useEffect(() => {
     if (job?.running) setDismissed(null)

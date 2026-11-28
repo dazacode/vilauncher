@@ -8,18 +8,21 @@ import { ProjectTabs } from "./project-tabs"
 
 export function LibraryView() {
   const t = useT()
-  const snap = useStore((s) => s.snap)!
+  const status = useStore((s) => s.snap!.list.status)
+  const count = useStore((s) => s.snap!.list.items.length + s.snap!.custom.length)
+  const error = useStore((s) => s.snap!.list.error)
   const screenshot = useStore((s) => s.screenshot)
   const project = useSelected()
   // Nothing picked: an installed project, else the best listed one.
   useEffect(() => {
-    if (project || snap.list.status === "loading") return
+    const snap = useStore.getState().snap
+    if (project || !snap || status === "loading") return
     const all = allProjects(snap)
     const pick = all.find((p) => p.installed) ?? snap.list.items[0] ?? all[0]
     if (pick) void run({ type: "select", repo: pick.repo })
-  }, [project, snap])
+  }, [project, status, count])
   if (!project) {
-    if (snap.list.status !== "error") return <LibrarySkeleton />
+    if (status !== "error") return <LibrarySkeleton />
     // Image slot: a drawn scene for "the list didn't arrive" belongs above this text.
     return (
       <div className="relative flex h-full flex-col justify-end px-10 pb-16">
@@ -28,7 +31,7 @@ export function LibraryView() {
         <div className="mt-6">
           <Button onClick={() => void run({ type: "refresh_projects" })}>{t("common.retry")}</Button>
         </div>
-        {!screenshot && snap.list.error && <p className="mt-3 text-caption text-fg-3" data-selectable>{snap.list.error}</p>}
+        {!screenshot && error && <p className="mt-3 text-caption text-fg-3" data-selectable>{error}</p>}
       </div>
     )
   }

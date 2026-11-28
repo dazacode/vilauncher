@@ -731,6 +731,8 @@ pub(crate) struct App {
     pub(crate) ctx: Ctx,
     /// Which projects are on disk, and when that was looked at.
     installed_cache: Mutex<std::collections::HashMap<String, (Instant, bool)>>,
+    /// The memory each project's text reports, with a hash of that text: read again only when it changes.
+    reported_cache: Mutex<std::collections::HashMap<String, (u64, reported::Reported)>>,
     /// The player's PC, once it was looked at (in the background at start).
     pub(crate) system: Arc<Mutex<Option<crate::system::SystemInfo>>>,
     /// The system's languages in order of preference, as the window reported them.
@@ -1682,6 +1684,7 @@ impl App {
             find_error: None,
             ctx: ctx.clone(),
             installed_cache: Mutex::new(std::collections::HashMap::new()),
+            reported_cache: Mutex::new(std::collections::HashMap::new()),
             system: Arc::new(Mutex::new(None)),
             system_languages: Vec::new(),
         };

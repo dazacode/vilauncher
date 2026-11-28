@@ -15,8 +15,7 @@ import type { Project } from "@/lib/types"
 
 export function LaunchTab({ project: p }: { project: Project }) {
   const t = useT()
-  const snap = useStore((s) => s.snap)!
-  const global = snap.settings
+  const global = useStore((s) => s.snap!.settings)
   const l = p.launch
   const [args, setArgs] = useDraft(l.args ?? (p.standalone ? "" : global.launch_args), (v) => void run({ type: "set_project_args", repo: p.repo, value: v }))
   const [switches, setSwitches] = useDraft(l.switches ?? global.extra_env, (v) => void run({ type: "set_project_switches", repo: p.repo, value: v }))
@@ -100,15 +99,15 @@ export function LaunchTab({ project: p }: { project: Project }) {
 
 function Presets({ project: p }: { project: Project }) {
   const t = useT()
-  const snap = useStore((s) => s.snap)!
-  const compatible = snap.presets.filter((x) => !p.standalone || x.switches == null)
+  const presets = useStore((s) => s.snap!.presets)
+  const compatible = presets.filter((x) => !p.standalone || x.switches == null)
   const [detected, setDetected] = useState<string | null>(null)
   const [picked, setPicked] = useState<string>("")
   const [saving, setSaving] = useState<{ name: string; argsOnly: boolean } | null>(null)
   const [pasting, setPasting] = useState<string | null>(null)
   useEffect(() => {
     void run<string | null>({ type: "detected_preset", repo: p.repo }).then((d) => setDetected(d ?? null))
-  }, [p.repo, snap.presets.length])
+  }, [p.repo, presets.length])
   useEffect(() => setPicked(p.launch.selected_preset ?? ""), [p.launch.selected_preset])
   const choices = [
     ...(detected ? [{ value: "__detected", label: t("library.presets.detected", { name: detected }) }] : []),

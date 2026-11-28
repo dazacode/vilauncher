@@ -12,8 +12,9 @@ import { scheduleRefresh, useStore } from "@/lib/store"
 
 export function App() {
   const t = useT()
-  const snap = useStore((s) => s.snap)
-  const mac = (snap?.brand.platform ?? platformName()) === "macos"
+  // Only whether a snapshot came and the platform: the window's frame is not drawn again for every snapshot.
+  const ready = useStore((s) => s.snap !== null)
+  const mac = (useStore((s) => s.snap?.brand.platform) ?? platformName()) === "macos"
   const view = useStore((s) => s.view)
   useEffect(() => {
     let off: (() => void) | undefined
@@ -37,7 +38,7 @@ export function App() {
           <div data-tauri-drag-region="deep" className="drag absolute inset-x-0 top-0 z-30 flex h-10 justify-end">
             {!mac && <WindowControls />}
           </div>
-          {!snap ? view === "library" && <LibrarySkeleton /> : view === "library" ? <LibraryView /> : <SettingsView />}
+          {!ready ? view === "library" && <LibrarySkeleton /> : view === "library" ? <LibraryView /> : <SettingsView />}
         </main>
       </div>
       <Dialogs />

@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { formatList, t, Trans, useT } from "@/i18n"
 import { shortCommit, shortStage } from "@/lib/format"
-import { allProjects, run, useAlias, useStore } from "@/lib/store"
+import { allProjects, run, useAlias, useJob, useStore } from "@/lib/store"
+import { useShallow } from "zustand/react/shallow"
 import type { PlayNext, Project, Snapshot } from "@/lib/types"
 import { UpdateButton } from "./update-button"
 
@@ -54,10 +55,10 @@ export async function startPlay(repo: string) {
 
 export function PrimaryAction({ project: p }: { project: Project }) {
   const t = useT()
-  const snap = useStore((s) => s.snap)!
   const open = useStore((s) => s.open)
   const alias = useAlias()
-  const state = actionState(p, snap, (q) => alias(q).name)
+  // Worked out in the selector: drawn again only when the button itself would change, not for each snapshot.
+  const state = useStore(useShallow((s) => actionState(p, s.snap!, (q) => alias(q).name)))
   switch (state.kind) {
     case "busy":
       return (
@@ -114,10 +115,10 @@ export function PrimaryAction({ project: p }: { project: Project }) {
 /** One quiet line under the main button: what it will do, or what it waits for. */
 export function ActionNote({ project: p }: { project: Project }) {
   const t = useT()
-  const snap = useStore((s) => s.snap)!
+  const job = useJob()!
   const setTab = useStore((s) => s.setTab)
   const alias = useAlias()
-  const state = actionState(p, snap, (q) => alias(q).name)
+  const state = useStore(useShallow((s) => actionState(p, s.snap!, (q) => alias(q).name)))
   const link = (label: React.ReactNode, onClick: () => void) => (
     <button type="button" onClick={onClick} className="cursor-pointer font-medium text-fg-2 underline-offset-2 hover:text-fg hover:underline">
       {label}
@@ -126,7 +127,7 @@ export function ActionNote({ project: p }: { project: Project }) {
   let text: React.ReactNode
   switch (state.kind) {
     case "busy":
-      text = <>{p.build_job?.stage ?? snap.job.stage} · {link(t("library.note.viewLog"), () => setTab("activity"))}</>
+      text = <>{p.build_job?.stage ?? job.stage} · {link(t("library.note.viewLog"), () => setTab("activity"))}</>
       break
     case "waiting":
       text = state.other ? t("library.note.waitingFor", { name: state.other }) : t("library.note.waitingForJob")
@@ -142,9 +143,9 @@ export function ActionNote({ project: p }: { project: Project }) {
       break
     case "play":
       text =
-        (p.build_job ?? (snap.job.repo === p.repo ? snap.job : null))?.failed ? (
+        (p.build_job ?? (job.repo === p.repo ? job : null))?.failed ? (
           <>
-            {p.build_job?.stage ?? snap.job.stage} · {link(t("library.fix"), () => void run({ type: "fix", repo: p.repo }))} · {link(t("library.note.viewLog"), () => setTab("activity"))}
+            {p.build_job?.stage ?? job.stage} · {link(t("library.fix"), () => void run({ type: "fix", repo: p.repo }))} · {link(t("library.note.viewLog"), () => setTab("activity"))}
           </>
         ) : p.activity ? (
           [p.activity.updated_ago, p.activity.last_run ? t("library.note.lastPlayed", { time: p.activity.last_run }) : p.activity.pending].filter(Boolean).join(" · ")

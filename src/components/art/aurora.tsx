@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
-import { useEffect, useMemo, useState } from "react"
+import { type ReactNode, useEffect, useMemo, useState } from "react"
 import { fileSrc } from "@/lib/api"
+import { type Drift, transformOf, useDrift } from "@/lib/drift"
 import { useTheme } from "@/lib/theme"
 
 /**
@@ -39,7 +40,10 @@ function AuroraArt({ seed, still, pictures = [], art }: AuroraProps) {
     () =>
       palette.blobs.map((color, i) => {
         const r = (n: number) => ((h >>> (i * 5 + n)) % 1000) / 1000
-        return { color, x: 10 + r(0) * 70, y: 5 + r(3) * 55, size: 55 + r(7) * 30, dx: (r(11) - 0.5) * 14, dy: (r(13) - 0.5) * 10, duration: 26 + r(17) * 16 }
+        const dx = (r(11) - 0.5) * 14
+        const dy = (r(13) - 0.5) * 10
+        const drift: Drift = { from: { x: 0, y: 0, scale: 1, rotate: 0 }, to: { x: dx, y: dy, scale: 1.12, rotate: 0 }, duration: 26 + r(17) * 16 }
+        return { color, x: 10 + r(0) * 70, y: 5 + r(3) * 55, size: 55 + r(7) * 30, drift }
       }),
     [h, palette],
   )
@@ -50,32 +54,53 @@ function AuroraArt({ seed, still, pictures = [], art }: AuroraProps) {
       ) : art && artFailed !== art ? (
         <Wash key={art} src={art} moving={moving} onFail={() => setArtFailed(art)} />
       ) : (
-        blobs.map((b, i) => (
-          <motion.div
-            key={`${seed}-${i}`}
-            className="absolute rounded-full"
-            style={{
-              left: `${b.x}%`,
-              top: `${b.y}%`,
-              width: `${b.size}%`,
-              aspectRatio: "1",
-              translate: "-50% -50%",
-              background: `radial-gradient(circle, ${b.color} 0%, transparent 62%)`,
-              filter: "blur(48px)",
-              opacity: 0.85,
-              mixBlendMode: "screen",
-            }}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={moving ? { opacity: 0.85, scale: [1, 1.12, 1], x: [`0%`, `${b.dx}%`, `0%`], y: [`0%`, `${b.dy}%`, `0%`] } : { opacity: 0.85, scale: 1 }}
-            transition={moving ? { duration: b.duration, repeat: Infinity, ease: "easeInOut", opacity: { duration: 0.8 } } : { duration: 0.6 }}
-          />
-        ))
+        blobs.map((b, i) => <Blob key={`${seed}-${i}`} blob={b} moving={moving} />)
       )}
       {/* Light from above, grain, then the scrims that keep words readable. */}
       <div className="absolute inset-0" style={{ background: "radial-gradient(120% 80% at 70% -10%, rgb(255 255 255 / 0.10), transparent 55%)" }} />
       <div className="absolute inset-0 opacity-[0.09] mix-blend-overlay" style={{ backgroundImage: GRAIN }} />
       <div className="absolute inset-0" style={{ background: "linear-gradient(90deg, rgb(12 11 16 / 0.78) 0%, rgb(12 11 16 / 0.45) 40%, rgb(12 11 16 / 0) 70%)" }} />
       <div className="absolute inset-0" style={{ background: "linear-gradient(180deg, rgb(12 11 16 / 0.35) 0%, rgb(12 11 16 / 0) 22%, rgb(12 11 16 / 0) 55%, rgb(12 11 16 / 0.92) 92%, #0c0b10 100%)" }} />
+    </div>
+  )
+}
+
+type BlobSpec = { color: string; x: number; y: number; size: number; drift: Drift }
+
+/** A soft field of colour. The outer layer drifts (and blends, as it is the one with a transform); the inner fades in. */
+function Blob({ blob: b, moving }: { blob: BlobSpec; moving: boolean }) {
+  const ref = useDrift(moving ? b.drift : null)
+  return (
+    <div
+      ref={ref}
+      className="absolute"
+      style={{ left: `${b.x}%`, top: `${b.y}%`, width: `${b.size}%`, aspectRatio: "1", translate: "-50% -50%", mixBlendMode: "screen", willChange: "transform" }}
+    >
+      <motion.div
+        className="size-full rounded-full"
+        style={{ background: `radial-gradient(circle, ${b.color} 0%, transparent 62%)`, filter: "blur(48px)" }}
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 0.85, scale: 1 }}
+        transition={{ duration: moving ? 0.8 : 0.6 }}
+      />
+    </div>
+  )
+}
+
+const WASH_LAYERS = [
+  { left: "62%", top: "40%", opacity: 1, drift: { from: { x: 0, y: 0, scale: 3.4, rotate: 0 }, to: { x: 6, y: -5, scale: 3.4 * 1.12, rotate: 10 }, duration: 48 } },
+  { left: "24%", top: "72%", opacity: 0.7, drift: { from: { x: 0, y: 0, scale: 3, rotate: 180 }, to: { x: -5, y: 6, scale: 3 * 1.12, rotate: 168 }, duration: 62 } },
+] satisfies { left: string; top: string; opacity: number; drift: Drift }[]
+
+function WashLayer({ layer: l, moving, children }: { layer: (typeof WASH_LAYERS)[number]; moving: boolean; children: ReactNode }) {
+  const ref = useDrift(moving ? l.drift : null)
+  return (
+    <div
+      ref={ref}
+      className="absolute"
+      style={{ left: l.left, top: l.top, width: "44%", height: "56%", translate: "-50% -50%", opacity: l.opacity, willChange: "transform", transform: transformOf(l.drift.from) }}
+    >
+      {children}
     </div>
   )
 }
@@ -87,25 +112,10 @@ function AuroraArt({ seed, still, pictures = [], art }: AuroraProps) {
  */
 function Wash({ src, moving, onFail }: { src: string; moving: boolean; onFail: () => void }) {
   const [loaded, setLoaded] = useState(false)
-  const layers = [
-    { left: "62%", top: "40%", scale: 3.4, rotate: 0, dx: "6%", dy: "-5%", turn: 10, duration: 48, opacity: 1 },
-    { left: "24%", top: "72%", scale: 3, rotate: 180, dx: "-5%", dy: "6%", turn: -12, duration: 62, opacity: 0.7 },
-  ]
   return (
     <motion.div className="absolute inset-0" initial={{ opacity: 0 }} animate={{ opacity: loaded ? 1 : 0 }} transition={{ duration: 1.2, ease: "easeOut" }}>
-      {layers.map((l, i) => (
-        <motion.div
-          key={i}
-          className="absolute"
-          style={{ left: l.left, top: l.top, width: "44%", height: "56%", translate: "-50% -50%", opacity: l.opacity, willChange: "transform" }}
-          initial={{ scale: l.scale, rotate: l.rotate, x: "0%", y: "0%" }}
-          animate={
-            moving
-              ? { scale: [l.scale, l.scale * 1.12, l.scale], rotate: [l.rotate, l.rotate + l.turn, l.rotate], x: ["0%", l.dx, "0%"], y: ["0%", l.dy, "0%"] }
-              : { scale: l.scale, rotate: l.rotate, x: "0%", y: "0%" }
-          }
-          transition={moving ? { duration: l.duration, repeat: Infinity, ease: "easeInOut" } : { duration: 0.8, ease: "easeOut" }}
-        >
+      {WASH_LAYERS.map((l, i) => (
+        <WashLayer key={i} layer={l} moving={moving}>
           <img
             src={src}
             alt=""
@@ -115,7 +125,7 @@ function Wash({ src, moving, onFail }: { src: string; moving: boolean; onFail: (
             className="size-full object-cover"
             style={{ filter: "blur(26px) saturate(1.7) brightness(0.9)" }}
           />
-        </motion.div>
+        </WashLayer>
       ))}
       {/* Pictures can be white or pale: a veil keeps the wash a mid-tone. */}
       <div className="absolute inset-0 bg-[rgb(12_11_16/0.28)]" />
