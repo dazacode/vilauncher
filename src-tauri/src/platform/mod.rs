@@ -72,6 +72,7 @@ pub(crate) fn init_environment() {
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         linux::keep_child_programs_out_of_the_appimage();
+        linux::avoid_blank_webview();
     }
 }
 

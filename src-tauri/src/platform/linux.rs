@@ -90,6 +90,15 @@ pub(super) fn build_tools_installed() -> bool {
         .is_ok_and(|s| s.success())
 }
 
+/// On some Linux graphics setups (NVIDIA on Wayland, AppImage bundles) WebKitGTK paints a
+/// blank white window, because it draws through DMA-BUF buffers the driver cannot share.
+/// The launcher's interface is light, so the renderer is turned off unless the player set it.
+pub(super) fn avoid_blank_webview() {
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::without_folder;

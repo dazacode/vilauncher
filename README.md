@@ -58,6 +58,19 @@ Prebuilt builds in the list are Windows programs. On macOS and Linux you can ins
 
 A signed release verifies with `Get-AuthenticodeSignature` (signer: VIPortLive team) and a SHA-256 digest on the release page; while a release is unsigned, compare its SHA-256 instead. Machine-learning engines such as Trapmine still flag fresh builds now and then. Why, and how to report it: [docs/FALSE-POSITIVES.md](docs/FALSE-POSITIVES.md).
 
+### Linux
+
+The launcher runs natively on Linux. Use the **AppImage** (`VILauncher_<version>_amd64.AppImage`) or the **.deb** from the same release page:
+
+```sh
+chmod +x VILauncher_*_amd64.AppImage
+./VILauncher_*_amd64.AppImage
+```
+
+- The `VILauncher.exe` file is the Windows build. Under Proton it needs Microsoft's WebView2 runtime, which Proton does not provide. Install it into the Proton prefix you run it in, with Protontricks (`protontricks <appid> webview2`) or Winetricks (`WINEPREFIX=<prefix> winetricks webview2`). Prefer the AppImage or .deb.
+- If the window stays white, the launcher turns off WebKit's DMA-BUF renderer at startup. To try the other setting, start it with `WEBKIT_DISABLE_DMABUF_RENDERER=0`.
+- The games are Windows programs. The launcher can build and start them on Linux, but whether a particular game runs depends on the game and on Proton.
+
 ## Features
 
 - **Library.** Projects from VIPortLive, your own Git repos, and prebuilt ZIPs. Each shows its reported frame rate, the graphics cards it was made for, and whether it is verified. Projects VIPortLive has taken down are hidden by default; you can show them, and they open VIPortLive's page.
