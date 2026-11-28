@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch"
 import { Tooltip } from "@/components/ui/tooltip"
 import { useT } from "@/i18n"
 import { assess, mainGpu, SORTS, sortLabel, sortProjects, withSpec } from "@/lib/compat"
-import { openUrl } from "@/lib/api"
+import { openUrl, platformName } from "@/lib/api"
 import { fps, gpuText, shortStage } from "@/lib/format"
 import { type JobState, run, useAlias, useJob, useStore } from "@/lib/store"
 import { useShallow } from "zustand/react/shallow"
@@ -35,6 +35,8 @@ export function Sidebar() {
     ),
   )
   const job = useJob()
+  // macOS draws its traffic lights over the sidebar's top left (tauri.macos.conf.json): they get the top strip, the brand sits below.
+  const mac = (useStore((s) => s.snap?.brand.platform) ?? platformName()) === "macos"
   const view = useStore((s) => s.view)
   const setView = useStore((s) => s.setView)
   const search = useStore((s) => s.search)
@@ -92,7 +94,7 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-[264px] shrink-0 flex-col border-r border-line bg-sidebar">
-      <div data-tauri-drag-region="deep" className="drag flex h-12 shrink-0 items-center px-4">
+      <div data-tauri-drag-region="deep" className={cn("drag flex shrink-0 items-center px-4", mac ? "h-[78px] items-end pb-3" : "h-12")}>
         <Brand />
       </div>
       <nav className="space-y-1 px-2 pt-1" aria-label={t("shell.nav.label")}>
