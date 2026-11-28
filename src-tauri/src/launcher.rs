@@ -1799,7 +1799,13 @@ fn build_project(
 ) -> Result<(), String> {
     let workspace = cargo_workspace(dir)?;
     let metadata = rust_project::metadata(&workspace)?;
-    let victory = !p.custom || rust_project::is_victory(&workspace, &metadata);
+    // A listed project is built by name only when its workspace has the `victory` program;
+    // otherwise the whole workspace is built and its program found from Cargo's output.
+    let victory = if p.custom {
+        rust_project::is_victory(&workspace, &metadata)
+    } else {
+        rust_project::has_victory_program(&metadata)
+    };
     let profile = if victory {
         detect_build_profile(&workspace)
     } else {
