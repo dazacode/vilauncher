@@ -1779,11 +1779,6 @@ impl App {
             Some(Ok(list)) => list,
             _ => &[],
         };
-        let guard = self.projects.lock().unwrap();
-        let list: &[Project] = match &*guard {
-            Some(Ok(list)) => list,
-            _ => &[],
-        };
         let mut v: Vec<Project> = self.saved.custom.clone();
         v.extend(list.iter().cloned());
         v.extend(self.kept_missing(list));
