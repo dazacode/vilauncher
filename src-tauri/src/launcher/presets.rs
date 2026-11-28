@@ -382,7 +382,7 @@ fn documented_scarlet_scripts_take_priority_and_use_release() {
         )
         .unwrap();
     }
-    assert_eq!(super::detect_build_profile(&root), "diag");
+    assert_eq!(super::detect_build_profile(&root), "release");
     for stem in ["scarlet-fps", "play-3070"] {
         std::fs::write(
             root.join("README.md"),

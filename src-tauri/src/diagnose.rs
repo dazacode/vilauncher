@@ -15,6 +15,8 @@ pub(crate) const FIX_GAME_FILES: &str = "game-files";
 pub(crate) const FIX_TOOLS: &str = "build-tools";
 pub(crate) const FIX_BUILD: &str = "build";
 pub(crate) const FIX_CACHE: &str = "cache";
+/// The player's opt-in "Clear shader cache" (never found by `preflight`; only asked for).
+pub(crate) const FIX_CLEAR_SHADER_CACHE: &str = "clear-shader-cache";
 pub(crate) const FIX_PERMISSIONS: &str = "permissions";
 pub(crate) const FIX_DISK: &str = "disk-space";
 pub(crate) const FIX_GRAPHICS_MEMORY: &str = "graphics-memory";
@@ -936,6 +938,47 @@ pub(crate) fn preflight(check: &Check) -> Vec<Finding> {
             });
         }
     }
+    // The shipped known problems (known-problems/known-problems.json) that name this project.
+    // They are suggestions only: no fix, and a switch the repo notes already named is skipped.
+    if check.installed {
+        if let (Some(slug), Ok(manifest)) = (
+            check.repo_dir.file_name().and_then(|name| name.to_str()),
+            crate::known_problems::shipped(),
+        ) {
+            for entry in crate::known_problems::matching(
+                &manifest,
+                slug,
+                check.gpu,
+                check.last_log,
+                check.switches,
+            ) {
+                let name = entry.switch_name();
+                let named = found.iter().any(|f| {
+                    f.data
+                        .as_deref()
+                        .is_some_and(|data| data.lines().any(|line| line.split('=').next() == Some(name)))
+                });
+                if named {
+                    continue;
+                }
+                found.push(Finding {
+                    title: msg!(
+                        "Known problem reported for this project: {summary}",
+                        summary = entry.summary
+                    ),
+                    detail: msg!(
+                        "Setting {switch} may help ({status}). Source: {source}. The launcher does not set it; add it to this project's switches yourself if it helps.",
+                        switch = entry.switch,
+                        status = entry.status_label(),
+                        source = entry.source
+                    ),
+                    fix: None,
+                    heavy: false,
+                    data: None,
+                });
+            }
+        }
+    }
     let log_findings = from_log(check.last_log);
     // The files can be in place and still unused: a program that does not export the
     // Agility symbols never looks in D3D12\. Say so rather than suggesting a file copy.
@@ -1670,6 +1713,59 @@ mod tests {
             cfg!(windows)
         );
         assert!(!preflight(&check).iter().any(|f| f.title.contains("missing or not the expected")));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_shipped_known_problem_is_a_suggestion_without_a_fix() {
+        let root = temp("manifest");
+        // The folder is named as a project's repo folder (owner_victory), so the entry applies.
+        let repo = root.join("owner_victory");
+        std::fs::create_dir_all(repo.join("data")).unwrap();
+        std::fs::create_dir_all(repo.join("cache")).unwrap();
+        let exe = repo.join("victory.exe");
+        std::fs::write(&exe, b"exe").unwrap();
+        let log = vec!["frame 3: black surface on the roof".to_string()];
+        let run = |switches: &str, last_log: &[String]| {
+            let check = Check {
+                exe: &exe,
+                game_dir: &repo,
+                repo_dir: &repo,
+                data: &repo.join("data"),
+                cache: &repo.join("cache"),
+                last_log,
+                switches,
+                installed: true,
+                game_ok: true,
+                unplugged: false,
+                slow: false,
+                free_bytes: None,
+                gpu: Some("nvidia"),
+            };
+            preflight(&check)
+        };
+        // (fix, heavy, data, detail) of each suggestion for the shipped entry.
+        let named = |found: &[Finding]| {
+            found
+                .iter()
+                .filter(|f| f.title.contains("Black or incorrect surfaces"))
+                .map(|f| (f.fix, f.heavy, f.data.clone(), f.detail.clone()))
+                .collect::<Vec<_>>()
+        };
+
+        let found = named(&run("", &log));
+        assert_eq!(found.len(), 1, "one suggestion for the matching log");
+        let (fix, heavy, data, detail) = &found[0];
+        assert_eq!(*fix, None, "never applied by the launcher");
+        assert!(!heavy);
+        assert!(data.is_none());
+        assert!(detail.contains("VICTORY_INPLACE=1"));
+        assert!(detail.contains("Source: "), "{detail}");
+        assert!(detail.contains("reported in a single run"));
+
+        // Without the symptom in the last output, or with the switch already set, nothing shows.
+        assert!(named(&run("", &[])).is_empty());
+        assert!(named(&run("VICTORY_INPLACE=0", &log)).is_empty());
         std::fs::remove_dir_all(root).unwrap();
     }
 }

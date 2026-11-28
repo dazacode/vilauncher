@@ -696,6 +696,8 @@ pub(crate) enum Kind {
     Warm,
     /// Known problems: fix and verify them without playing.
     Fix,
+    /// The player's "Clear shader cache" (opt-in), through the same fix step as Fix.
+    ClearCache,
     /// Swap the installed build with the previous one (previous.rs).
     Rollback,
 }
@@ -821,7 +823,7 @@ fn finds_a_unique_nested_victory_workspace_and_prefers_the_root() {
     std::fs::write(nested.join("Cargo.toml"), "[profile.diag]").unwrap();
     std::fs::write(nested.join("apps/victory/Cargo.toml"), "").unwrap();
     assert_eq!(cargo_workspace(&root).unwrap(), nested);
-    assert_eq!(detect_build_profile(&nested), "diag");
+    assert_eq!(detect_build_profile(&nested), "release");
     let other = root.join("other");
     std::fs::create_dir_all(other.join("apps/victory")).unwrap();
     std::fs::write(other.join("Cargo.toml"), "").unwrap();
@@ -856,15 +858,9 @@ fn documented_scarlet_script(root: &Path) -> Option<&'static str> {
 
 /// Chooses the project's build profile, honoring a documented Scarlet release build.
 fn detect_build_profile(repo_dir: &Path) -> &'static str {
-    if documented_scarlet_script(repo_dir).is_some() {
-        return "release";
-    }
-    let cargo_toml = repo_dir.join("Cargo.toml");
-    if let Ok(text) = std::fs::read_to_string(&cargo_toml) {
-        if text.contains("[profile.diag]") {
-            return "diag";
-        }
-    }
+    // Players get the plain release build. A project's `diag` profile is its development
+    // build (slower, with diagnostics) and is not what a player should run by default.
+    let _ = repo_dir;
     "release"
 }
 
@@ -1758,6 +1754,7 @@ impl App {
                 Kind::Uninstall => uninstall(&job, &ctx, &p),
                 Kind::Warm => warm(&job, &ctx, &p, &launch),
                 Kind::Fix => fix_known_problems(&job, &ctx, &p, &mut launch),
+                Kind::ClearCache => clear_shader_cache_job(&job, &ctx, &p, &mut launch),
                 Kind::Rollback => rollback(&job, &ctx, &p),
             };
             {
@@ -1789,6 +1786,7 @@ impl App {
                             Kind::Rollback => {
                                 msg_str!("Restored the previous build: ready to play").into()
                             }
+                            Kind::ClearCache => msg_str!("Shader cache cleared").into(),
                         }
                     }
                     Err(e) => {
@@ -1802,6 +1800,9 @@ impl App {
                             Kind::Warm => msg_str!("Warm-up failed (see the log)").into(),
                             Kind::Fix => msg_str!("Fix and verify failed (see the log)").into(),
                             Kind::Rollback => msg_str!("Restore failed (see the log)").into(),
+                            Kind::ClearCache => {
+                                msg_str!("Clearing the shader cache failed (see the log)").into()
+                            }
                             _ => msg_str!("Failed").into(),
                         };
                         j.log.push(format!("ERROR: {e}"));
@@ -2751,6 +2752,39 @@ fn fix_build(
     ))
 }
 
+/// The opt-in "Clear shader cache": the one fix the player asked for, run through the
+/// same step as Fix and verify (`apply_finding`), so its log and result read the same.
+fn clear_shader_cache_job(
+    job: &Arc<Mutex<Job>>,
+    ctx: &Ctx,
+    p: &Project,
+    l: &mut Launch,
+) -> Result<(), String> {
+    stage(job, ctx, msg_str!("Clearing the shader cache"));
+    // The fix does not need the program; a missing one is passed as an empty path.
+    let exe = project_exe(p).unwrap_or_default();
+    let finding = diagnose::Finding {
+        title: "The player asked to clear the shader cache.".to_string(),
+        detail: "Deletes what is inside the project's cache folder and checks that it is empty; the next Play fills it again.".to_string(),
+        fix: Some(diagnose::FIX_CLEAR_SHADER_CACHE),
+        heavy: false,
+        data: None,
+    };
+    apply_finding(job, ctx, p, l, &exe, &finding).map(|_| ())
+}
+
+/// Clears the project's shader cache folder (the one `VICTORY_CACHE_DIR` names) and checks it.
+fn clear_shader_cache(p: &Project) -> Result<String, String> {
+    let root = workspace().join("cache");
+    let dir = root.join(slug(&p.repo));
+    let bytes = crate::shader_cache::clear(&root, &dir)?;
+    Ok(format!(
+        "Cleared {:.1} MB from {} and checked it is empty; the next Play fills it again.",
+        bytes as f64 / 1_000_000.0,
+        dir.display()
+    ))
+}
+
 fn fix_cache(p: &Project, job: &Arc<Mutex<Job>>) -> Result<String, String> {
     let dir = workspace().join("cache").join(slug(&p.repo));
     if !dir.exists() {
@@ -3033,6 +3067,7 @@ fn apply_finding(
         diagnose::FIX_TOOLS => fix_tools(job, ctx),
         diagnose::FIX_BUILD => fix_build(job, ctx, p, l),
         diagnose::FIX_CACHE => fix_cache(p, job),
+        diagnose::FIX_CLEAR_SHADER_CACHE => clear_shader_cache(p),
         diagnose::FIX_PERMISSIONS => fix_permissions(p),
         diagnose::FIX_DISK => fix_disk(p, job),
         diagnose::FIX_GRAPHICS_MEMORY => fix_graphics(job, p, l, true),

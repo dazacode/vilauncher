@@ -102,6 +102,9 @@ pub(crate) struct ProjectView {
     blockers: Vec<String>,
     /// The memory the author says it uses, read from the words above.
     reported: reported::Reported,
+    /// Whether the PC's commit limit is short of the author's peak commit plus the margin
+    /// (system.rs COMMIT_MARGIN_GB); None when the commit limit or the peak is not known.
+    commit_short: Option<bool>,
     custom: bool,
     /// "git", "zip" or "local".
     kind: &'static str,
@@ -134,6 +137,8 @@ struct ActivityView {
     pending: Option<String>,
     new_install: bool,
     last_run: Option<String>,
+    /// The build has not run since it was made: the first runs are slow while shaders compile.
+    warm_up: bool,
 }
 
 #[derive(Serialize)]
@@ -474,6 +479,20 @@ impl App {
         let owner = (kind == "git" && !p.repo.contains("://"))
             .then(|| p.repo.split('/').next().unwrap_or_default().to_owned());
         let web = p.web_url();
+        let reported = reported::parse(
+            std::iter::once(p.summary.as_str())
+                .chain(p.highlights.iter().chain(&p.blockers).map(String::as_str)),
+        );
+        // Commit pressure: the PC's commit limit against the author's peak commit (Windows
+        // only; None when either is not known, so the window shows "unknown").
+        let commit_short = self
+            .system
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|system| system.commit_limit_gb)
+            .zip(reported.commit_gb)
+            .map(|(limit, peak)| crate::system::commit_short(limit, peak));
         ProjectView {
             name: p.name.clone(),
             repo: p.repo.clone(),
@@ -491,10 +510,8 @@ impl App {
             summary: p.summary.clone(),
             highlights: p.highlights.clone(),
             blockers: p.blockers.clone(),
-            reported: reported::parse(
-                std::iter::once(p.summary.as_str())
-                    .chain(p.highlights.iter().chain(&p.blockers).map(String::as_str)),
-            ),
+            reported,
+            commit_short,
             custom: p.custom,
             kind,
             binary,
@@ -514,6 +531,7 @@ impl App {
                 pending: localize_opt(a.pending_label()),
                 new_install: a.new_install,
                 last_run: a.last_run.and_then(local_time),
+                warm_up: a.warm_up_pending(),
             }),
             launch: LaunchView {
                 args: launch.and_then(|l| l.args.clone()),

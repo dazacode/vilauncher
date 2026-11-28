@@ -17,16 +17,7 @@ pub(crate) fn write(workspace: &Path, slug: &str, stage: &str, lines: &[String])
     if std::fs::create_dir_all(&dir).is_err() {
         return;
     }
-    let name: String = slug
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
+    let name = file_name(slug);
     let private = crate::report::private_paths(workspace);
 
     let mut text = format!("== {} | {}\n", utc_now(), stage.trim());
@@ -45,6 +36,29 @@ pub(crate) fn write(workspace: &Path, slug: &str, stage: &str, lines: &[String])
     {
         let _ = std::fs::remove_file(&temporary);
     }
+}
+
+/// The log's file name for `slug`, with anything but letters, digits, `-`, `_` and `.` made `_`.
+fn file_name(slug: &str) -> String {
+    slug.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// The last `count` lines of a project's log file, or None when there is no log yet.
+/// The header line is not returned; the file is already scrubbed when it is written.
+pub(crate) fn read_tail(workspace: &Path, slug: &str, count: usize) -> Option<Vec<String>> {
+    let path = workspace.join("logs").join(format!("{}.log", file_name(slug)));
+    let text = std::fs::read_to_string(path).ok()?;
+    let lines: Vec<String> = text.lines().skip(1).map(str::to_owned).collect();
+    let start = lines.len().saturating_sub(count);
+    Some(lines[start..].to_vec())
 }
 
 /// The current time as `YYYY-MM-DD HH:MM:SS UTC`.
@@ -83,6 +97,17 @@ mod tests {
         assert_eq!(text.len(), "2026-01-01 00:00:00 UTC".len(), "{text}");
         assert!(text.starts_with("20"), "{text}");
         assert!(text.ends_with(" UTC"));
+    }
+
+    #[test]
+    fn the_tail_of_a_log_is_read_without_its_header() {
+        let dir = std::env::temp_dir().join(format!("vil-job-tail-{}", std::process::id()));
+        assert!(read_tail(&dir, "owner/x", 5).is_none(), "no log yet");
+        let lines: Vec<String> = (0..10).map(|i| format!("line {i}")).collect();
+        write(&dir, "owner/x", "Play", &lines);
+        let tail = read_tail(&dir, "owner/x", 3).unwrap();
+        assert_eq!(tail, vec!["line 7", "line 8", "line 9"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

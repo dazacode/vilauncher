@@ -37,6 +37,10 @@ pub(crate) enum Action {
     Report {
         repo: String,
     },
+    /// The plain-text diagnostic summary for a bug report (report.rs).
+    DiagnosticSummary {
+        repo: String,
+    },
     OpenLink {
         url: String,
     },
@@ -69,6 +73,10 @@ pub(crate) enum Action {
     },
     /// Check the installed build for known problems, fix what can be fixed and verify it.
     Fix {
+        repo: String,
+    },
+    /// The player's opt-in: delete the project's shader cache and check it is empty.
+    ClearShaderCache {
         repo: String,
     },
     /// Swap the installed build with the one before the last update.
@@ -309,14 +317,6 @@ impl App {
                         .unwrap_or_default()
                 };
                 let system = self.system.lock().unwrap().clone().unwrap_or_default();
-                let mut private = crate::report::private_paths(&workspace());
-                private.extend([
-                    std::env::var("USERNAME").unwrap_or_default(),
-                    std::env::var("USERPROFILE").unwrap_or_default(),
-                    self.saved.install_dir.clone(),
-                    self.saved.game_dir.clone(),
-                ]);
-                private.retain(|s| !s.trim().is_empty());
                 let report = crate::report::make(&crate::report::Facts {
                     project: &p.name,
                     repo: &p.repo,
@@ -325,9 +325,31 @@ impl App {
                     gpus: system.gpus.iter().map(|g| g.name.clone()).collect(),
                     cpu: system.cpu.clone(),
                     ram_gb: system.ram_gb,
-                    private,
+                    private: self.private_text(),
                 });
                 serde_json::to_value(report).map_err(|error| error.to_string())?
+            }
+            Action::DiagnosticSummary { repo } => {
+                // Nothing is probed here: only what the launcher already knows, and the
+                // project's last job log (already scrubbed when it was written).
+                let p = self.project(&repo)?;
+                let system = self.system.lock().unwrap().clone().unwrap_or_default();
+                let (_, switches) = self.saved.launch_overrides(&p.repo);
+                let text = crate::report::diagnostic_summary(&crate::report::SummaryFacts {
+                    launcher_version: env!("CARGO_PKG_VERSION"),
+                    project: &p.name,
+                    slug: &slug(&p.repo),
+                    commit: std::fs::read_to_string(built_file(&p.repo))
+                        .ok()
+                        .map(|commit| commit.trim().to_string())
+                        .filter(|commit| !commit.is_empty()),
+                    switches: &switches,
+                    gpus: system.gpus.clone(),
+                    ram_gb: system.ram_gb,
+                    log_tail: crate::job_log::read_tail(&workspace(), &slug(&p.repo), 200),
+                    private: self.private_text(),
+                });
+                serde_json::to_value(text).map_err(|error| error.to_string())?
             }
             Action::SetListOptions {
                 show_nuked,
@@ -495,6 +517,14 @@ impl App {
             Action::Fix { repo } => {
                 let p = self.project(&repo)?;
                 self.start(&ctx, p, Kind::Fix);
+                Value::Null
+            }
+            Action::ClearShaderCache { repo } => {
+                let p = self.project(&repo)?;
+                if self.job_running().0 {
+                    return Err(msg_str!("Wait for the current job to finish.").into());
+                }
+                self.start(&ctx, p, Kind::ClearCache);
                 Value::Null
             }
             Action::Uninstall { repo } => {
@@ -945,6 +975,19 @@ impl App {
     }
 
     /// The project with this repo, listed or added.
+    /// Text that must not leave the PC in a report: the user's name and folders.
+    fn private_text(&self) -> Vec<String> {
+        let mut private = crate::report::private_paths(&workspace());
+        private.extend([
+            std::env::var("USERNAME").unwrap_or_default(),
+            std::env::var("USERPROFILE").unwrap_or_default(),
+            self.saved.install_dir.clone(),
+            self.saved.game_dir.clone(),
+        ]);
+        private.retain(|s| !s.trim().is_empty());
+        private
+    }
+
     fn project(&self, repo: &str) -> Result<Project, String> {
         self.all_projects()
             .into_iter()

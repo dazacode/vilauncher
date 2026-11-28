@@ -154,6 +154,44 @@ pub(crate) fn reveal(path: &Path) -> Result<(), String> {
     }
 }
 
+/// The system's commit charge: the memory promised to programs (RAM and page file)
+/// against the most it can promise (the commit limit). Windows only; None elsewhere.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct CommitCharge {
+    pub limit_gb: f64,
+    pub used_gb: f64,
+}
+
+/// The commit charge now, when the system says (see `CommitCharge`).
+pub(crate) fn commit_charge() -> Option<CommitCharge> {
+    #[cfg(windows)]
+    {
+        windows::commit_charge()
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
+/// Commit pages of `page_bytes` each, as gigabytes to one decimal. None for an empty limit.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn commit_from_pages(
+    limit_pages: usize,
+    used_pages: usize,
+    page_bytes: usize,
+) -> Option<CommitCharge> {
+    const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
+    if limit_pages == 0 || page_bytes == 0 {
+        return None;
+    }
+    let gb = |pages: usize| (pages as f64 * page_bytes as f64 / GIB * 10.0).round() / 10.0;
+    Some(CommitCharge {
+        limit_gb: gb(limit_pages),
+        used_gb: gb(used_pages),
+    })
+}
+
 /// Free bytes on the disk holding `dir`. `None` when it cannot be read.
 pub(crate) fn free_bytes(dir: &Path) -> Option<u64> {
     #[cfg(windows)]
