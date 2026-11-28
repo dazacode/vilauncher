@@ -4,7 +4,7 @@
 // for any step that failed. ANSI colour codes are stripped.
 //
 // Usage:
-//   node scripts/ci.mjs                      run install, typecheck, i18n, vite, fmt, clippy, test
+//   node scripts/ci.mjs                      run install, typecheck, i18n, ui-test, vite, fmt, clippy, test
 //   node scripts/ci.mjs --only typecheck,test
 //   node scripts/ci.mjs --tauri              also run the installer build
 //   node scripts/ci.mjs --keep-going         run every step even after a failure
@@ -26,6 +26,7 @@ const STEPS = [
   { id: "install", name: "install", cmd: "pnpm install --frozen-lockfile", cwd: ROOT, optional: false },
   { id: "typecheck", name: "typecheck", cmd: "pnpm exec tsc -b", cwd: ROOT, optional: false },
   { id: "i18n", name: "translations", cmd: "pnpm i18n:check", cwd: ROOT, optional: false },
+  { id: "ui-test", name: "ui tests", cmd: "pnpm test:ui", cwd: ROOT, optional: false },
   { id: "vite", name: "vite build", cmd: "pnpm exec vite build", cwd: ROOT, optional: false },
   { id: "fmt", name: "cargo fmt", cmd: "cargo fmt --check", cwd: join(ROOT, "src-tauri"), optional: false },
   { id: "clippy", name: "clippy", cmd: "cargo clippy --all-targets --locked -- -D warnings", cwd: join(ROOT, "src-tauri"), optional: false },

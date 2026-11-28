@@ -8,7 +8,7 @@
 //    message, plural forms where English has them, and no empty message.
 //    A translation identical to a long English message is a warning: probably
 //    not translated yet. The English legal notice must match LEGAL.md word for word.
-// 2. Code (src/**/*.ts, *.tsx; not src/i18n, src/dev): English text shown to the
+// 2. Code (src/**/*.ts, *.tsx; not src/i18n, src/dev, or *.test.ts tests): English text shown to the
 //    player outside the catalogs: JSX text, UI attributes (aria-label, label,
 //    hint, placeholder, title…), rendered strings in JSX, toasts and dialogs'
 //    titles, and English sentences anywhere. Write `// i18n-ignore` on the line
@@ -181,7 +181,7 @@ async function sourceFiles(dir, out = []) {
     if (entry.isDirectory()) {
       if (rel === "i18n" || rel === "dev") continue
       await sourceFiles(path, out)
-    } else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.endsWith(".d.ts")) out.push(path)
+    } else if (/\.(ts|tsx)$/.test(entry.name) && !entry.name.endsWith(".d.ts") && !/\.test\.tsx?$/.test(entry.name)) out.push(path)
   }
   return out
 }
