@@ -70,6 +70,8 @@ export interface Project {
   runnable: boolean
   activity: {
     updated_ago: string
+    /** Only how long ago ("3 days ago"), for a row already labelled Updated. */
+    updated_when: string
     pending: string | null
     new_install: boolean
     last_run: string | null
@@ -88,6 +90,8 @@ export interface Project {
 
 export interface Snapshot {
   version: string
+  /** The language the launcher's messages in this snapshot are in (src/i18n/locales.ts). */
+  locale: string
   notice_accepted: boolean
   brand: { name: string; team: string; site: string; site_label: string; source: string }
   list: { status: "loading" | "error" | "ready"; error: string | null; items: Project[] }
@@ -116,6 +120,8 @@ export interface Snapshot {
     agent_access: boolean
     /** Warnings the player accepted. */
     acknowledged: ResponsibilityId[]
+    /** The player's language ("en", "zh-TW", "zh-CN"); null follows the system. */
+    language: string | null
   }
   files: {
     chosen: boolean
@@ -130,7 +136,10 @@ export interface Snapshot {
   job: {
     running: boolean
     repo: string | null
+    /** What the job is doing, in the player's language. */
     stage: string
+    /** The stage as a fixed word to act on; `stage` is only for showing. */
+    stage_kind: StageKind
     failed: boolean
     stoppable: boolean
     log_lines: number
@@ -149,6 +158,19 @@ export interface Snapshot {
   /** Null while the launcher is still looking. */
   system: SystemInfo | null
 }
+
+/** What a job's stage is about (src-tauri/src/launcher/view.rs, `stage_kind`). */
+export type StageKind =
+  | "none"
+  | "playing"
+  | "downloading"
+  | "building"
+  | "warming"
+  | "installing_tools"
+  | "uninstalling"
+  | "moving"
+  | "importing"
+  | "other"
 
 export interface LogView {
   from: number
@@ -275,3 +297,5 @@ export type Action =
   | { type: "storage_scan" }
   | { type: "clear_cache"; repo: string }
   | { type: "clear_previous"; repo: string }
+  | { type: "set_language"; language: string | null }
+  | { type: "set_system_languages"; languages: string[] }

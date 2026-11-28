@@ -1,0 +1,72 @@
+import type en from "../en/shell"
+import type { Translation } from "../../types"
+
+export default {
+  unlocked: "已解鎖新主題，可以在「設定」的「外觀」中找到。",
+  notifications: "通知",
+  nav: {
+    label: "頁面",
+    library: "專案庫",
+    settings: "設定",
+  },
+  search: "搜尋專案庫",
+  list: {
+    label: "專案",
+    loadFailed: "無法載入專案清單。",
+    noMatch: "沒有符合「{query}」的專案。",
+    noneForCard: "還沒有適用這類顯示卡的專案。",
+    clearSearch: "清除搜尋",
+    showAllCards: "顯示所有顯示卡",
+    import: "匯入儲存庫或建置版本",
+    sections: {
+      custom: "你的儲存庫",
+      installed: "已安裝",
+      all: "所有專案",
+    },
+  },
+  filter: {
+    button: "篩選與排序",
+    buttonOn: { other: "篩選與排序（已套用 {count} 項）" },
+    showTakenDown: "顯示已下架的專案",
+    sort: "排序",
+    tier: "層級",
+    tiers: {
+      all: "全部",
+      tracked: "追蹤中",
+      watchlist: "觀察名單",
+    },
+    cards: "顯示卡",
+    allCards: "全部",
+    advanced: "進階：依電腦規格",
+    reset: "重設篩選條件",
+    specHint: "建置版本會依這些數值判斷是否適合你的電腦。留空則使用啟動器偵測到的數值。",
+    ram: "系統記憶體（GB）",
+    vram: "顯示記憶體（GB）",
+  },
+  row: {
+    takenDown: "已下架 · 在 VIPortLive 上開啟",
+    update: "有可用的更新",
+    imported: "匯入的建置版本",
+    installedByLink: "已安裝 · 透過連結新增",
+    byLink: "透過連結新增",
+    notMeasured: "尚未測量",
+    verified: "已驗證",
+  },
+  job: {
+    log: "建置記錄",
+    dismiss: "關閉",
+  },
+  window: {
+    minimise: "最小化",
+    maximise: "最大化",
+    restore: "向下還原",
+  },
+  update: {
+    out: "VILauncher {tag} 已推出",
+    outHint: "可以現在更新，或稍後從側邊欄更新。",
+    notes: "版本資訊",
+    downloading: "正在下載 {tag}",
+    ready: "{tag} 已準備就緒",
+    restart: "立即重新啟動",
+  },
+} satisfies Translation<typeof en>

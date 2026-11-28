@@ -2,11 +2,13 @@ import { AlertCircle, CheckCircle2, Square, X } from "lucide-react"
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { useEffect, useState } from "react"
 import { Tooltip } from "@/components/ui/tooltip"
+import { useT } from "@/i18n"
 import { allProjects, run, useAlias, useStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
 /** What the launcher is doing now, in the corner of the sidebar, like a download. */
 export function JobCard() {
+  const t = useT()
   const snap = useStore((s) => s.snap)
   const setTab = useStore((s) => s.setTab)
   const setView = useStore((s) => s.setView)
@@ -18,7 +20,7 @@ export function JobCard() {
   useEffect(() => {
     if (job?.running) setDismissed(null)
   }, [job?.running])
-  const show = !!job && !!job.stage && dismissed !== key && job.stage !== "Playing"
+  const show = !!job && !!job.stage && dismissed !== key && job.stage_kind !== "playing"
   const project = snap && job?.repo ? allProjects(snap).find((p) => p.repo === job.repo) : undefined
   const title = project ? alias(project).name : "VILauncher"
   return (
@@ -51,17 +53,17 @@ export function JobCard() {
                 }}
                 className={cn(small, "px-2 text-caption font-medium text-fg-2")}
               >
-                Build log
+                {t("shell.job.log")}
               </button>
               {job.stoppable && (
-                <Tooltip label="Stop" side="top">
-                  <button type="button" aria-label="Stop" onClick={() => void run({ type: "stop" })} className={cn(small, "w-6 text-fg-2 hover:text-bad")}>
+                <Tooltip label={t("common.stop")} side="top">
+                  <button type="button" aria-label={t("common.stop")} onClick={() => void run({ type: "stop" })} className={cn(small, "w-6 text-fg-2 hover:text-bad")}>
                     <Square className="size-3" />
                   </button>
                 </Tooltip>
               )}
               {!job.running && (
-                <button type="button" aria-label="Dismiss" onClick={() => setDismissed(key)} className={cn(small, "w-6 text-fg-3")}>
+                <button type="button" aria-label={t("shell.job.dismiss")} onClick={() => setDismissed(key)} className={cn(small, "w-6 text-fg-3")}>
                   <X className="size-3.5" />
                 </button>
               )}

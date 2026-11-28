@@ -1,3 +1,4 @@
+import { t } from "@/i18n"
 import type { Action, LogView, Snapshot } from "./types"
 
 /** True inside the Tauri window; false in a plain browser (development, with a mock launcher). */
@@ -92,7 +93,7 @@ export async function copyText(text: string) {
   field.select()
   const copied = document.execCommand("copy")
   field.remove()
-  if (!copied) throw new Error("The link could not be copied.")
+  if (!copied) throw new Error(t("common.errors.copyFailed"))
 }
 
 /**

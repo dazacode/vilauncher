@@ -70,23 +70,42 @@ impl BuildActivity {
         fs::rename(temporary, target.join("build-activity.json"))
     }
 
+    /// When the build was made, as the Activity tab says it: "Updated 3 days
+    /// ago", or "Installed …" for a first install.
     pub fn updated_ago(&self) -> String {
+        let when = self.ago();
+        if self.new_install {
+            msg!("Installed {when}")
+        } else {
+            msg!("Updated {when}")
+        }
+    }
+
+    /// How long ago the build was made: "3 days ago".
+    pub fn ago(&self) -> String {
         let minutes = seconds(SystemTime::now()).saturating_sub(self.updated) / 60;
-        let (value, unit) = match minutes {
-            0 => return "Updated just now".into(),
-            1..=59 => (minutes, "minute"),
-            60..=1439 => (minutes / 60, "hour"),
-            _ => (minutes / 1440, "day"),
-        };
-        let plural = if value == 1 { "" } else { "s" };
-        format!("Updated {value} {unit}{plural} ago")
+        match minutes {
+            0 => msg!("just now"),
+            1 => msg!("1 minute ago"),
+            2..=59 => msg!("{minutes} minutes ago"),
+            60..=119 => msg!("1 hour ago"),
+            120..=1439 => {
+                let hours = minutes / 60;
+                msg!("{hours} hours ago")
+            }
+            1440..=2879 => msg!("1 day ago"),
+            _ => {
+                let days = minutes / 1440;
+                msg!("{days} days ago")
+            }
+        }
     }
 
     pub fn pending_label(&self) -> Option<&'static str> {
         (self.ran == Some(false)).then_some(if self.new_install {
-            "New install · Not run yet"
+            msg_str!("New install · Not run yet")
         } else {
-            "Updated · Not run yet"
+            msg_str!("Updated · Not run yet")
         })
     }
 }

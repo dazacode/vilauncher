@@ -1,11 +1,13 @@
 import { useEffect } from "react"
 import { Bone } from "@/components/shell/skeleton"
 import { Button } from "@/components/ui/button"
+import { useT } from "@/i18n"
 import { allProjects, run, useSelected, useStore } from "@/lib/store"
 import { Hero } from "./hero"
 import { ProjectTabs } from "./project-tabs"
 
 export function LibraryView() {
+  const t = useT()
   const snap = useStore((s) => s.snap)!
   const screenshot = useStore((s) => s.screenshot)
   const project = useSelected()
@@ -21,12 +23,10 @@ export function LibraryView() {
     // Image slot: a drawn scene for "the list didn't arrive" belongs above this text.
     return (
       <div className="relative flex h-full flex-col justify-end px-10 pb-16">
-        <h1 className="font-display text-page font-bold text-fg">The project list didn't arrive</h1>
-        <p className="mt-2 max-w-[520px] text-lead text-fg-2">
-          VILauncher reads the list of community builds from viportlive.com. Check your connection, then try again.
-        </p>
+        <h1 className="font-display text-page font-bold text-fg">{t("library.listError.title")}</h1>
+        <p className="mt-2 max-w-[520px] text-lead text-fg-2">{t("library.listError.body")}</p>
         <div className="mt-6">
-          <Button onClick={() => void run({ type: "refresh_projects" })}>Try again</Button>
+          <Button onClick={() => void run({ type: "refresh_projects" })}>{t("common.retry")}</Button>
         </div>
         {!screenshot && snap.list.error && <p className="mt-3 text-caption text-fg-3" data-selectable>{snap.list.error}</p>}
       </div>
@@ -42,8 +42,9 @@ export function LibraryView() {
 
 /** The library while the snapshot or the project list loads: the hero's shape, without art. */
 export function LibrarySkeleton() {
+  const t = useT()
   return (
-    <div className="h-full overflow-hidden" aria-busy="true" aria-label="Loading the library">
+    <div className="h-full overflow-hidden" aria-busy="true" aria-label={t("library.loading")}>
       <section className="relative shrink-0" style={{ height: "clamp(420px, 60vh, 620px)" }}>
         <div className="flex h-full max-w-[1280px] items-end justify-between gap-10 px-10 pt-16 pb-10">
           <div className="min-w-0 max-w-[640px] flex-1">

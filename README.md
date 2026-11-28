@@ -66,6 +66,7 @@ A signed release verifies with `Get-AuthenticodeSignature` (signer: VIPortLive t
 - **Activity log.** Full Git and Cargo output, copyable and exportable. Each job's log is also kept on disk.
 - **AI-agent access (off by default).** Lets an AI agent read logs and, after you confirm, apply a patch and run the project's build. See [Agent tools](#agent-tools).
 - **Screenshot mode.** Hides names, paths, notes and logs for sharing pictures.
+- **Languages.** English, 繁體中文 and 简体中文: the system's language by default, or your choice under *Settings → Appearance → Language*. Project names and notes, and build logs, stay as written. See [docs/I18N.md](docs/I18N.md) to add or improve a language.
 
 ## Screenshots
 
@@ -107,7 +108,7 @@ Output:
 ### Check the build like CI
 
 ```powershell
-pnpm ci:check                                  # install, typecheck, vite build, cargo test
+pnpm ci:check                                  # install, typecheck, translations, vite build, cargo test
 node scripts/ci.mjs --only typecheck,test      # run a subset
 node scripts/ci.mjs --tauri --keep-going       # also build the installer, run every step
 node scripts/ci.mjs --json                     # also write .ci/last-run.json

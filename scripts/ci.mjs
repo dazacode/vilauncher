@@ -4,7 +4,7 @@
 // for any step that failed. ANSI colour codes are stripped.
 //
 // Usage:
-//   node scripts/ci.mjs                      run install, typecheck, vite, test
+//   node scripts/ci.mjs                      run install, typecheck, i18n, vite, test
 //   node scripts/ci.mjs --only typecheck,test
 //   node scripts/ci.mjs --tauri              also run the installer build
 //   node scripts/ci.mjs --keep-going         run every step even after a failure
@@ -25,6 +25,7 @@ const ANSI = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007]*(\u0007|\u001b\\)/g;
 const STEPS = [
   { id: "install", name: "install", cmd: "pnpm install --frozen-lockfile", cwd: ROOT, optional: false },
   { id: "typecheck", name: "typecheck", cmd: "pnpm exec tsc -b", cwd: ROOT, optional: false },
+  { id: "i18n", name: "translations", cmd: "pnpm i18n:check", cwd: ROOT, optional: false },
   { id: "vite", name: "vite build", cmd: "pnpm exec vite build", cwd: ROOT, optional: false },
   { id: "test", name: "cargo test", cmd: "cargo test --locked", cwd: join(ROOT, "src-tauri"), optional: false },
   { id: "tauri", name: "tauri build", cmd: "pnpm tauri build", cwd: ROOT, optional: true },

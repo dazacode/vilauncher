@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
+import { useT } from "@/i18n"
 import { openUrl } from "@/lib/api"
 import { run, useStore } from "@/lib/store"
 
@@ -15,6 +16,7 @@ const ANNOUNCED = "vilauncher.launcher-update-announced"
  * ready, and one notice when it first appears. Nothing installs until the player presses Update.
  */
 export function LauncherUpdate() {
+  const t = useT()
   const u = useStore((s) => s.snap?.updater)
   const [, rerender] = useState(0)
 
@@ -22,10 +24,10 @@ export function LauncherUpdate() {
     if (!u || u.state !== "available" || !u.tag) return
     if (localStorage.getItem(ANNOUNCED) === u.tag) return
     localStorage.setItem(ANNOUNCED, u.tag)
-    toast(`VILauncher ${u.tag} is out`, {
-      description: "Update now, or later from the sidebar.",
+    toast(t("shell.update.out", { tag: u.tag }), {
+      description: t("shell.update.outHint"),
       duration: 12000,
-      action: { label: "Update", onClick: () => void run({ type: "download_update" }) },
+      action: { label: t("common.update"), onClick: () => void run({ type: "download_update" }) },
     })
   }, [u?.state, u?.tag])
 
@@ -35,9 +37,9 @@ export function LauncherUpdate() {
     if (localStorage.getItem(LATER) === tag) return null
     return (
       <Card>
-        <p className="text-caption text-fg-2">VILauncher {tag} is out</p>
+        <p className="text-caption text-fg-2">{t("shell.update.out", { tag })}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <Button size="sm" variant="primary" onClick={() => void run({ type: "download_update" })}>Update</Button>
+          <Button size="sm" variant="primary" onClick={() => void run({ type: "download_update" })}>{t("common.update")}</Button>
           <Button
             size="sm"
             variant="ghost"
@@ -46,9 +48,9 @@ export function LauncherUpdate() {
               rerender((n) => n + 1)
             }}
           >
-            Later
+            {t("common.later")}
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => void openUrl(u.releases)}>Notes</Button>
+          <Button size="sm" variant="ghost" onClick={() => void openUrl(u.releases)}>{t("shell.update.notes")}</Button>
         </div>
       </Card>
     )
@@ -56,16 +58,16 @@ export function LauncherUpdate() {
   if (u.state === "downloading") {
     return (
       <Card>
-        <p className="flex items-center gap-2 text-caption text-fg-2"><Spinner className="size-3" /> Downloading {tag}</p>
+        <p className="flex items-center gap-2 text-caption text-fg-2"><Spinner className="size-3" /> {t("shell.update.downloading", { tag })}</p>
       </Card>
     )
   }
   if (u.state === "downloaded") {
     return (
       <Card>
-        <p className="text-caption text-fg-2">{tag} is ready</p>
+        <p className="text-caption text-fg-2">{t("shell.update.ready", { tag })}</p>
         <div className="mt-2">
-          <Button size="sm" variant="primary" onClick={() => void run({ type: "restart_to_update" })}>Restart now</Button>
+          <Button size="sm" variant="primary" onClick={() => void run({ type: "restart_to_update" })}>{t("shell.update.restart")}</Button>
         </div>
       </Card>
     )
