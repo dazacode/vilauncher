@@ -44,7 +44,7 @@ impl PlayPresetPicker {
         let mut options = if standalone {
             Vec::new()
         } else {
-            scripts(&repo_dir(&project.repo).join("scripts"), &project.name)
+            scripts(&project_scripts(project), &project.name)
         };
         let recommended = options
             .first()
@@ -106,14 +106,24 @@ impl PlayPresetPicker {
 }
 
 pub(crate) fn detected_preset(project: &Project) -> Option<LaunchPreset> {
-    scripts(&repo_dir(&project.repo).join("scripts"), &project.name)
+    scripts(&project_scripts(project), &project.name)
         .into_iter()
         .next()
         .filter(|preset| is_custom_script(&preset.name))
 }
 
 fn is_custom_script(stem: &str) -> bool {
-    stem.to_ascii_lowercase().starts_with("play-") && stem.len() > "play-".len()
+    stem.eq_ignore_ascii_case("scarlet-fps")
+        || (stem.to_ascii_lowercase().starts_with("play-") && stem.len() > "play-".len())
+}
+
+fn project_scripts(project: &Project) -> std::path::PathBuf {
+    let root = repo_dir(&project.repo);
+    super::cargo_workspace(&root)
+        .ok()
+        .map(|workspace| workspace.join("scripts"))
+        .filter(|folder| folder.is_dir())
+        .unwrap_or_else(|| root.join("scripts"))
 }
 
 fn scripts(folder: &Path, project_name: &str) -> Vec<LaunchPreset> {
@@ -133,18 +143,21 @@ fn scripts(folder: &Path, project_name: &str) -> Vec<LaunchPreset> {
     let name = project_name.to_ascii_lowercase();
     let matching = format!("play-{name}");
     let fork = format!("play-{}", name.strip_prefix("victory-").unwrap_or(&name));
+    let documented = folder.parent().and_then(super::documented_scarlet_script);
     files.sort_by_key(|path| {
         let stem = path
             .file_stem()
             .unwrap_or_default()
             .to_string_lossy()
             .to_ascii_lowercase();
-        let rank = if stem == matching || stem == fork {
+        let rank = if documented == Some(stem.as_str()) {
             0
-        } else if is_custom_script(&stem) {
+        } else if stem == matching || stem == fork {
             1
-        } else {
+        } else if is_custom_script(&stem) {
             2
+        } else {
+            3
         };
         (rank, stem)
     });
@@ -354,6 +367,34 @@ fn prefills_the_matching_custom_script_ahead_of_the_standard_script() {
         std::fs::remove_file(folder.join(name)).unwrap();
     }
     std::fs::remove_dir(folder).unwrap();
+}
+
+#[test]
+fn documented_scarlet_scripts_take_priority_and_use_release() {
+    let root = std::env::temp_dir().join(format!("vilauncher-scarlet-{}", std::process::id()));
+    let folder = root.join("scripts");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(root.join("Cargo.toml"), "[profile.diag]").unwrap();
+    for stem in ["play-scarlett", "play-3070", "scarlet-fps"] {
+        std::fs::write(
+            folder.join(format!("{stem}.ps1")),
+            "$settings = @{\nVICTORY_LOG = 'warn'\n}",
+        )
+        .unwrap();
+    }
+    assert_eq!(super::detect_build_profile(&root), "diag");
+    for stem in ["scarlet-fps", "play-3070"] {
+        std::fs::write(
+            root.join("README.md"),
+            format!(
+                "cargo build --release --bin victory\npowershell -File .\\scripts\\{stem}.ps1\n"
+            ),
+        )
+        .unwrap();
+        assert_eq!(super::detect_build_profile(&root), "release");
+        assert_eq!(scripts(&folder, "Victory-Scarlett")[0].name, stem);
+    }
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 #[cfg(test)]

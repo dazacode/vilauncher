@@ -707,7 +707,32 @@ fn finds_a_unique_nested_victory_workspace_and_prefers_the_root() {
 }
 
 /// Checks a cloned repo's Cargo.toml for a custom build profile (e.g. `diag`).
+fn documented_scarlet_script(root: &Path) -> Option<&'static str> {
+    let readme = std::fs::read_to_string(root.join("README.md"))
+        .ok()?
+        .to_ascii_lowercase()
+        .replace('/', "\\");
+    if !readme
+        .lines()
+        .any(|line| line.trim() == "cargo build --release --bin victory")
+    {
+        return None;
+    }
+    ["scarlet-fps", "play-3070"].into_iter().find(|stem| {
+        let argument = format!(".\\scripts\\{stem}.ps1");
+        root.join("scripts").join(format!("{stem}.ps1")).is_file()
+            && readme.lines().any(|line| {
+                let mut words = line.split_whitespace();
+                matches!(words.next(), Some("powershell" | "powershell.exe" | "pwsh"))
+                    && words.any(|word| word.trim_matches(['"', '\'']) == argument)
+            })
+    })
+}
+
 fn detect_build_profile(repo_dir: &Path) -> &'static str {
+    if documented_scarlet_script(repo_dir).is_some() {
+        return "release";
+    }
     let cargo_toml = repo_dir.join("Cargo.toml");
     if let Ok(text) = std::fs::read_to_string(&cargo_toml) {
         if text.contains("[profile.diag]") {
@@ -1836,6 +1861,9 @@ fn build_project(
     cargo.current_dir(&workspace);
     if victory {
         cargo.args(["-p", "victory"]);
+        if documented_scarlet_script(&workspace).is_some() {
+            cargo.args(["--bin", "victory"]);
+        }
         run(job, ctx, &mut cargo)?;
         let executable = target.join(profile).join("victory.exe");
         if !executable.is_file() {
