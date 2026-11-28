@@ -1,6 +1,7 @@
 import { PawPrint } from "lucide-react"
 import { useRef } from "react"
 import { toast } from "sonner"
+import { t } from "@/i18n"
 import { pawsUnlocked, unlockPaws, useTheme } from "@/lib/theme"
 
 /** The VIL logo and "VILauncher" set as VIPortLive sets its name: VI heavy, the rest in pink script. */
@@ -12,7 +13,7 @@ export function Brand() {
     clicks.current += 1
     if (clicks.current < 7 || pawsUnlocked()) return
     unlockPaws()
-    toast.success("A new look is unlocked. Find it in Settings, under Appearance.")
+    toast.success(t("shell.unlocked"))
   }
   return (
     <div className="flex items-center gap-2">
@@ -25,6 +26,7 @@ export function Brand() {
       />
       <span className="flex items-baseline leading-none">
         <span className="font-display text-[17px] font-extrabold tracking-[-0.02em] text-fg">VI</span>
+        {/* i18n-ignore: the name "VILauncher", in two styles */}
         <span className="ml-px font-script text-[21px] text-accent-fg">Launcher</span>
       </span>
       {theme === "paws" && <PawPrint aria-hidden className="ml-1 size-3.5 text-accent-fg" />}

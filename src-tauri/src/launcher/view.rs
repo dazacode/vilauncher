@@ -3,12 +3,15 @@
 //! launcher along (finished jobs, update checks, the game folder check).
 
 use super::*;
+use crate::i18n::{localize, localize_opt};
 use crate::updater::State as UpdaterState;
 use serde::Serialize;
 
 #[derive(Serialize)]
 pub(crate) struct Snapshot {
     version: &'static str,
+    /// The language the launcher's messages below are in: "en", "zh-TW" or "zh-CN".
+    locale: &'static str,
     /// Whether the player agreed to the current legal notice.
     notice_accepted: bool,
     brand: BrandView,
@@ -30,7 +33,8 @@ pub(crate) struct Snapshot {
 #[derive(Serialize)]
 struct BrandView {
     name: &'static str,
-    team: &'static str,
+    /// Who makes it, translated ("VIPortLive team").
+    team: String,
     site: &'static str,
     site_label: &'static str,
     source: &'static str,
@@ -83,8 +87,11 @@ pub(crate) struct ProjectView {
 
 #[derive(Serialize)]
 struct ActivityView {
+    /// "Updated 3 days ago" ("Installed …" for a first install), translated.
     updated_ago: String,
-    pending: Option<&'static str>,
+    /// Only how long ago: "3 days ago", translated.
+    updated_when: String,
+    pending: Option<String>,
     new_install: bool,
     last_run: Option<String>,
 }
@@ -129,6 +136,8 @@ struct SettingsView {
     skip_update_warning: bool,
     agent_access: bool,
     acknowledged: Vec<String>,
+    /// The player's language choice; none: the system's.
+    language: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -145,14 +154,18 @@ struct FilesView {
 #[derive(Serialize)]
 struct ToolsView {
     ready: bool,
-    missing: Vec<&'static str>,
+    /// The missing tools' names, translated ("C++ build tools").
+    missing: Vec<String>,
 }
 
 #[derive(Serialize)]
 struct JobView {
     running: bool,
     repo: Option<String>,
+    /// What the job is doing, for the player (translated).
     stage: String,
+    /// The stage as a fixed word the window can act on (see `stage_kind`).
+    stage_kind: &'static str,
     failed: bool,
     stoppable: bool,
     log_lines: usize,
@@ -175,6 +188,24 @@ pub(crate) struct LogView {
     pub(crate) from: usize,
     pub(crate) lines: Vec<String>,
     pub(crate) omitted: usize,
+}
+
+/// What a job's stage (as the launcher writes it, in English) is about, as a
+/// fixed word: the window acts on it ("playing" shows Stop) and shortens it
+/// ("building") without reading the stage's own words.
+pub(crate) fn stage_kind(stage: &str) -> &'static str {
+    match stage {
+        "" => "none",
+        "Playing" => "playing",
+        s if s.starts_with("Downloading") => "downloading",
+        s if s.starts_with("Building") => "building",
+        s if s.starts_with("Warming") => "warming",
+        s if s.starts_with("Installing tools") => "installing_tools",
+        s if s.starts_with("Uninstalling") => "uninstalling",
+        s if s.starts_with("Moving") => "moving",
+        s if s.starts_with("Extracting") => "importing",
+        _ => "other",
+    }
 }
 
 /// A time as the player's clock shows it (Windows only; elsewhere none).
@@ -211,27 +242,29 @@ impl App {
             JobView {
                 running: j.running,
                 repo: j.repo.clone(),
-                stage: j.stage.clone(),
+                stage: localize(&j.stage),
+                stage_kind: stage_kind(&j.stage),
                 failed: j.failed,
                 stoppable: j.running && j.stoppable,
                 log_lines: j.omitted_log_lines + j.log.len(),
-                import_error: j.import_error.clone(),
+                import_error: localize_opt(j.import_error.as_deref()),
             }
         };
         let searching = matches!(&*self.finding.lock().unwrap(), Some(None));
         Snapshot {
             version: env!("CARGO_PKG_VERSION"),
+            locale: crate::i18n::current().tag(),
             notice_accepted: self.saved.notice_accepted >= NOTICE_VERSION,
             brand: BrandView {
                 name: brand::NAME,
-                team: brand::TEAM,
+                team: localize(brand::TEAM),
                 site: brand::SITE,
                 site_label: brand::SITE_LABEL,
                 source: brand::SOURCE_URL,
             },
             list: ListView {
                 status,
-                error,
+                error: localize_opt(error.as_deref()),
                 items,
             },
             custom,
@@ -255,6 +288,7 @@ impl App {
                 skip_update_warning: self.saved.skip_update_warning,
                 agent_access: self.saved.agent_access,
                 acknowledged: self.saved.acknowledged.clone(),
+                language: self.saved.language.clone(),
             },
             files: FilesView {
                 chosen: !self.saved.game_dir.trim().is_empty(),
@@ -263,11 +297,11 @@ impl App {
                 unplugged: self.unplugged,
                 missing: self.files.iter().filter(|f| !f.1).map(|f| f.0).collect(),
                 searching,
-                find_error: self.find_error.clone(),
+                find_error: localize_opt(self.find_error.as_deref()),
             },
             tools: tools::current().map(|t| ToolsView {
                 ready: t.ready(),
-                missing: t.missing(),
+                missing: t.missing().into_iter().map(localize).collect(),
             }),
             job,
             updater: self.updater_view(),
@@ -308,13 +342,13 @@ impl App {
             UpdaterState::Available(release) => ("available", Some(release.tag_name.clone()), None),
             UpdaterState::Downloading => ("downloading", None, None),
             UpdaterState::Downloaded(_) => ("downloaded", None, None),
-            UpdaterState::Failed(error) => ("failed", None, Some(error.clone())),
+            UpdaterState::Failed(error) => ("failed", None, Some(localize(error))),
         };
         UpdaterView {
             state,
             tag,
             error,
-            restart_error: self.updater.restart_error.clone(),
+            restart_error: localize_opt(self.updater.restart_error.as_deref()),
             releases: updater::RELEASES,
         }
     }
@@ -389,12 +423,9 @@ impl App {
             standalone,
             runnable,
             activity: state.activity.as_ref().map(|a| ActivityView {
-                updated_ago: if a.new_install {
-                    a.updated_ago().replacen("Updated", "Installed", 1)
-                } else {
-                    a.updated_ago()
-                },
-                pending: a.pending_label(),
+                updated_ago: localize(&a.updated_ago()),
+                updated_when: localize(&a.ago()),
+                pending: localize_opt(a.pending_label()),
                 new_install: a.new_install,
                 last_run: a.last_run.and_then(local_time),
             }),

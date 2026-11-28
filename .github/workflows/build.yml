@@ -53,6 +53,10 @@ jobs:
       - name: Type-check the UI
         run: pnpm exec tsc -b
 
+      # Every language has every message, and no English is left in the UI code (docs/I18N.md).
+      - name: Check the translations
+        run: pnpm i18n:check
+
       # The Rust crate embeds dist/ at compile time, so the UI is built before the tests.
       - name: Build the UI
         run: pnpm exec vite build

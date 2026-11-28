@@ -46,7 +46,7 @@ pub fn extract(input: &Path, destination: &Path) -> Result<PathBuf, String> {
 
 fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::Result<PathBuf> {
     if zip.len() > 50_000 {
-        return Err(io::Error::other("The build ZIP contains too many entries."));
+        return Err(io::Error::other(msg_str!("The build ZIP contains too many entries.")));
     }
     let mut remaining = MAX_EXPANDED_BYTES;
     let mut executables = Vec::new();
@@ -56,7 +56,7 @@ fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::
         let name = name.trim_end_matches('/');
         if entry.is_symlink() || !name.split('/').all(valid_component) {
             return Err(io::Error::other(
-                "The build ZIP contains an unsafe file path or symbolic link.",
+                msg_str!("The build ZIP contains an unsafe file path or symbolic link."),
             ));
         }
         let relative = PathBuf::from(name);
@@ -66,7 +66,7 @@ fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::
             continue;
         }
         if entry.size() > remaining {
-            return Err(io::Error::other("The extracted build exceeds 8 GiB."));
+            return Err(io::Error::other(msg_str!("The extracted build exceeds 8 GiB.")));
         }
         fs::create_dir_all(output.parent().expect("extracted file has a parent"))?;
         let mut file = OpenOptions::new()
@@ -76,7 +76,7 @@ fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::
         let written = io::copy(&mut io::Read::take(&mut entry, remaining + 1), &mut file)?;
         remaining = remaining
             .checked_sub(written)
-            .ok_or_else(|| io::Error::other("The extracted build exceeds 8 GiB."))?;
+            .ok_or_else(|| io::Error::other(msg_str!("The extracted build exceeds 8 GiB.")))?;
         if relative
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
@@ -87,9 +87,9 @@ fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::
     let mut victory = executables.iter().filter(|path| is_victory(path));
     match (victory.next(), victory.next(), executables.as_slice()) {
         (Some(exe), None, _) | (None, None, [exe]) => Ok(exe.clone()),
-        (None, None, []) => Err(io::Error::other("The ZIP contains no Windows executable.")),
+        (None, None, []) => Err(io::Error::other(msg_str!("The ZIP contains no Windows executable."))),
         _ => Err(io::Error::other(
-            "The ZIP contains multiple possible launch executables.",
+            msg_str!("The ZIP contains multiple possible launch executables."),
         )),
     }
 }

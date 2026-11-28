@@ -2,41 +2,39 @@ import { AlertTriangle } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
+import { type Key, useT } from "@/i18n"
 import { run } from "@/lib/store"
 import type { ResponsibilityId } from "@/lib/types"
 
-interface Text {
-  title: string
-  body: string
-  bullets: string[]
-}
+/** A message of the warnings (legal.responsibility); none has placeholders. */
+type WarningKey = Extract<Key, `legal.responsibility.${string}`>
 
-/** The plain-language warning for each risky step. Keep every risk listed. */
-const TEXT: Record<ResponsibilityId, Text> = {
+/** The plain-language warning for each risky step, as message keys. Keep every risk listed. */
+const WARNINGS: Record<ResponsibilityId, { titleKey: WarningKey; bodyKey: WarningKey; riskKeys: WarningKey[] }> = {
   "import-repo": {
-    title: "Before you import this project",
-    body: "Importing a repo downloads its code and runs it on this PC. Its build scripts and the programs it builds can read and change files you can access, use the network, and use your graphics card. VILauncher checks the repo's game files and verified project list but cannot make unknown code safe. Only import repos you trust, and read the code if you can.",
-    bullets: [
-      "It runs build scripts and compiles the code.",
-      "It may download more code and tools.",
-      "It can write to folders your user account can write to.",
-      "The saves VILauncher keeps are separate and an import does not touch them, but the project's own code might.",
+    titleKey: "legal.responsibility.importRepo.title",
+    bodyKey: "legal.responsibility.importRepo.body",
+    riskKeys: [
+      "legal.responsibility.importRepo.risks.build",
+      "legal.responsibility.importRepo.risks.download",
+      "legal.responsibility.importRepo.risks.write",
+      "legal.responsibility.importRepo.risks.saves",
     ],
   },
   "agent-access": {
-    title: "Let AI agents help with builds?",
-    body: "Turning this on lets AI agents (for example Claude Code or opencode) read this launcher's logs and projects, and, when you confirm each step, apply a patch to a project's source and run its build. An agent can make mistakes, and its patch runs on this PC.",
-    bullets: [
-      "Agents read logs and folder names. Your user name is removed from what is shown.",
-      "Patches only touch a project's own source folder.",
-      "Every change needs your confirmation. Nothing is committed or pushed.",
-      "You can turn this off at any time.",
+    titleKey: "legal.responsibility.agentAccess.title",
+    bodyKey: "legal.responsibility.agentAccess.body",
+    riskKeys: [
+      "legal.responsibility.agentAccess.risks.read",
+      "legal.responsibility.agentAccess.risks.scope",
+      "legal.responsibility.agentAccess.risks.confirm",
+      "legal.responsibility.agentAccess.risks.off",
     ],
   },
   "agent-patch": {
-    title: "Apply this patch?",
-    body: "This patch will change the project's source and run its build on this PC. Saves are not touched. The patch is written by an agent and has not been reviewed by the project's authors.",
-    bullets: [],
+    titleKey: "legal.responsibility.agentPatch.title",
+    bodyKey: "legal.responsibility.agentPatch.body",
+    riskKeys: [],
   },
 }
 
@@ -56,9 +54,10 @@ export function ResponsibilityDialog({
   id: ResponsibilityId
   onAccept(): void
 }) {
+  const t = useT()
   const [agreed, setAgreed] = useState(false)
   const [busy, setBusy] = useState(false)
-  const text = TEXT[id]
+  const warning = WARNINGS[id]
 
   useEffect(() => {
     if (open) {
@@ -81,27 +80,27 @@ export function ResponsibilityDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={text.title}
+      title={t(warning.titleKey)}
       footer={
         <>
           <Button variant="primary" disabled={!agreed || busy} onClick={() => void accept()}>
-            Continue
+            {t("common.continue")}
           </Button>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
         </>
       }
     >
-      <p className="text-body text-fg-2">{text.body}</p>
-      {text.bullets.length > 0 && (
+      <p className="text-body text-fg-2">{t(warning.bodyKey)}</p>
+      {warning.riskKeys.length > 0 && (
         <div className="mt-4 rounded-lg border border-warn/20 bg-warn/8 px-3.5 py-3">
           <p className="flex items-center gap-2 text-secondary font-medium text-fg">
-            <AlertTriangle className="size-4 shrink-0 text-warn" /> What could happen
+            <AlertTriangle className="size-4 shrink-0 text-warn" /> {t("legal.responsibility.risks")}
           </p>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-secondary text-fg-2">
-            {text.bullets.map((b) => (
-              <li key={b}>{b}</li>
+            {warning.riskKeys.map((risk) => (
+              <li key={risk}>{t(risk)}</li>
             ))}
           </ul>
         </div>
@@ -113,7 +112,7 @@ export function ResponsibilityDialog({
           onChange={(e) => setAgreed(e.target.checked)}
           className="mt-1 size-4"
         />
-        I understand, and I take responsibility for what this does on my PC.
+        {t("legal.responsibility.accept")}
       </label>
     </Dialog>
   )

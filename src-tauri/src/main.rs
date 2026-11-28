@@ -6,6 +6,9 @@
 //! No game files are included or downloaded: the player supplies their own.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// First, so its `msg!` and `msg_str!` are there for every module below.
+#[macro_use]
+mod i18n;
 mod addons;
 mod backgrounds;
 mod brand;
@@ -63,7 +66,8 @@ fn act(
     let mut app = state.app.lock().unwrap();
     let outcome = app.act(action);
     state.persist(&app);
-    match outcome? {
+    // The launcher's messages are English; the window shows them in the player's language.
+    match outcome.map_err(|error| i18n::localize(&error))? {
         launcher::Outcome::Value(value) => Ok(value),
         launcher::Outcome::Exit => {
             handle.exit(0);

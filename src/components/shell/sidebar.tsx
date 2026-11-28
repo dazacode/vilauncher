@@ -9,7 +9,8 @@ import { Select } from "@/components/ui/select"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip } from "@/components/ui/tooltip"
-import { assess, mainGpu, SORTS, sortProjects, withSpec } from "@/lib/compat"
+import { useT } from "@/i18n"
+import { assess, mainGpu, SORTS, sortLabel, sortProjects, withSpec } from "@/lib/compat"
 import { openUrl } from "@/lib/api"
 import { fps, gpuText, shortStage } from "@/lib/format"
 import { run, useAlias, useStore } from "@/lib/store"
@@ -20,15 +21,10 @@ import { LauncherUpdate } from "@/features/shared/launcher-update"
 import { JobCard } from "./job-card"
 import { Bone, SidebarSkeleton } from "./skeleton"
 
-const FILTERS = [
-  { value: "0", label: "All" },
-  { value: "1", label: "NVIDIA" },
-  { value: "2", label: "AMD" },
-] as const
-
 const ROW = "[data-row]"
 
 export function Sidebar() {
+  const t = useT()
   const snap = useStore((s) => s.snap)
   const view = useStore((s) => s.view)
   const setView = useStore((s) => s.setView)
@@ -87,9 +83,9 @@ export function Sidebar() {
       <div className="drag flex h-12 shrink-0 items-center px-4">
         <Brand />
       </div>
-      <nav className="space-y-1 px-2 pt-1" aria-label="Pages">
-        <NavItem icon={<LayoutGrid />} label="Library" active={view === "library"} onClick={() => setView("library")} />
-        <NavItem icon={<Settings2 />} label="Settings" active={view === "settings"} onClick={() => setView("settings")} />
+      <nav className="space-y-1 px-2 pt-1" aria-label={t("shell.nav.label")}>
+        <NavItem icon={<LayoutGrid />} label={t("shell.nav.library")} active={view === "library"} onClick={() => setView("library")} />
+        <NavItem icon={<Settings2 />} label={t("shell.nav.settings")} active={view === "settings"} onClick={() => setView("settings")} />
       </nav>
       <div className="flex items-center gap-1.5 px-2 pt-4">
         <label className="relative block min-w-0 flex-1">
@@ -99,8 +95,8 @@ export function Sidebar() {
             value={screenshot ? "" : search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={onSearchKey}
-            placeholder="Search library"
-            aria-label="Search library"
+            placeholder={t("shell.search")}
+            aria-label={t("shell.search")}
             aria-controls="sidebar-projects"
             spellCheck={false}
             className="h-8 w-full rounded-md border border-line bg-fill-1 pr-3 pl-9 text-secondary text-fg placeholder:text-fg-3 transition-colors hover:border-line-2 focus-visible:border-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25"
@@ -111,7 +107,7 @@ export function Sidebar() {
       <div
         ref={listRef}
         id="sidebar-projects"
-        aria-label="Projects"
+        aria-label={t("shell.list.label")}
         aria-busy={loading || undefined}
         onKeyDown={onListKey}
         className="min-h-0 flex-1 overflow-y-auto px-2 pb-4"
@@ -119,13 +115,13 @@ export function Sidebar() {
         {loading && <SidebarSkeleton />}
         {snap?.list.status === "error" && (
           <div className="mt-4 rounded-lg border border-line bg-fill-1 p-3">
-            <p className="text-secondary text-fg-2">{screenshot ? "The project list could not load." : snap.list.error}</p>
-            <Button size="sm" className="mt-2" onClick={() => void run({ type: "refresh_projects" })}>Try again</Button>
+            <p className="text-secondary text-fg-2">{screenshot ? t("shell.list.loadFailed") : snap.list.error}</p>
+            <Button size="sm" className="mt-2" onClick={() => void run({ type: "refresh_projects" })}>{t("common.retry")}</Button>
           </div>
         )}
         {snap &&
           sections.map((s) => (
-            <Section key={s.title} title={s.title}>
+            <Section key={s.id} title={t(`shell.list.sections.${s.id}`)}>
               {s.rows.map((p) => (
                 <li key={p.repo}>
                   <Row project={p} snap={snap} tabbable={p.repo === active} onFocus={() => setCursor(p.repo)} />
@@ -135,11 +131,11 @@ export function Sidebar() {
           ))}
         {snap?.list.status === "ready" && order.length === 0 && (
           <div className="px-2 pt-6">
-            <p className="text-secondary text-fg-2">{query ? `No project matches “${search.trim()}”.` : "No projects for this card yet."}</p>
+            <p className="text-secondary text-fg-2">{query ? t("shell.list.noMatch", { query: search.trim() }) : t("shell.list.noneForCard")}</p>
             {query ? (
-              <Button variant="ghost" size="sm" className="mt-2 -ml-3" onClick={() => setSearch("")}>Clear search</Button>
+              <Button variant="ghost" size="sm" className="mt-2 -ml-3" onClick={() => setSearch("")}>{t("shell.list.clearSearch")}</Button>
             ) : filter !== 0 ? (
-              <Button variant="ghost" size="sm" className="mt-2 -ml-3" onClick={() => void run({ type: "set_gpu_filter", value: 0 })}>Show all cards</Button>
+              <Button variant="ghost" size="sm" className="mt-2 -ml-3" onClick={() => void run({ type: "set_gpu_filter", value: 0 })}>{t("shell.list.showAllCards")}</Button>
             ) : null}
           </div>
         )}
@@ -149,7 +145,7 @@ export function Sidebar() {
         <JobCard />
         {!screenshot && (
           <Button variant="ghost" size="sm" className="w-full justify-start gap-3 px-2" onClick={() => open({ kind: "import" })}>
-            <Plus className="size-4!" /> Import a repo or build
+            <Plus className="size-4!" /> {t("shell.list.import")}
           </Button>
         )}
       </div>
@@ -174,20 +170,15 @@ function group(snap: Snapshot, query: string, filter: number) {
   }
   const listed = sortProjects(snap.list.items.filter(keep), s.list_sort)
   return [
-    { title: "Your repos", rows: sortProjects(snap.custom.filter(keep), s.list_sort) },
-    { title: "Installed", rows: listed.filter((p) => p.installed) },
-    { title: "All projects", rows: listed.filter((p) => !p.installed) },
+    { id: "custom" as const, rows: sortProjects(snap.custom.filter(keep), s.list_sort) },
+    { id: "installed" as const, rows: listed.filter((p) => p.installed) },
+    { id: "all" as const, rows: listed.filter((p) => !p.installed) },
   ].filter((s) => s.rows.length > 0)
 }
 
-const TIERS = [
-  { value: "0", label: "All" },
-  { value: "1", label: "Tracked" },
-  { value: "2", label: "Watchlist" },
-] as const
-
 /** Filter, sort and the list's options, in one menu. Every choice is kept in the launcher's settings. */
 function FilterMenu({ snap }: { snap: Snapshot }) {
+  const t = useT()
   const s = snap.settings
   const [open, setOpen] = useState(false)
   const [advanced, setAdvanced] = useState(false)
@@ -199,13 +190,23 @@ function FilterMenu({ snap }: { snap: Snapshot }) {
       sort: next.sort ?? s.list_sort,
       tier: next.tier ?? s.list_tier,
     })
+  const tiers = [
+    { value: "0", label: t("shell.filter.tiers.all") },
+    { value: "1", label: t("shell.filter.tiers.tracked") },
+    { value: "2", label: t("shell.filter.tiers.watchlist") },
+  ] as const
+  const cards = [
+    { value: "0", label: t("shell.filter.allCards") },
+    { value: "1", label: "NVIDIA" },
+    { value: "2", label: "AMD" },
+  ] as const
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
         <button
           type="button"
-          aria-label={changed ? `Filter and sort, ${changed} on` : "Filter and sort"}
-          title="Filter and sort"
+          aria-label={changed ? t("shell.filter.buttonOn", { count: changed }) : t("shell.filter.button")}
+          title={t("shell.filter.button")}
           className={cn(
             "relative grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-line bg-fill-1 text-fg-2 transition-colors hover:border-line-2 hover:bg-fill-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25",
             open && "border-line-2 bg-fill-3 text-fg",
@@ -227,38 +228,38 @@ function FilterMenu({ snap }: { snap: Snapshot }) {
           className="z-50 max-h-[min(640px,80vh)] w-[248px] space-y-4 overflow-y-auto rounded-xl border border-line-2 bg-raised p-3.5 text-body text-fg shadow-[0_12px_36px_rgb(0_0_0/0.5)] outline-none"
         >
           <label className="flex items-center justify-between gap-3">
-            <span>Show taken-down projects</span>
-            <Switch checked={s.show_nuked} onCheckedChange={(v) => setList({ show_nuked: v })} aria-label="Show taken-down projects" />
+            <span>{t("shell.filter.showTakenDown")}</span>
+            <Switch checked={s.show_nuked} onCheckedChange={(v) => setList({ show_nuked: v })} aria-label={t("shell.filter.showTakenDown")} />
           </label>
           <div className="space-y-1.5">
-            <span className="text-caption font-semibold text-fg-2">Sort</span>
+            <span className="text-caption font-semibold text-fg-2">{t("shell.filter.sort")}</span>
             <Select
-              label="Sort"
+              label={t("shell.filter.sort")}
               value={String(s.list_sort)}
-              options={SORTS.map((name, i) => ({ value: String(i), label: name }))}
+              options={SORTS.map((id, i) => ({ value: String(i), label: sortLabel(id) }))}
               onChange={(v) => setList({ sort: Number(v) })}
               className="w-full"
             />
           </div>
           <div className="space-y-1.5">
-            <span className="text-caption font-semibold text-fg-2">Tier</span>
+            <span className="text-caption font-semibold text-fg-2">{t("shell.filter.tier")}</span>
             <Segmented
-              label="Tier"
+              label={t("shell.filter.tier")}
               size="sm"
               className="flex w-full"
               value={String(s.list_tier) as "0" | "1" | "2"}
-              options={TIERS}
+              options={tiers}
               onChange={(v) => setList({ tier: Number(v) })}
             />
           </div>
           <div className="space-y-1.5">
-            <span className="text-caption font-semibold text-fg-2">Graphics cards</span>
+            <span className="text-caption font-semibold text-fg-2">{t("shell.filter.cards")}</span>
             <Segmented
-              label="Graphics cards"
+              label={t("shell.filter.cards")}
               size="sm"
               className="flex w-full"
               value={String(s.gpu_filter) as "0" | "1" | "2"}
-              options={FILTERS}
+              options={cards}
               onChange={(v) => void run({ type: "set_gpu_filter", value: Number(v) })}
             />
           </div>
@@ -269,7 +270,7 @@ function FilterMenu({ snap }: { snap: Snapshot }) {
               onClick={() => setAdvanced(!advanced)}
               className="flex w-full items-center justify-between text-caption font-semibold text-fg-2 hover:text-fg"
             >
-              Advanced: by PC spec
+              {t("shell.filter.advanced")}
               <span aria-hidden>{advanced ? "−" : "+"}</span>
             </button>
             {advanced && <SpecFields snap={snap} />}
@@ -285,7 +286,7 @@ function FilterMenu({ snap }: { snap: Snapshot }) {
                 void run({ type: "set_spec", ram_gb: null, vram_gb: null })
               }}
             >
-              Reset filters
+              {t("shell.filter.reset")}
             </Button>
           )}
         </Popover.Content>
@@ -296,15 +297,16 @@ function FilterMenu({ snap }: { snap: Snapshot }) {
 
 /** The player's RAM and video memory, for judging builds by hand. Empty: what the launcher found. */
 function SpecFields({ snap }: { snap: Snapshot }) {
+  const t = useT()
   const s = snap.settings
   const ram = snap.system?.ram_gb ?? null
   const vram = mainGpu(snap.system)?.vram_gb ?? null
   const save = (ram_gb: number | null, vram_gb: number | null) => void run({ type: "set_spec", ram_gb, vram_gb })
   return (
     <div className="space-y-2">
-      <p className="text-caption text-fg-3">Builds are judged against these numbers. Leave a box empty to use what the launcher found.</p>
-      <SpecInput label="System memory (GB)" value={s.spec_ram_gb} detected={ram} onCommit={(v) => save(v, s.spec_vram_gb)} />
-      <SpecInput label="Video memory (GB)" value={s.spec_vram_gb} detected={vram} onCommit={(v) => save(s.spec_ram_gb, v)} />
+      <p className="text-caption text-fg-3">{t("shell.filter.specHint")}</p>
+      <SpecInput label={t("shell.filter.ram")} value={s.spec_ram_gb} detected={ram} onCommit={(v) => save(v, s.spec_vram_gb)} />
+      <SpecInput label={t("shell.filter.vram")} value={s.spec_vram_gb} detected={vram} onCommit={(v) => save(s.spec_ram_gb, v)} />
     </div>
   )
 }
@@ -320,6 +322,7 @@ function SpecInput({
   detected: number | null
   onCommit(value: number | null): void
 }) {
+  const t = useT()
   const [text, setText] = useState(value == null ? "" : String(value))
   useEffect(() => setText(value == null ? "" : String(value)), [value])
   const commit = () => {
@@ -332,7 +335,7 @@ function SpecInput({
       <input
         inputMode="decimal"
         value={text}
-        placeholder={detected != null ? String(detected) : "Unknown"}
+        placeholder={detected != null ? String(detected) : t("common.unknown")}
         onChange={(e) => setText(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
@@ -375,6 +378,7 @@ function NavItem({ icon, label, active, onClick }: { icon: React.ReactNode; labe
 }
 
 function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: Snapshot; tabbable: boolean; onFocus(): void }) {
+  const t = useT()
   const alias = useAlias()(p)
   const selected = snap.selected === p.repo
   const setView = useStore((s) => s.setView)
@@ -382,25 +386,25 @@ function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: 
   let line: React.ReactNode
   let tone = "text-fg-3"
   if (working) {
-    line = <><Spinner className="size-3 text-accent-fg" /> {shortStage(snap.job.stage)}</>
+    line = <><Spinner className="size-3 text-accent-fg" /> {shortStage(snap.job.stage_kind, snap.job.stage)}</>
     tone = "text-accent-fg"
   } else if (p.listing.nuked) {
-    line = "Taken down · open on VIPortLive"
+    line = t("shell.row.takenDown")
     tone = "text-warn"
   } else if (p.update) {
-    line = "Update available"
+    line = t("shell.row.update")
     tone = "text-warn"
   } else if (p.kind === "zip") {
-    line = "Imported build"
+    line = t("shell.row.imported")
   } else if (p.custom) {
-    line = p.installed ? "Installed · added by link" : "Added by link"
+    line = p.installed ? t("shell.row.installedByLink") : t("shell.row.byLink")
   } else {
     const f = fps(p)
     // Where a build doesn't fit the PC, its warning takes the place of the cards it runs on.
     const verdict = assess(p, withSpec(snap.system, snap.settings))
     if (verdict.level === "concern") tone = "text-warn"
     const detail = verdict.warning ?? (p.gpu.length ? gpuText(p.gpu) : null)
-    line = [f != null ? `${f} fps` : null, detail].filter(Boolean).join(" · ") || "Not measured yet"
+    line = [f != null ? `${f} fps` : null, detail].filter(Boolean).join(" · ") || t("shell.row.notMeasured")
   }
   return (
     <button
@@ -428,7 +432,7 @@ function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: 
       <span className="relative min-w-0 flex-1">
         <span className="flex items-center gap-1">
           <Name text={alias.name} className={selected ? "text-fg" : "text-fg/90"} />
-          {p.verified && <BadgeCheck aria-label="Verified" className="size-3.5 shrink-0 text-fg-3" />}
+          {p.verified && <BadgeCheck aria-label={t("shell.row.verified")} className="size-3.5 shrink-0 text-fg-3" />}
           {p.activity?.pending && !working && <span className="ml-1 size-1.5 shrink-0 rounded-full bg-fg-2" aria-label={p.activity.pending} />}
         </span>
         <span className={cn("flex items-center gap-1 truncate text-caption", tone)}>{line}</span>

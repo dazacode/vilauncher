@@ -11,7 +11,7 @@ pub fn delete_save(workspace: &Path, source: &Path) -> io::Result<PathBuf> {
     let relative = source.strip_prefix(&workspace).map_err(|_| {
         io::Error::new(
             ErrorKind::InvalidInput,
-            "The save is outside VILauncher’s workspace.",
+            msg_str!("The save is outside VILauncher’s workspace."),
         )
     })?;
     let save_folder = relative.starts_with("data") && relative.ends_with(SAVE_PATH);
@@ -23,7 +23,7 @@ pub fn delete_save(workspace: &Path, source: &Path) -> io::Result<PathBuf> {
     if !(save_folder || checkpoint) || !source.is_dir() {
         return Err(io::Error::new(
             ErrorKind::InvalidInput,
-            "This is not a VILauncher save folder.",
+            msg_str!("This is not a VILauncher save folder."),
         ));
     }
     let deleted = workspace.join("deleted-saves");
@@ -31,7 +31,7 @@ pub fn delete_save(workspace: &Path, source: &Path) -> io::Result<PathBuf> {
     if deleted.canonicalize()? != deleted {
         return Err(io::Error::new(
             ErrorKind::InvalidInput,
-            "The deleted saves folder is redirected.",
+            msg_str!("The deleted saves folder is redirected."),
         ));
     }
     let id = SystemTime::now()
@@ -99,11 +99,14 @@ pub fn previous_saves(project: &Path) -> Vec<(String, PathBuf)> {
     let mut saves: Vec<_> = profiles
         .into_iter()
         .enumerate()
-        .map(|(index, path)| (format!("Previous save {}", index + 1), path.join(SAVE_PATH)))
+        .map(|(index, path)| {
+            let name = msg!("Previous save {number}", number = index + 1);
+            (name, path.join(SAVE_PATH))
+        })
         .collect();
     let original = project.join(SAVE_PATH);
     if active != project && contains_files(&original) {
-        saves.push(("Original save".into(), original));
+        saves.push((msg_str!("Original save").into(), original));
     }
     saves
 }
@@ -133,7 +136,7 @@ fn copy_tree(from: &Path, to: &Path) -> io::Result<()> {
         } else {
             return Err(io::Error::new(
                 ErrorKind::InvalidData,
-                "Unsupported entry in save folder",
+                msg_str!("Unsupported entry in save folder"),
             ));
         }
     }
@@ -144,7 +147,7 @@ fn copy_save(from: &Path, to: &Path) -> io::Result<()> {
     if !contains_files(from) {
         return Err(io::Error::new(
             ErrorKind::NotFound,
-            "The selected save is empty or missing",
+            msg_str!("The selected save is empty or missing"),
         ));
     }
     copy_tree(from, to)
@@ -189,7 +192,7 @@ pub fn checkpoint(root: &Path, name: &str, source: &Path) -> io::Result<PathBuf>
     {
         return Err(io::Error::new(
             ErrorKind::InvalidInput,
-            "Use 1–60 letters, numbers, spaces, hyphens or underscores.",
+            msg_str!("Use 1–60 letters, numbers, spaces, hyphens or underscores."),
         ));
     }
     fs::create_dir_all(root)?;

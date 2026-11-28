@@ -2,6 +2,7 @@ import { AlertTriangle, Check, ExternalLink, Minus, RefreshCw } from "lucide-rea
 import { useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Group, Row } from "@/components/ui/group"
+import { useT } from "@/i18n"
 import { openUrl } from "@/lib/api"
 import { assess, type Check as CompatCheck, type Level, mainGpu, matchesCard, withSpec } from "@/lib/compat"
 import { shortCommit } from "@/lib/format"
@@ -12,9 +13,11 @@ import type { Project } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 export function OverviewTab({ project: p }: { project: Project }) {
+  const t = useT()
   const screenshot = useStore((s) => s.screenshot)
   const busy = useStore((s) => s.snap?.job.running)
   const alias = useAlias()(p)
+  const built = shortCommit(p.built)
   return (
     <div className="grid gap-12 xl:grid-cols-[minmax(0,1fr)_340px]">
       <div className="min-w-0 space-y-8">
@@ -22,48 +25,69 @@ export function OverviewTab({ project: p }: { project: Project }) {
           <div className="flex items-center gap-4 rounded-lg border border-warn/25 bg-warn/8 px-4 py-3">
             <RefreshCw className="size-4 shrink-0 text-warn" />
             <div className="min-w-0 flex-1">
-              <p className="text-body font-medium text-fg">A new build is out</p>
-              <p className="text-caption text-fg-3">{screenshot ? "Version hidden" : `Version ${shortCommit(p.update)} · you have ${shortCommit(p.built) ?? "an older one"}`}</p>
+              <p className="text-body font-medium text-fg">{t("library.overview.newBuild")}</p>
+              <p className="text-caption text-fg-3">
+                {screenshot
+                  ? t("library.overview.versionHidden")
+                  : built
+                    ? t("library.overview.newVersion", { version: shortCommit(p.update)!, current: built })
+                    : t("library.overview.newVersionOlder", { version: shortCommit(p.update)! })}
+              </p>
             </div>
-            <Button size="sm" variant="ghost" onClick={() => void run({ type: "later", repo: p.repo, remote: p.update! })}>Later</Button>
-            <UpdateButton repo={p.repo} size="sm" variant="primary" disabled={busy}>Update now</UpdateButton>
+            <Button size="sm" variant="ghost" onClick={() => void run({ type: "later", repo: p.repo, remote: p.update! })}>{t("common.later")}</Button>
+            <UpdateButton repo={p.repo} size="sm" variant="primary" disabled={busy}>{t("library.overview.updateNow")}</UpdateButton>
           </div>
         )}
         {p.custom && p.kind === "git" && (
           <div className="flex items-start gap-3 rounded-lg border border-line bg-fill-1 px-4 py-3">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warn" />
-            <p className="text-body text-fg-2">You added this repo by link. VILauncher downloads, builds and runs its code on your PC, so keep only repos from people you trust.</p>
+            <p className="text-body text-fg-2">{t("library.overview.linkWarning")}</p>
           </div>
         )}
         <section>
-          <h2 className="font-display text-section font-semibold tracking-[-0.01em] text-fg">About</h2>
+          <h2 className="font-display text-section font-semibold tracking-[-0.01em] text-fg">{t("library.overview.about")}</h2>
           <p className="mt-3 max-w-[68ch] text-lead text-fg-2" data-selectable>
             {screenshot
-              ? "Project description hidden."
-              : aboutText(p.summary) || (p.kind === "zip" ? "A prebuilt build you imported from a ZIP." : p.kind === "local" ? "A build from a folder on this PC." : "The tracker has no write-up for this build yet.")}
+              ? t("library.overview.descriptionHidden")
+              : aboutText(p.summary) ||
+                (p.kind === "zip" ? t("library.overview.aboutZip") : p.kind === "local" ? t("library.overview.aboutLocal") : t("library.overview.aboutNone"))}
           </p>
         </section>
         {!screenshot && p.highlights.length > 0 && (
-          <List title="What works" items={p.highlights} mark={<Check className="size-4 text-fg-3" strokeWidth={2.25} />} />
+          <List title={t("library.overview.works")} items={p.highlights} mark={<Check className="size-4 text-fg-3" strokeWidth={2.25} />} />
         )}
-        {!screenshot && p.blockers.length > 0 && <List title="Known issues" items={p.blockers} mark={<span className="size-1.5 rounded-full bg-fg-4" />} />}
+        {!screenshot && p.blockers.length > 0 && <List title={t("library.overview.issues")} items={p.blockers} mark={<span className="size-1.5 rounded-full bg-fg-4" />} />}
       </div>
       <div className="grid content-start gap-8 lg:grid-cols-2 xl:grid-cols-1">
         <YourPc project={p} />
-        <Group title="Details">
-          <Row label="Source" hint={p.kind === "zip" ? "Imported ZIP" : p.custom ? "Added by link" : "VIPortLive library"} />
+        <Group title={t("library.details.title")}>
+          <Row
+            label={t("library.details.source")}
+            hint={p.kind === "zip" ? t("library.details.sourceZip") : p.custom ? t("library.hero.addedByLink") : t("library.details.sourceLibrary")}
+          />
           {p.kind === "git" && (
-            <Row label="Repository" hint={<span className="break-all">{screenshot ? alias.repo : p.repo}</span>}>
+            <Row label={t("library.details.repository")} hint={<span className="break-all">{screenshot ? alias.repo : p.repo}</span>}>
               {p.web_url && !screenshot && (
-                <Button size="icon-sm" variant="ghost" aria-label="Open repository" onClick={() => void openUrl(p.web_url!)}>
+                <Button size="icon-sm" variant="ghost" aria-label={t("library.hero.openRepo")} onClick={() => void openUrl(p.web_url!)}>
                   <ExternalLink />
                 </Button>
               )}
             </Row>
           )}
-          <Row label="Installed" hint={p.installed ? (p.kind === "git" && !screenshot ? `Version ${shortCommit(p.built) ?? "unknown"}` : "Yes") : "Not yet"} />
-          {p.activity && <Row label="Updated" hint={p.activity.updated_ago.replace(/^(Updated|Installed) /, "")} />}
-          {p.activity?.last_run && <Row label="Last played" hint={p.activity.last_run} />}
+          <Row
+            label={t("library.details.installed")}
+            hint={
+              !p.installed
+                ? t("library.details.notYet")
+                : p.kind === "git" && !screenshot
+                  ? built
+                    ? t("library.details.version", { version: built })
+                    : t("library.details.versionUnknown")
+                  : t("library.details.installedYes")
+            }
+          />
+          {p.activity && <Row label={t("library.details.updated")} hint={p.activity.updated_when} />}
+          {p.activity?.last_run && <Row label={t("library.details.lastPlayed")} hint={p.activity.last_run} />}
         </Group>
       </div>
     </div>
@@ -86,15 +110,24 @@ function List({ title, items, mark }: { title: string; items: string[]; mark: Re
   )
 }
 
-const MARK: Record<Level, React.ReactNode> = {
-  good: <Check className="size-4 text-ok" strokeWidth={2.25} aria-label="Fine" />,
-  close: <Minus className="size-4 text-warn" aria-label="Close to the limit" />,
-  concern: <AlertTriangle className="size-4 text-warn" aria-label="Check this" />,
-  unknown: <Minus className="size-4 text-fg-4" aria-label="Not known" />,
+/** The mark before a check, with its meaning for screen readers. */
+function Mark({ level }: { level: Level }) {
+  const t = useT()
+  switch (level) {
+    case "good":
+      return <Check className="size-4 text-ok" strokeWidth={2.25} aria-label={t("library.pc.mark.good")} />
+    case "close":
+      return <Minus className="size-4 text-warn" aria-label={t("library.pc.mark.close")} />
+    case "concern":
+      return <AlertTriangle className="size-4 text-warn" aria-label={t("library.pc.mark.concern")} />
+    case "unknown":
+      return <Minus className="size-4 text-fg-4" aria-label={t("library.pc.mark.unknown")} />
+  }
 }
 
 /** How this build suits the player's PC, from the author's report and the launcher's look at the hardware. */
 function YourPc({ project: p }: { project: Project }) {
+  const t = useT()
   const detected = useStore((s) => s.snap?.system ?? null)
   const spec = useStore((s) => s.snap?.settings)
   const system = useMemo(() => withSpec(detected, spec), [detected, spec])
@@ -102,21 +135,19 @@ function YourPc({ project: p }: { project: Project }) {
   const a = assess(p, system)
   // Builds don't say which processor they need, so the processor is shown, not compared.
   const cpu: CompatCheck = {
-    label: "Processor",
-    value: system?.cpu ?? "Unknown",
+    label: t("library.pc.processor"),
+    value: system?.cpu ?? null,
     level: "unknown",
-    note: system?.cpu_cores
-      ? `${system.cpu_cores} threads. Builds don't say which processor they need`
-      : "Builds don't say which processor they need",
+    note: system?.cpu_cores ? t("library.pc.threads", { count: system.cpu_cores }) : t("library.pc.noCpuNeed"),
   }
   const vendor = mainGpu(system)?.vendor
   const target = vendor === "NVIDIA" ? 1 : 2
   const offerFilter = system && a.level === "concern" && matchesCard(p, system) === false && filter !== target
   return (
     <section className="space-y-2">
-      <h3 className="px-1 text-body font-semibold text-fg">Your PC</h3>
+      <h3 className="px-1 text-body font-semibold text-fg">{t("library.pc.title")}</h3>
       {!system ? (
-        <div className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-fill-1" aria-busy aria-label="Looking at your PC">
+        <div className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-fill-1" aria-busy aria-label={t("library.pc.looking")}>
           <div className="px-4 py-3">
             <div className="h-4 w-4/5 animate-pulse rounded-xs bg-fill-3" />
           </div>
@@ -139,26 +170,30 @@ function YourPc({ project: p }: { project: Project }) {
           {offerFilter && (
             <div className="px-4 py-2">
               <Button variant="ghost" size="sm" className="-ml-3" onClick={() => void run({ type: "set_gpu_filter", value: target })}>
-                Show builds for my card
+                {t("library.pc.showForCard")}
               </Button>
             </div>
           )}
         </div>
       )}
-      <p className="px-1 text-caption text-fg-4">Memory figures are what the author's PC used while playing, not a minimum requirement.</p>
+      <p className="px-1 text-caption text-fg-4">{t("library.pc.memoryNote")}</p>
     </section>
   )
 }
 
 function CheckRow({ check: c }: { check: CompatCheck }) {
+  const t = useT()
+  const value = c.value ?? t("common.unknown")
   return (
     <div className="flex gap-3 px-4 py-3">
-      <span className="grid h-5 w-4 shrink-0 place-items-center">{MARK[c.level]}</span>
+      <span className="grid h-5 w-4 shrink-0 place-items-center">
+        <Mark level={c.level} />
+      </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-4">
           <span className="shrink-0 text-body text-fg">{c.label}</span>
-          <span className={cn("min-w-0 truncate text-right text-body", c.value === "Unknown" ? "text-fg-4" : "text-fg-2")} title={c.value}>
-            {c.value}
+          <span className={cn("min-w-0 truncate text-right text-body", c.value == null ? "text-fg-4" : "text-fg-2")} title={value}>
+            {value}
           </span>
         </div>
         <p className="mt-0.5 text-caption text-fg-3">{c.note}</p>

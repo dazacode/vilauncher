@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/menu"
 import { Tooltip } from "@/components/ui/tooltip"
 import { toast } from "sonner"
+import { useT } from "@/i18n"
 import { copyText, openUrl } from "@/lib/api"
 import { fps, gpuText } from "@/lib/format"
 import { run, useAlias, useStore } from "@/lib/store"
@@ -25,11 +26,12 @@ export function leadSentence(summary: string): string | null {
 }
 
 export function Hero({ project: p }: { project: Project }) {
+  const t = useT()
   const snap = useStore((s) => s.snap)!
   const screenshot = useStore((s) => s.screenshot)
   const alias = useAlias()(p)
-  const playing = snap.job.running && snap.job.stage === "Playing"
-  const source = p.kind === "zip" ? "Imported build" : p.custom ? "Added by link" : "VIPortLive"
+  const playing = snap.job.running && snap.job.stage_kind === "playing"
+  const source = p.kind === "zip" ? t("library.hero.imported") : p.custom ? t("library.hero.addedByLink") : "VIPortLive"
   const lead = screenshot ? null : leadSentence(p.summary)
   return (
     <section className="relative isolate shrink-0" style={{ minHeight: "clamp(360px, 50vh, 520px)" }}>
@@ -43,7 +45,7 @@ export function Hero({ project: p }: { project: Project }) {
               {p.verified && (
                 <>
                   <span className="text-fg-4">·</span>
-                  <span className="inline-flex items-center gap-1"><BadgeCheck className="size-4" /> Verified</span>
+                  <span className="inline-flex items-center gap-1"><BadgeCheck className="size-4" /> {t("library.hero.verified")}</span>
                 </>
               )}
             </p>
@@ -57,8 +59,8 @@ export function Hero({ project: p }: { project: Project }) {
         <div className="mt-6 flex items-center gap-2">
           <PrimaryAction project={p} />
           {p.web_url && !screenshot && (
-            <Tooltip label="Open repository">
-              <Button variant="secondary" size="icon-lg" aria-label="Open repository" onClick={() => openUrl(p.web_url!).catch((error) => toast.error(String(error)))}>
+            <Tooltip label={t("library.hero.openRepo")}>
+              <Button variant="secondary" size="icon-lg" aria-label={t("library.hero.openRepo")} onClick={() => openUrl(p.web_url!).catch((error) => toast.error(String(error)))}>
                 <ExternalLink />
               </Button>
             </Tooltip>
@@ -75,12 +77,13 @@ export function Hero({ project: p }: { project: Project }) {
 
 /** What the tracker measured, as a line of type: only what is known. */
 function Stats({ project: p }: { project: Project }) {
+  const t = useT()
   const f = fps(p)
   const stats: { value: string; label: string; tip?: string }[] = []
-  if (f != null) stats.push({ value: `${f} fps`, label: "Average" })
+  if (f != null) stats.push({ value: `${f} fps`, label: t("library.hero.average") })
   if (p.render != null && (p.render > 0 || f != null))
-    stats.push({ value: `${Math.round(p.render * 100)}%`, label: "Picture accuracy", tip: "How close the picture is to the console version, as rated on VIPortLive." })
-  if (p.gpu.length) stats.push({ value: gpuText(p.gpu), label: "Made for" })
+    stats.push({ value: `${Math.round(p.render * 100)}%`, label: t("library.hero.accuracy"), tip: t("library.hero.accuracyTip") })
+  if (p.gpu.length) stats.push({ value: gpuText(p.gpu), label: t("library.hero.madeFor") })
   if (!stats.length) return null
   return (
     <dl className="mt-6 flex flex-wrap items-stretch gap-y-3">
@@ -98,6 +101,7 @@ function Stats({ project: p }: { project: Project }) {
 }
 
 function MoreMenu({ project: p }: { project: Project }) {
+  const t = useT()
   const snap = useStore((s) => s.snap)!
   const open = useStore((s) => s.open)
   const screenshot = useStore((s) => s.screenshot)
@@ -105,9 +109,9 @@ function MoreMenu({ project: p }: { project: Project }) {
   const warning = useUpdateWarning(p.repo)
   return (
     <Menu>
-      <Tooltip label="More">
+      <Tooltip label={t("library.hero.more")}>
         <MenuTrigger asChild>
-          <Button variant="secondary" size="icon-lg" aria-label="More">
+          <Button variant="secondary" size="icon-lg" aria-label={t("library.hero.more")}>
             <MoreHorizontal />
           </Button>
         </MenuTrigger>
@@ -115,44 +119,44 @@ function MoreMenu({ project: p }: { project: Project }) {
       <MenuContent>
         {p.installed && p.kind === "git" && (
           <MenuItem disabled={p.checking} onSelect={() => void run({ type: "check_repo", repo: p.repo })}>
-            <RefreshCw /> Check for updates
+            <RefreshCw /> {t("library.menu.checkUpdates")}
           </MenuItem>
         )}
         {p.installed && !p.standalone && p.kind !== "local" && (
           <MenuItem disabled={busy || !snap.files.ok} onSelect={() => void run({ type: "warm", repo: p.repo })}>
-            <Wrench /> Warm up shaders
+            <Wrench /> {t("library.menu.warm")}
           </MenuItem>
         )}
         {p.installed && p.kind === "git" && (
           <MenuItem disabled={busy} onSelect={warning.ask}>
-            <RotateCcw /> Reinstall
+            <RotateCcw /> {t("library.menu.reinstall")}
           </MenuItem>
         )}
         {!screenshot && (
           <MenuItem onSelect={() => void run({ type: "open", what: "project_folder", repo: p.repo })} disabled={!p.installed}>
-            <FolderOpen /> Show in folder
+            <FolderOpen /> {t("library.menu.showInFolder")}
           </MenuItem>
         )}
         {p.web_url && !screenshot && (
           <MenuItem
             onSelect={() =>
               copyText(p.web_url!)
-                .then(() => toast.success("Link copied"))
+                .then(() => toast.success(t("library.menu.linkCopied")))
                 .catch((error) => toast.error(String(error)))
             }
           >
-            <Copy /> Copy link
+            <Copy /> {t("library.menu.copyLink")}
           </MenuItem>
         )}
         {(p.installed && p.kind !== "local") || p.custom ? <MenuSeparator /> : null}
         {p.installed && p.kind !== "local" && (
           <MenuItem tone="danger" disabled={busy} onSelect={() => open({ kind: "uninstall", repo: p.repo })}>
-            <Trash2 /> Uninstall…
+            <Trash2 /> {t("library.menu.uninstall")}
           </MenuItem>
         )}
         {p.custom && p.kind === "git" && (
-          <MenuItem tone="danger" onSelect={() => void run({ type: "remove_custom", repo: p.repo }, "Removed from your library")}>
-            <X /> Remove from library
+          <MenuItem tone="danger" onSelect={() => void run({ type: "remove_custom", repo: p.repo }, t("library.menu.removed"))}>
+            <X /> {t("library.menu.remove")}
           </MenuItem>
         )}
       </MenuContent>

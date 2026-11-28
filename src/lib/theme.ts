@@ -1,16 +1,16 @@
 import { useSyncExternalStore } from "react"
+import { t } from "@/i18n"
 
 /**
  * The launcher's look. The choice is kept in the browser's local storage, so it needs no settings
  * change in the backend. Every colour lives in src/styles.css under a `data-theme` attribute.
  */
-export const THEMES = [
-  { id: "dark", label: "Dark" },
-  { id: "light", label: "Light" },
-  { id: "calm", label: "Calm" },
-] as const
+export const THEMES = [{ id: "dark" }, { id: "light" }, { id: "calm" }] as const
 
 export type Theme = (typeof THEMES)[number]["id"] | "paws"
+
+/** A look's name in the current language ("Dark"). */
+export const themeLabel = (theme: Theme) => t(`format.theme.${theme}`)
 
 const THEME_KEY = "vilauncher.theme"
 const PAWS_KEY = "vilauncher.paws"
@@ -18,7 +18,7 @@ const PAWS_KEY = "vilauncher.paws"
 const readTheme = (): Theme => {
   const saved = localStorage.getItem(THEME_KEY)
   if (saved === "paws" && localStorage.getItem(PAWS_KEY) === "1") return "paws"
-  return THEMES.some((t) => t.id === saved) ? (saved as Theme) : "dark"
+  return THEMES.some((theme) => theme.id === saved) ? (saved as Theme) : "dark"
 }
 
 let current: Theme = readTheme()

@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "typecheck": "tsc -b",
+    "i18n:check": "node --experimental-strip-types scripts/i18n-check.mjs",
     "ci:check": "node scripts/ci.mjs",
     "agent": "node scripts/vilauncher-agent.mjs"
   },

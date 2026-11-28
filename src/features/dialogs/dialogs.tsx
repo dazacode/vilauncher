@@ -8,6 +8,7 @@ import { Segmented } from "@/components/ui/segmented"
 import { Spinner } from "@/components/ui/spinner"
 import { startPlay } from "@/features/library/primary-action"
 import { ResponsibilityDialog } from "@/features/shared/responsibility"
+import { formatList, useT } from "@/i18n"
 import { pickFile, pickFolder, saveFile } from "@/lib/api"
 import { allProjects, run, useAlias, useStore } from "@/lib/store"
 import type { PlayChoice, PlayNext, SaveOption, SavesList } from "@/lib/types"
@@ -36,6 +37,7 @@ export function Dialogs() {
 }
 
 function ImportDialog({ open, onClose }: { open: boolean; onClose(): void }) {
+  const t = useT()
   const busy = useStore((s) => s.snap!.job.running)
   const [mode, setMode] = useState<"link" | "zip">("link")
   const [link, setLink] = useState("")
@@ -52,7 +54,7 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose(): void }) {
     try {
       const { act } = await import("@/lib/api")
       await act({ type: "add_repo_link", link })
-      toast.success("Added to your library")
+      toast.success(t("dialogs.import.added"))
       onClose()
     } catch (e) {
       setError(String(e))
@@ -70,13 +72,13 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose(): void }) {
     <Dialog
       open={open}
       onOpenChange={(o) => !o && onClose()}
-      title="Import a project"
-      description="Add a Rust project by its Git link, or a prebuilt Windows build from a ZIP."
+      title={t("dialogs.import.title")}
+      description={t("dialogs.import.description")}
       footer={
         mode === "link" ? (
           <>
-            <Button variant="primary" disabled={!link.trim()} onClick={submit}><Plus /> Add to library</Button>
-            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button variant="primary" disabled={!link.trim()} onClick={submit}><Plus /> {t("dialogs.import.add")}</Button>
+            <Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button>
           </>
         ) : (
           <>
@@ -84,7 +86,7 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose(): void }) {
               variant="primary"
               disabled={busy}
               onClick={async () => {
-                const path = await pickFile("Import a build ZIP", [{ name: "Build ZIP", extensions: ["zip"] }])
+                const path = await pickFile(t("dialogs.import.pickZip"), [{ name: t("dialogs.import.zip"), extensions: ["zip"] }])
                 if (!path) return
                 // A ZIP holds a program that runs on this PC, so it gets the same warning as a repo.
                 if (acknowledged.includes("import-repo")) importZip(path)
@@ -94,18 +96,18 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose(): void }) {
                 }
               }}
             >
-              <FileArchive /> Choose ZIP…
+              <FileArchive /> {t("dialogs.import.chooseZip")}
             </Button>
-            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button>
           </>
         )
       }
     >
       <Segmented
-        label="What to import"
+        label={t("dialogs.import.what")}
         className="flex w-full"
         value={mode}
-        options={[{ value: "link", label: "Git link" }, { value: "zip", label: "Build ZIP" }] as const}
+        options={[{ value: "link", label: t("dialogs.import.link") }, { value: "zip", label: t("dialogs.import.zip") }] as const}
         onChange={(v) => setMode(v)}
       />
       {mode === "link" ? (
@@ -120,20 +122,21 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose(): void }) {
                 setError(null)
               }}
               onKeyDown={(e) => e.key === "Enter" && link.trim() && submit()}
+              // i18n-ignore: an example address
               placeholder="https://github.com/owner/project"
-              aria-label="Git link"
+              aria-label={t("dialogs.import.link")}
               className="h-10 pl-9"
             />
           </label>
           {error && <p className="text-secondary text-bad">{error}</p>}
-          <p className="text-caption text-fg-3">GitHub, GitLab, Codeberg, Gitea or your own server.</p>
+          <p className="text-caption text-fg-3">{t("dialogs.import.hosts")}</p>
         </div>
       ) : (
-        <p className="mt-5 text-body text-fg-2">A ZIP with a Windows program and its files. Builds of VIctory (victory.exe) start with your game files; anything else starts on its own.</p>
+        <p className="mt-5 text-body text-fg-2">{t("dialogs.import.zipHint")}</p>
       )}
       <div className="mt-5 flex items-start gap-3 rounded-lg border border-warn/20 bg-warn/8 px-3.5 py-3">
         <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warn" />
-        <p className="text-secondary text-fg-2">VILauncher builds and runs this code on your PC. Add only projects from people you trust: fake repos with malware exist.</p>
+        <p className="text-secondary text-fg-2">{t("dialogs.import.trust")}</p>
       </div>
     </Dialog>
     <ResponsibilityDialog
@@ -155,6 +158,7 @@ function ImportDialog({ open, onClose }: { open: boolean; onClose(): void }) {
 }
 
 function UninstallDialog({ repo, onClose }: { repo: string; onClose(): void }) {
+  const t = useT()
   const snap = useStore((s) => s.snap)!
   const alias = useAlias()
   const p = allProjects(snap).find((q) => q.repo === repo)
@@ -162,12 +166,12 @@ function UninstallDialog({ repo, onClose }: { repo: string; onClose(): void }) {
     <Dialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title={`Uninstall ${p ? alias(p).name : "this project"}?`}
-      description="This deletes its download, its build and its shader cache. Your saves stay, and you can install it again later."
+      title={p ? t("dialogs.uninstall.title", { name: alias(p).name }) : t("dialogs.uninstall.titleUnknown")}
+      description={t("dialogs.uninstall.description")}
       footer={
         <>
-          <Button variant="danger-solid" onClick={() => { void run({ type: "uninstall", repo }); onClose() }}><Trash2 /> Uninstall</Button>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="danger-solid" onClick={() => { void run({ type: "uninstall", repo }); onClose() }}><Trash2 /> {t("common.uninstall")}</Button>
+          <Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button>
         </>
       }
     />
@@ -175,6 +179,7 @@ function UninstallDialog({ repo, onClose }: { repo: string; onClose(): void }) {
 }
 
 function MoveDialog() {
+  const t = useT()
   const pending = useStore((s) => s.snap!.pending_move)
   if (!pending) return null
   const answer = (a: "move" | "keep" | "cancel") => void run({ type: "confirm_move", answer: a })
@@ -182,40 +187,42 @@ function MoveDialog() {
     <Dialog
       open
       onOpenChange={(o) => !o && answer("cancel")}
-      title="Move your installed projects?"
-      description="Your projects and their saves are in the old folder. Moving them to another drive can take a while."
+      title={t("dialogs.move.title")}
+      description={t("dialogs.move.description")}
       footer={
         <>
-          <Button variant="primary" onClick={() => answer("move")}>Move them</Button>
-          <Button onClick={() => answer("keep")}>Don't move</Button>
-          <Button variant="ghost" onClick={() => answer("cancel")}>Cancel</Button>
+          <Button variant="primary" onClick={() => answer("move")}>{t("dialogs.move.move")}</Button>
+          <Button onClick={() => answer("keep")}>{t("dialogs.move.keep")}</Button>
+          <Button variant="ghost" onClick={() => answer("cancel")}>{t("common.cancel")}</Button>
         </>
       }
     >
       <dl className="space-y-2 rounded-lg border border-line bg-fill-1 p-3 font-mono text-caption">
-        <div className="flex gap-3"><dt className="w-10 text-fg-3">From</dt><dd className="break-all text-fg-2">{pending[0]}</dd></div>
-        <div className="flex gap-3"><dt className="w-10 text-fg-3">To</dt><dd className="break-all text-fg">{pending[1]}</dd></div>
+        <div className="flex gap-3"><dt className="w-10 text-fg-3">{t("dialogs.move.from")}</dt><dd className="break-all text-fg-2">{pending[0]}</dd></div>
+        <div className="flex gap-3"><dt className="w-10 text-fg-3">{t("dialogs.move.to")}</dt><dd className="break-all text-fg">{pending[1]}</dd></div>
       </dl>
     </Dialog>
   )
 }
 
 function ImportErrorDialog() {
+  const t = useT()
   const error = useStore((s) => s.snap!.job.import_error)
   if (!error) return null
   return (
     <Dialog
       open
       onOpenChange={(o) => !o && void run({ type: "dismiss_import_error" })}
-      title="The build couldn't be imported"
+      title={t("dialogs.importError")}
       description={error}
-      footer={<Button variant="primary" onClick={() => void run({ type: "dismiss_import_error" })}>OK</Button>}
+      footer={<Button variant="primary" onClick={() => void run({ type: "dismiss_import_error" })}>{t("common.ok")}</Button>}
     />
   )
 }
 
 /** Everything a project needs before Install or Play, each with its fix, in order. */
 function SetupDialog({ repo, onClose }: { repo: string; onClose(): void }) {
+  const t = useT()
   const snap = useStore((s) => s.snap)!
   const alias = useAlias()
   const p = allProjects(snap).find((q) => q.repo === repo)
@@ -232,8 +239,8 @@ function SetupDialog({ repo, onClose }: { repo: string; onClose(): void }) {
       open
       onOpenChange={(o) => !o && onClose()}
       eyebrow={alias(p).name}
-      title={p.installed ? "Get ready to play" : "Get ready to install"}
-      description={ready ? "Everything is in place." : "A few things are needed first. VILauncher can set most of them up for you."}
+      title={p.installed ? t("dialogs.setup.titlePlay") : t("dialogs.setup.titleInstall")}
+      description={ready ? t("dialogs.setup.ready") : t("dialogs.setup.needed")}
       footer={
         <>
           <Button
@@ -245,9 +252,9 @@ function SetupDialog({ repo, onClose }: { repo: string; onClose(): void }) {
               else void run({ type: "install", repo: p.repo })
             }}
           >
-            {p.installed ? "Play" : "Install"}
+            {p.installed ? t("common.play") : t("common.install")}
           </Button>
-          <Button variant="ghost" onClick={onClose}>{ready ? "Not now" : "Later"}</Button>
+          <Button variant="ghost" onClick={onClose}>{ready ? t("dialogs.setup.notNow") : t("common.later")}</Button>
         </>
       }
     >
@@ -256,12 +263,12 @@ function SetupDialog({ repo, onClose }: { repo: string; onClose(): void }) {
           <Step
             n={1}
             done={toolsOk}
-            title="Build tools"
-            detail={!tools ? "Checking for Git, Rust and the C++ build tools…" : tools.ready ? "Git, Rust and the C++ build tools are ready." : toolsBusy ? snap.job.stage : `Missing ${tools.missing.join(", ")}. Installed with winget; Windows asks for permission.`}
+            title={t("dialogs.setup.tools.title")}
+            detail={!tools ? t("dialogs.setup.tools.checking") : tools.ready ? t("dialogs.setup.tools.ready") : toolsBusy ? snap.job.stage : t("dialogs.setup.tools.missing", { tools: formatList(tools.missing) })}
           >
             {tools && !tools.ready && (
               <Button size="sm" disabled={snap.job.running} onClick={() => void run({ type: "install_tools" })}>
-                {toolsBusy ? <Spinner className="text-white" /> : <Download />} {toolsBusy ? "Installing" : "Install"}
+                {toolsBusy ? <Spinner className="text-white" /> : <Download />} {toolsBusy ? t("dialogs.setup.tools.installing") : t("common.install")}
               </Button>
             )}
           </Step>
@@ -270,16 +277,16 @@ function SetupDialog({ repo, onClose }: { repo: string; onClose(): void }) {
           <Step
             n={needTools ? 2 : 1}
             done={filesOk}
-            title="Your game files"
-            detail={snap.files.ok ? "Found in your game folder." : snap.files.unplugged ? "The drive with your game files is not connected. Plug it in, or choose the folder again." : snap.files.find_error ?? (snap.files.chosen ? `Missing ${snap.files.missing.join(", ")}` : "The folder with game_scarlett_master.exe from your own copy of the game.")}
+            title={t("dialogs.setup.files.title")}
+            detail={snap.files.ok ? t("dialogs.setup.files.found") : snap.files.unplugged ? t("dialogs.setup.files.unplugged") : snap.files.find_error ?? (snap.files.chosen ? t("dialogs.setup.files.missing", { files: formatList(snap.files.missing) }) : t("dialogs.setup.files.hint"))}
           >
             {!filesOk && (
               <>
                 <Button size="sm" variant="ghost" disabled={snap.files.searching} onClick={() => void run({ type: "find_game_files" })}>
-                  {snap.files.searching ? <Spinner /> : <Search />} Find
+                  {snap.files.searching ? <Spinner /> : <Search />} {t("common.find")}
                 </Button>
-                <Button size="sm" onClick={async () => { const d = await pickFolder("The folder with your game files"); if (d) void run({ type: "set_game_dir", path: d }) }}>
-                  <FolderOpen /> Choose…
+                <Button size="sm" onClick={async () => { const d = await pickFolder(t("dialogs.setup.files.pick")); if (d) void run({ type: "set_game_dir", path: d }) }}>
+                  <FolderOpen /> {t("common.choose")}
                 </Button>
               </>
             )}
@@ -307,14 +314,15 @@ function Step({ n, done, title, detail, children }: { n: number; done: boolean; 
 
 function PresetsDialog({ repo, choice, onClose }: { repo: string; choice: PlayChoice; onClose(): void }) {
   const open = useStore((s) => s.open)
+  const t = useT()
   const [picked, setPicked] = useState<number | null>(choice.recommended)
-  const rows = [{ title: "Current settings", detail: "Keep this project's arguments and switches." }, ...choice.options]
+  const rows = [{ title: t("dialogs.presets.current"), detail: t("dialogs.presets.currentDetail") }, ...choice.options]
   return (
     <Dialog
       open
       onOpenChange={(o) => !o && onClose()}
-      title="How should it start?"
-      description="Choose once: VILauncher remembers it for this project."
+      title={t("dialogs.presets.title")}
+      description={t("dialogs.presets.description")}
       footer={
         <>
           <Button
@@ -326,9 +334,9 @@ function PresetsDialog({ repo, choice, onClose }: { repo: string; choice: PlayCh
               else onClose()
             }}
           >
-            Continue
+            {t("common.continue")}
           </Button>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button>
         </>
       }
     >
@@ -369,6 +377,7 @@ function Choice({ selected, onSelect, title, detail, icon }: { selected: boolean
 type SaveTab = "this_build" | "other_builds" | "favorites"
 
 function SavesDialog({ repo, onClose }: { repo: string; onClose(): void }) {
+  const t = useT()
   const snap = useStore((s) => s.snap)!
   const screenshot = useStore((s) => s.screenshot)
   const alias = useAlias()
@@ -395,15 +404,15 @@ function SavesDialog({ repo, onClose }: { repo: string; onClose(): void }) {
   const options: SaveOption[] = list?.[tab] ?? []
   const option = options[index]
   const exportable = option?.path ?? option?.source ?? null
-  const label = option?.kind === "continue" ? "Continue" : option?.kind === "fresh" ? "Start a new game" : "Play from a copy"
-  const empty = tab === "other_builds" ? "Saves from your other builds show here once you've saved in them." : "To keep a checkpoint, pick a save and choose Add to favourites."
+  const label = option?.kind === "continue" ? t("common.continue") : option?.kind === "fresh" ? t("dialogs.saves.fresh") : t("dialogs.saves.copy")
+  const empty = tab === "other_builds" ? t("dialogs.saves.emptyOther") : t("dialogs.saves.emptyFavorites")
   return (
     <Dialog
       open
       onOpenChange={(o) => !o && onClose()}
       eyebrow={p ? alias(p).name : undefined}
-      title="Choose a save"
-      description="New games and copies keep your earlier progress."
+      title={t("dialogs.saves.title")}
+      description={t("dialogs.saves.description")}
       className="w-[min(560px,calc(100vw-48px))]"
       footer={
         deleting ? (
@@ -411,14 +420,14 @@ function SavesDialog({ repo, onClose }: { repo: string; onClose(): void }) {
             <Button
               variant="danger-solid"
               onClick={async () => {
-                if (exportable) await run({ type: "delete_save", path: exportable }, "Moved to deleted-saves")
+                if (exportable) await run({ type: "delete_save", path: exportable }, t("dialogs.saves.deleted"))
                 setDeleting(false)
                 void load({ tab })
               }}
             >
-              <Trash2 /> Delete save
+              <Trash2 /> {t("dialogs.saves.deleteSave")}
             </Button>
-            <Button variant="ghost" onClick={() => setDeleting(false)}>Keep it</Button>
+            <Button variant="ghost" onClick={() => setDeleting(false)}>{t("dialogs.saves.keep")}</Button>
           </>
         ) : naming != null ? (
           <>
@@ -428,15 +437,15 @@ function SavesDialog({ repo, onClose }: { repo: string; onClose(): void }) {
               onClick={async () => {
                 const ok = await run({ type: "checkpoint", name: naming, source: option!.source! })
                 if (ok !== undefined) {
-                  toast.success("Added to favourites")
+                  toast.success(t("dialogs.saves.favorited"))
                   setNaming(null)
                   void load({ tab: "favorites", title: naming.trim() })
                 }
               }}
             >
-              <Star /> Save checkpoint
+              <Star /> {t("dialogs.saves.saveCheckpoint")}
             </Button>
-            <Button variant="ghost" onClick={() => setNaming(null)}>Back</Button>
+            <Button variant="ghost" onClick={() => setNaming(null)}>{t("common.back")}</Button>
           </>
         ) : (
           <>
@@ -452,24 +461,24 @@ function SavesDialog({ repo, onClose }: { repo: string; onClose(): void }) {
             >
               {label}
             </Button>
-            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button>
             <div className="mr-auto flex gap-1">
               {!screenshot && (
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={async () => {
-                    const path = await pickFile("Import a save ZIP", [{ name: "VIctory save ZIP", extensions: ["zip"] }])
+                    const path = await pickFile(t("dialogs.saves.importZip"), [{ name: t("dialogs.saves.importType"), extensions: ["zip"] }])
                     if (path) {
                       const name = await run<string>({ type: "import_save_zip", path })
                       if (name) {
-                        toast.success(`Imported “${name}” into favourites`)
+                        toast.success(t("dialogs.saves.imported", { name }))
                         void load({ tab: "favorites", title: name })
                       }
                     }
                   }}
                 >
-                  <Download /> Import
+                  <Download /> {t("common.import")}
                 </Button>
               )}
             </div>
@@ -478,19 +487,19 @@ function SavesDialog({ repo, onClose }: { repo: string; onClose(): void }) {
       }
     >
       <Segmented
-        label="Saves"
+        label={t("dialogs.saves.tabs.label")}
         className="flex w-full"
         value={tab}
-        options={[{ value: "this_build", label: "This build" }, { value: "other_builds", label: "Other builds" }, { value: "favorites", label: "Favourites" }] as const}
-        onChange={(t) => {
-          setTab(t)
+        options={[{ value: "this_build", label: t("dialogs.saves.tabs.thisBuild") }, { value: "other_builds", label: t("dialogs.saves.tabs.otherBuilds") }, { value: "favorites", label: t("dialogs.saves.tabs.favorites") }] as const}
+        onChange={(next) => {
+          setTab(next)
           setIndex(0)
           setNaming(null)
           setDeleting(false)
         }}
       />
       <div role="radiogroup" className="mt-4 max-h-64 space-y-1.5 overflow-y-auto">
-        {!list && <p className="flex items-center gap-2 text-secondary text-fg-3"><Spinner /> Looking for saves</p>}
+        {!list && <p className="flex items-center gap-2 text-secondary text-fg-3"><Spinner /> {t("dialogs.saves.looking")}</p>}
         {list && options.length === 0 && <p className="py-6 text-center text-secondary text-fg-3">{empty}</p>}
         {options.map((o, i) => (
           <Choice
@@ -501,7 +510,7 @@ function SavesDialog({ repo, onClose }: { repo: string; onClose(): void }) {
               setNaming(null)
               setDeleting(false)
             }}
-            title={screenshot && tab !== "this_build" ? `Example save ${String(i + 1).padStart(2, "0")}` : o.title}
+            title={screenshot && tab !== "this_build" ? t("dialogs.saves.example", { n: String(i + 1).padStart(2, "0") }) : o.title}
             detail={o.detail}
             icon={tab === "favorites" ? <Star className="size-4 shrink-0 text-fg-3" /> : undefined}
           />
@@ -509,33 +518,34 @@ function SavesDialog({ repo, onClose }: { repo: string; onClose(): void }) {
       </div>
       {naming != null ? (
         <div className="mt-4 space-y-1.5">
-          <Input autoFocus value={naming} onChange={(e) => setNaming(e.target.value)} placeholder="e.g. Intro complete" aria-label="Checkpoint name" />
-          <p className="text-caption text-fg-3">Letters, numbers, spaces, hyphens and underscores, up to 60.</p>
+          <Input autoFocus value={naming} onChange={(e) => setNaming(e.target.value)} placeholder={t("dialogs.saves.checkpointExample")} aria-label={t("dialogs.saves.checkpointName")} />
+          <p className="text-caption text-fg-3">{t("dialogs.saves.checkpointRule")}</p>
         </div>
       ) : deleting ? (
-        <p className="mt-4 text-secondary text-fg-2">Delete “{option?.title}”? The files move to VILauncher's deleted-saves folder.</p>
+        <p className="mt-4 text-secondary text-fg-2">{t("dialogs.saves.confirmDelete", { name: option?.title ?? "" })}</p>
       ) : (
         option && !screenshot && (
           <div className="mt-3 flex flex-wrap gap-1">
-            {option.source && <Button size="sm" variant="ghost" onClick={() => setNaming("")}><Star /> Add to favourites</Button>}
+            {option.source && <Button size="sm" variant="ghost" onClick={() => setNaming("")}><Star /> {t("dialogs.saves.favorite")}</Button>}
             {exportable && (
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={async () => {
-                  const path = await saveFile("Export this save", "VILauncher Save.zip", [{ name: "ZIP archive", extensions: ["zip"] }])
-                  if (path) void run({ type: "export_save", source: exportable, path }, "Save exported")
+                  // i18n-ignore: the suggested file name stays as it is
+                  const path = await saveFile(t("dialogs.saves.exportTitle"), "VILauncher Save.zip", [{ name: t("dialogs.saves.exportType"), extensions: ["zip"] }])
+                  if (path) void run({ type: "export_save", source: exportable, path }, t("dialogs.saves.exported"))
                 }}
               >
-                <Download /> Export
+                <Download /> {t("common.export")}
               </Button>
             )}
-            {exportable && <Button size="sm" variant="ghost" className="text-bad hover:text-bad" onClick={() => setDeleting(true)}><Trash2 /> Delete</Button>}
+            {exportable && <Button size="sm" variant="ghost" className="text-bad hover:text-bad" onClick={() => setDeleting(true)}><Trash2 /> {t("common.delete")}</Button>}
           </div>
         )
       )}
       {!snap.files.ok && (
-        <p className="mt-3 flex items-center gap-2 text-secondary text-warn"><CheckCircle2 className="size-3.5" /> Choose your game files in Settings to play.</p>
+        <p className="mt-3 flex items-center gap-2 text-secondary text-warn"><CheckCircle2 className="size-3.5" /> {t("dialogs.saves.needFiles")}</p>
       )}
     </Dialog>
   )
