@@ -73,6 +73,15 @@ pub(crate) enum Action {
     SetUpdateWarning {
         show: bool,
     },
+    /// Turns the keyboard-as-controller keys on or off (controller_keys.rs).
+    SetControllerKeys {
+        on: bool,
+    },
+    /// Gives a controller control another key; `key` None goes back to the layer's own.
+    SetControllerKey {
+        control: String,
+        key: Option<u16>,
+    },
     /// Let AI agents help with builds (off by default; turning it on needs the "agent-access" warning first).
     SetAgentAccess {
         enabled: bool,
@@ -405,6 +414,30 @@ impl App {
             }
             Action::SetUpdateWarning { show } => {
                 self.saved.skip_update_warning = !show;
+                Value::Null
+            }
+            Action::SetControllerKeys { on } => {
+                self.saved.controller_keys_on = on;
+                crate::controller_keys::configure(on, &self.saved.controller_key_bindings);
+                Value::Null
+            }
+            Action::SetControllerKey { control, key } => {
+                if crate::controller_keys::control(&control).is_none() {
+                    return Err(format!("There is no controller control {control}."));
+                }
+                match key {
+                    Some(key) => {
+                        crate::controller_keys::check_key(&self.saved.controller_key_bindings, &control, key)?;
+                        self.saved.controller_key_bindings.insert(control, key);
+                    }
+                    None => {
+                        self.saved.controller_key_bindings.remove(&control);
+                    }
+                }
+                crate::controller_keys::configure(
+                    self.saved.controller_keys_on,
+                    &self.saved.controller_key_bindings,
+                );
                 Value::Null
             }
             Action::SetAgentAccess { enabled } => {

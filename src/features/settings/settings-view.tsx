@@ -7,6 +7,7 @@ import { Input, Textarea } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { GraphicsGroups } from "@/features/library/graphics-tab"
+import { ControllerKeysGroup } from "@/features/settings/controller-keys"
 import { LanguageSelect } from "@/features/shared/language-select"
 import { ResponsibilityDialog } from "@/features/shared/responsibility"
 import { formatBytes, formatList, Trans, useT } from "@/i18n"
@@ -138,6 +139,8 @@ export function SettingsView() {
             <DiskSpace />
           </>
         )}
+
+        <ControllerKeysGroup />
 
         <Group title={t("settings.agents.title")}>
           <Row label={t("settings.agents.access")} hint={t("settings.agents.hint")}>

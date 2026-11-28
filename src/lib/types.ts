@@ -11,6 +11,21 @@ export interface Graphics {
   output: OutputResolution
 }
 
+/** One control VIctory reads from the keyboard (src-tauri/src/controller_keys.rs). */
+export interface ControllerControl {
+  id: string
+  label: string
+  /** The Windows virtual-key code VIctory reads for it. */
+  default_key: number
+  /** The key the player chose, or the default. */
+  key: number
+}
+
+export interface ControllerKeys {
+  on: boolean
+  controls: ControllerControl[]
+}
+
 export interface ScriptOptions {
   ray_tracing: boolean
   probe_rays: boolean
@@ -122,6 +137,8 @@ export interface Snapshot {
     acknowledged: ResponsibilityId[]
     /** The player's language ("en", "zh-TW", "zh-CN"); null follows the system. */
     language: string | null
+    /** Off by default: the keyboard drives the game's controller controls while victory.exe is in front. */
+    controller_keys: ControllerKeys
   }
   files: {
     chosen: boolean
@@ -252,6 +269,8 @@ export type Action =
   | { type: "rollback"; repo: string }
   | { type: "set_update_warning"; show: boolean }
   | { type: "set_agent_access"; enabled: boolean }
+  | { type: "set_controller_keys"; on: boolean }
+  | { type: "set_controller_key"; control: string; key: number | null }
   | { type: "acknowledge"; id: ResponsibilityId }
   | { type: "uninstall"; repo: string }
   | { type: "stop" }

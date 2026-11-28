@@ -14,6 +14,7 @@ mod backgrounds;
 mod brand;
 mod build_activity;
 mod build_zip;
+mod controller_keys;
 mod diagnose;
 mod fullscreen;
 mod job_log;
