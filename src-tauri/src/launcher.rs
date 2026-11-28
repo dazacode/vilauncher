@@ -201,6 +201,9 @@ pub(crate) struct ProjectLaunch {
     confirmed_repo_script: Option<String>,
     graphics: Option<GraphicsSettings>,
     notes: String,
+    /// Add-ons turned on for this project, with what turning them off puts back (addons.rs).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    addons: std::collections::BTreeMap<String, crate::addons::Applied>,
 }
 
 impl ProjectLaunch {
@@ -2310,7 +2313,29 @@ fn install_missing_tools(job: &Arc<Mutex<Job>>, ctx: &Ctx) -> Result<(), String>
                     .log
                     .push(format!("{what} is already installed; checking it."));
             }
-            Err(error) => return Err(format!("{what}: {error}")),
+            Err(error) => {
+                // winget can fail on a damaged package list. Reset it and try this step once more.
+                job.lock()
+                    .unwrap()
+                    .log
+                    .push(format!("{what}: winget failed ({error}); retrying once."));
+                stage(job, ctx, "Resetting winget's package list, then trying again");
+                let mut reset = Command::new("winget");
+                reset.args(["source", "reset", "--force"]);
+                let _ = run(job, ctx, &mut reset);
+                let mut again = Command::new("winget");
+                again.args(&args);
+                match run(job, ctx, &mut again) {
+                    Ok(()) => {}
+                    Err(error) if tools::winget_already_installed(&error) => {}
+                    Err(error) => {
+                        return Err(format!(
+                            "{what}: {error}. Install {what} by hand from {} and press Fix again.",
+                            tools::manual_install_page(what)
+                        ))
+                    }
+                }
+            }
         }
     }
     // Rustup can be present while its stable toolchain is not, and then cargo never appears.

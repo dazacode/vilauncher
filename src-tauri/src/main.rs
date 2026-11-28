@@ -6,6 +6,7 @@
 //! No game files are included or downloaded: the player supplies their own.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod addons;
 mod backgrounds;
 mod brand;
 mod build_activity;

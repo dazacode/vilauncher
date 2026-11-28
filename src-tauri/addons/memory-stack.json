@@ -1,0 +1,33 @@
+{
+  "id": "memory-stack",
+  "name": "Memory stack",
+  "summary": "Cuts VRAM and private memory with no change to what is drawn. On the author's RTX 5080 16 GB: VRAM about 12.6 GB down to 8.55 GB, private commit about 26 GB down to about 20.5 GB.",
+  "source": {
+    "repo": "https://github.com/skornuta/victory-memory-stack",
+    "ref": "85c86c17f7dd129350a815be92432293e9c6b409"
+  },
+  "patches": {
+    "dir": "patches",
+    "base": "e94251a"
+  },
+  "switches": {
+    "VICTORY_GPU_DETILE": "1",
+    "VICTORY_GPU_DETILE_VERIFY": "0",
+    "VICTORY_GPU_DETILE_OUT_MB": "512",
+    "VICTORY_GPU_DETILE_RAW_MB": "512",
+    "VICTORY_GPU_DETILE_TRIM": "1",
+    "VICTORY_SLOT_EVICT": "1",
+    "VICTORY_SLOT_EVICT_PERCENT": "60",
+    "VICTORY_SLOT_EVICT_LOW_PERCENT": "50",
+    "VICTORY_BINDLESS_FEEDBACK": "1",
+    "VICTORY_ALLOCATOR_TRIM": "1",
+    "VICTORY_PRELUDE_POOL": "1",
+    "VICTORY_STAGE_POOL_MB": "64",
+    "VICTORY_CARD_WINDOW_UPLOAD_MB": "256",
+    "VICTORY_BUDGET_PACK": "1",
+    "VICTORY_COMPARE_PIECES": "1"
+  },
+  "args": [],
+  "guide": "AGENTS.md",
+  "warning": "Turning this on commits the memory stack's patches to a vilauncher/memory-stack branch of this project, then switches the project to that branch. It only applies if the project is close to the stack's base (e94251a). Forks that have moved further do not take the patches: the launcher says so and changes nothing. The first run after turning it on makes the shaders again (minutes of missing draws). Turning it off goes back to the project's own branch."
+}

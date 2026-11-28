@@ -3,6 +3,7 @@
 
 use super::presets::{self, PlayPresetPicker};
 use super::*;
+use crate::addons;
 use crate::save_zip;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -125,6 +126,14 @@ pub(crate) enum Action {
     SetProjectSwitches {
         repo: String,
         value: Option<String>,
+    },
+    /// Turns an add-on on or off for a project. Turning on needs `confirmed`.
+    AddonSet {
+        repo: String,
+        id: String,
+        on: bool,
+        #[serde(default)]
+        confirmed: bool,
     },
     SetScriptOption {
         repo: String,
@@ -301,6 +310,20 @@ impl App {
             }
             Action::Install { repo } => {
                 let p = self.project(&repo)?;
+                // An update resets the project's code, which would drop an add-on's patches
+                // while its switches stayed on. Turn the add-ons off first.
+                let on = self
+                    .saved
+                    .project_launch
+                    .get(&project_key(&p.repo))
+                    .map(|launch| launch.addons.keys().cloned().collect::<Vec<_>>())
+                    .unwrap_or_default();
+                if !on.is_empty() {
+                    return Err(format!(
+                        "Turn off {} before updating this project: an update resets its code, and the add-on's patches would be lost.",
+                        on.join(", ")
+                    ));
+                }
                 self.start(&ctx, p, Kind::Install);
                 Value::Null
             }
@@ -503,6 +526,15 @@ impl App {
                 }
                 launch.switches = value;
                 self.tidy_launch(&repo);
+                Value::Null
+            }
+            Action::AddonSet {
+                repo,
+                id,
+                on,
+                confirmed,
+            } => {
+                self.set_addon(&repo, &id, on, confirmed)?;
                 Value::Null
             }
             Action::SetScriptOption {
@@ -789,6 +821,71 @@ impl App {
             .ok_or_else(|| "That project is no longer in the list.".to_owned())
     }
 
+    /// Turns an add-on on or off for a project (addons.rs). Turning on runs the add-on's
+    /// patches on the project's code, so it needs the player's confirmation.
+    fn set_addon(&mut self, repo: &str, id: &str, on: bool, confirmed: bool) -> Result<(), String> {
+        if self.job.lock().unwrap().running {
+            return Err("Wait for the current job to finish.".into());
+        }
+        let p = self.project(repo)?;
+        let dir = repo_dir(&p.repo);
+        let key = project_key(repo);
+        let turned_on = self
+            .saved
+            .project_launch
+            .get(&key)
+            .is_some_and(|launch| launch.addons.contains_key(id));
+        if on {
+            if turned_on {
+                return Ok(());
+            }
+            let (catalog, _) = addons::catalog(&workspace().join("add-ons"));
+            let addon = catalog
+                .into_iter()
+                .find(|a| a.id == id)
+                .ok_or_else(|| format!("There is no add-on {id}."))?;
+            if !confirmed {
+                return Err(format!("{}\n\nConfirm to turn it on.", addon.warning));
+            }
+            if !dir.join(".git").is_dir() {
+                return Err("Install the project first.".into());
+            }
+            let source = addons::fetch_source(
+                &addon,
+                &workspace().join("add-on-sources").join(id),
+            )?;
+            let mut applied = addons::apply(&dir, &addon, &source)?;
+            applied.switches = addon.switches.clone();
+            applied.args = addon.args.clone();
+            self.change_addon_settings(repo, &applied, true);
+            self.launch_mut(repo).addons.insert(id.to_string(), applied);
+        } else {
+            if !turned_on {
+                return Ok(());
+            }
+            let applied = self.launch_mut(repo).addons.get(id).cloned().unwrap_or_default();
+            addons::remove(&dir, &applied)?;
+            self.change_addon_settings(repo, &applied, false);
+            self.launch_mut(repo).addons.remove(id);
+            self.tidy_launch(repo);
+        }
+        Ok(())
+    }
+
+    /// Sets (or removes) an add-on's switches and launch arguments for a project. Starts
+    /// from the project's own settings, or the shared ones when it has none.
+    fn change_addon_settings(&mut self, repo: &str, applied: &addons::Applied, on: bool) {
+        let shared_switches = self.saved.extra_env.clone();
+        let shared_args = self.saved.launch_args.clone();
+        let launch = self.launch_mut(repo);
+        let switches = launch.switches.clone().unwrap_or(shared_switches);
+        launch.switches = Some(addons::with_switches(&switches, &applied.switches, on));
+        if !applied.args.is_empty() {
+            let args = launch.args.clone().unwrap_or(shared_args);
+            launch.args = Some(addons::with_args(&args, &applied.args, on));
+        }
+    }
+
     fn launch_mut(&mut self, repo: &str) -> &mut ProjectLaunch {
         self.saved
             .project_launch
@@ -804,6 +901,7 @@ impl App {
                 && launch.switches.is_none()
                 && launch.graphics.is_none()
                 && launch.notes.is_empty()
+                && launch.addons.is_empty()
                 && !launch.has_confirmed_preset()
         }) {
             self.saved.project_launch.remove(&key);

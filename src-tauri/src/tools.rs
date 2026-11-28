@@ -217,6 +217,15 @@ pub fn rustup() -> Option<PathBuf> {
     )
 }
 
+/// Where to get a tool by hand when winget cannot install it.
+pub fn manual_install_page(what: &str) -> &'static str {
+    match what {
+        "Git" => "https://git-scm.com/download/win",
+        "Rust" => "https://rustup.rs",
+        _ => "https://visualstudio.microsoft.com/visual-cpp-build-tools/",
+    }
+}
+
 /// Whether a winget error is its "no newer version" result (0x8A15002B). That means the
 /// package is already installed, so the tool is there and the look-again decides.
 pub fn winget_already_installed(error: &str) -> bool {
