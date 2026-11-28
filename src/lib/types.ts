@@ -134,6 +134,32 @@ export interface Project {
   }
 }
 
+/** Which compatibility runner starts Windows builds on a Mac. */
+export type RunnerKind = "none" | "crossover" | "wine"
+
+/** The player's runner settings, as the launcher saves them (runner.rs). */
+export interface MacRunnerChoice {
+  kind: RunnerKind
+  /** CrossOver: the bottle's name. */
+  bottle: string
+  /** Wine: its program and prefix folder. */
+  wine: string
+  prefix: string
+  /** Let the game's DLSS run through the runner's MetalFX. */
+  metalfx: boolean
+  /** NVIDIA's Streamline files for that DLSS path, from the player's own download. */
+  streamline_dir: string
+}
+
+export interface MacRunner extends MacRunnerChoice {
+  /** Why the chosen runner cannot start anything, or null. */
+  problem: string | null
+  crossover: boolean
+  bottles: string[]
+  found_wine: string | null
+  streamline_ok: boolean
+}
+
 export interface Snapshot {
   version: string
   /** The language the launcher's messages in this snapshot are in (src/i18n/locales.ts). */
@@ -155,6 +181,8 @@ export interface Snapshot {
     nvidia: { busy: boolean; status: string | null; ready: boolean; got_mb: number; total_mb: number; dir: string }
     fsr_dll: string | null
     fsr_ok: boolean
+    /** Windows builds on a Mac: the compatibility runner and MetalFX. Empty off macOS. */
+    mac_runner: MacRunner
     gpu_filter: number
     show_nuked: boolean
     /** 0 VIPortLive's order, 1 name, 2 frame rate, 3 stars, 4 recent commits. */
@@ -361,6 +389,7 @@ export type Action =
   | { type: "clear_cache"; repo: string }
   | { type: "get_nvidia_files" }
   | { type: "set_fsr_dll"; path: string | null }
+  | { type: "set_mac_runner"; runner: MacRunnerChoice }
   | { type: "clear_previous"; repo: string }
   | { type: "set_language"; language: string | null }
   | { type: "set_system_languages"; languages: string[] }

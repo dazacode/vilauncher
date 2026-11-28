@@ -11,7 +11,25 @@ An app started from Finder, Spotlight or the Dock gets only `/usr/bin:/bin:/usr/
 
 ## The games
 
-Prebuilt builds in the list are Windows programs. On macOS you can install them and keep their files, but running one needs a compatibility runner such as CrossOver or Whisky; the launcher says so before Play. Rust projects are built from source and run natively. The D3D12 Agility SDK checks and fixes are Windows ones and are skipped on macOS.
+Prebuilt builds in the list are Windows programs. On macOS you can install them and keep their files; running one needs a compatibility runner (see below), and without one the launcher says so before Play. Rust projects are built from source and run natively. The D3D12 Agility SDK checks and fixes are Windows ones and are skipped on macOS.
+
+## Windows builds and Metal
+
+**Settings › Windows builds on this Mac** chooses the runner (`src-tauri/src/runner.rs`):
+
+| Runner | What the launcher runs | Set up in the runner |
+| --- | --- | --- |
+| CrossOver (26 or later) | `CrossOver.app/Contents/SharedSupport/CrossOver/bin/wine --bottle <bottle> --cx-app <program.exe> …` | The bottle's **Graphics: D3DMetal** |
+| Wine or Game Porting Toolkit | `<wine64> <program.exe> …` with `WINEPREFIX=<prefix folder>` | A Wine build with D3DMetal (the toolkit's `wine64`) |
+
+- Only a Windows program goes through the runner, and only on macOS with a runner chosen. Native builds, git, cargo and every other system are unchanged.
+- The program's own paths (its arguments and the `VICTORY_*` folders) are passed as Wine sees them, on drive `Z:`.
+- The F1 menu's file is read from the bottle's or prefix's `AppData\Local\ProjectNeptune\menu.txt`, so its choices still apply at the next Play.
+- **Stop** closes the runner's process like any game; if the game is still running ten seconds later, the launcher ends the programs in that bottle or prefix (`wineboot --kill`).
+
+**DLSS through MetalFX.** D3DMetal can run a game's DLSS upscaling on Apple's MetalFX. In CrossOver it is the bottle's **DLSS** setting (D3DMetal and DXMT only), and it applies only while DLSS is on in the game's own settings. With **DLSS through MetalFX** on, the launcher lets the game's DLSS path run on an Apple GPU, using NVIDIA's Streamline files from a folder you choose. The launcher can check NVIDIA's signature on those files only on Windows, so on a Mac they come from your own download, like the FSR DLL. Frame generation stays off. The launcher does not change the runner's own settings: turn on D3DMetal and DLSS in CrossOver yourself.
+
+Untested combinations: whether a given build runs under D3DMetal, and whether its Streamline path reaches MetalFX, depend on the build and on the runner's version.
 
 ## Gatekeeper
 

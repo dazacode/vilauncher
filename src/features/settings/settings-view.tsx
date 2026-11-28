@@ -8,6 +8,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { GraphicsGroups } from "@/features/library/graphics-tab"
 import { ControllerKeysGroup } from "@/features/settings/controller-keys"
+import { MacRunnerGroup, MetalfxRows } from "@/features/settings/mac-runner"
 import { LanguageSelect } from "@/features/shared/language-select"
 import { ResponsibilityDialog } from "@/features/shared/responsibility"
 import { formatBytes, formatList, Trans, useT } from "@/i18n"
@@ -37,6 +38,8 @@ export function SettingsView() {
   const [env, setEnv] = useDraft(s.extra_env, (v) => void run({ type: "set_settings", patch: { extra_env: v } }))
   const busy = snap.job.running || snap.active_builds > 0
   const u = snap.updater
+  // On a Mac, Windows builds run through a runner (CrossOver or Wine) and DLSS goes through MetalFX.
+  const mac = snap.brand.platform === "macos"
   return (
     <div className="h-full overflow-y-auto">
       <div data-tauri-drag-region="deep" className="drag h-12" />
@@ -96,15 +99,24 @@ export function SettingsView() {
               <GraphicsGroups graphics={s.graphics} onChange={(graphics) => void run({ type: "set_default_graphics", graphics })} />
             </div>
 
-            <Group title={t("settings.upscaling.title")} description={t("settings.upscaling.description")}>
-              <Row
-                label={t("settings.nvidia.title")}
-                hint={s.nvidia.busy ? s.nvidia.status ?? "" : s.nvidia.status ?? (s.nvidia.ready ? t("settings.nvidia.ready") : t("settings.nvidia.missing"))}
-              >
-                <Button size="sm" variant="primary" disabled={s.nvidia.busy} onClick={() => void run({ type: "get_nvidia_files" })}>
-                  {t("settings.nvidia.get")}
-                </Button>
-              </Row>
+            {mac && <MacRunnerGroup runner={s.mac_runner} />}
+
+            <Group
+              title={mac ? t("settings.upscalingMac.title") : t("settings.upscaling.title")}
+              description={mac ? t("settings.upscalingMac.description") : t("settings.upscaling.description")}
+            >
+              {mac ? (
+                <MetalfxRows runner={s.mac_runner} />
+              ) : (
+                <Row
+                  label={t("settings.nvidia.title")}
+                  hint={s.nvidia.busy ? s.nvidia.status ?? "" : s.nvidia.status ?? (s.nvidia.ready ? t("settings.nvidia.ready") : t("settings.nvidia.missing"))}
+                >
+                  <Button size="sm" variant="primary" disabled={s.nvidia.busy} onClick={() => void run({ type: "get_nvidia_files" })}>
+                    {t("settings.nvidia.get")}
+                  </Button>
+                </Row>
+              )}
               <Row label={t("settings.fsr.title")} hint={s.fsr_dll ? (s.fsr_ok ? s.fsr_dll : t("settings.fsr.gone")) : t("settings.fsr.none")}>
                 <div className="flex gap-2">
                   <Button

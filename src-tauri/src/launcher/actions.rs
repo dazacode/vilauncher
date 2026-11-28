@@ -115,6 +115,10 @@ pub(crate) enum Action {
     SetFsrDll {
         path: Option<String>,
     },
+    /// Windows builds on a Mac: the runner, and DLSS through MetalFX (runner.rs).
+    SetMacRunner {
+        runner: crate::runner::Choice,
+    },
     /// Deletes a project's shader cache. Its saves and sources stay.
     ClearCache {
         repo: String,
@@ -587,6 +591,11 @@ impl App {
                     }
                 }
                 self.saved.fsr_dll = path;
+                Value::Null
+            }
+            Action::SetMacRunner { runner } => {
+                self.saved.mac_runner = runner;
+                crate::runner::apply(&self.saved.mac_runner);
                 Value::Null
             }
             Action::ClearPrevious { repo } => {
@@ -1232,6 +1241,18 @@ impl App {
         if let Some(pid) = pid {
             // A close first, so the game can save; forced only if it is still running later.
             crate::platform::stop_program(pid);
+            // On a Mac the pid is the runner's: the game is a Windows program in its bottle or prefix.
+            // Still there after the close and the forced stop: end what runs there.
+            let through_runner = self.job.lock().unwrap().through_runner;
+            if let (true, Some(runner)) = (through_runner, crate::runner::current()) {
+                let job = self.job.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    if job.lock().unwrap().pid == Some(pid) {
+                        runner.end_all();
+                    }
+                });
+            }
         }
     }
 

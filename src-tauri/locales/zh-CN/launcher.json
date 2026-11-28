@@ -141,5 +141,12 @@
   "Could not keep {file}: {error}. The files are not usable until Get NVIDIA's files runs again.": "无法保留 {file}：{error}。在重新运行“获取 NVIDIA 文件”之前，这些文件无法使用。",
   "Getting NVIDIA's files stopped unexpectedly: nothing kept.": "获取 NVIDIA 文件时意外中止：未保留任何文件。",
   "LOCALAPPDATA is not set, so there is no folder to keep NVIDIA's files in.": "未设置 LOCALAPPDATA，因此没有可保存 NVIDIA 文件的文件夹。",
-  "{name}: the system folder is not known": "{name}：无法找到系统文件夹"
+  "{name}: the system folder is not known": "{name}：无法找到系统文件夹",
+  "CrossOver was not found in Applications.": "在“应用程序”中找不到 CrossOver。",
+  "Choose a CrossOver bottle in Settings.": "请在“设置”中选择一个 CrossOver 容器。",
+  "The CrossOver bottle {bottle} was not found.": "找不到 CrossOver 容器 {bottle}。",
+  "Choose the Wine program in Settings.": "请在“设置”中选择 Wine 程序。",
+  "The Wine program {wine} is not there.": "Wine 程序 {wine} 不存在。",
+  "Choose a Wine prefix folder in Settings.": "请在“设置”中选择 Wine 前缀文件夹（prefix）。",
+  "{program} is a Windows program. Choose a runner (CrossOver or Wine) in Settings under Windows builds on this Mac, or build the project from source on macOS.": "{program} 是 Windows 程序。请在“设置”的“在这台 Mac 上运行 Windows 版本”中选择运行器（CrossOver 或 Wine），或在 macOS 上从源代码构建此项目。"
 }
