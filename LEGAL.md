@@ -14,7 +14,7 @@ VILauncher is a project manager. It keeps community projects in one place and do
 
 6. Licence and forks. VILauncher is licensed under the GNU General Public License version 3 or later (see LICENSE). You may fork, change and redistribute it under that licence. Any version you distribute must remain under the GPL, include its source code, keep the copyright and licence notices, credit the authors and say what you changed. It is a fork of Mandyhub, and the Mandyhub copyright and credits are kept.
 
-7. Takedowns. When a project is taken down, VIPortLive marks it, and VILauncher hides it by default. The player can show it, but it then opens VIPortLive's page and cannot be installed from the launcher. VILauncher does not host any project's code, so takedown requests should be sent to the host where the code lives, and to VIPortLive for the list.
+7. Takedowns. When a project is taken down, VIPortLive marks it, and VILauncher hides it by default. The player can show it, but it then opens VIPortLive's page and cannot be installed or updated from the launcher. A copy the player already installed stays on their PC: it stays listed and can still be played, and the launcher no longer checks its repo for updates or fetches from it. VILauncher does not host any project's code, so takedown requests should be sent to the host where the code lives, and to VIPortLive for the list.
 
 8. Your data. Settings, saves and projects are stored on your PC in the folders listed in the README. VILauncher sends no personal data anywhere. Its problem-report button builds text on your PC and opens a GitHub issue page for you; you choose whether to submit it, and you can read it first. Names and your folders are removed from reports before you see them.
 

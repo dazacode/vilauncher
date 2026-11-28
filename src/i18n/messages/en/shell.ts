@@ -46,6 +46,7 @@ export default {
   /** The second line of a project's row in the sidebar. */
   row: {
     takenDown: "Taken down · open on VIPortLive",
+    keptCopy: "Taken down · installed copy kept",
     update: "Update available",
     imported: "Imported build",
     installedByLink: "Installed · added by link",

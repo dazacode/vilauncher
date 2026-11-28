@@ -45,6 +45,7 @@ export default {
   },
   row: {
     takenDown: "已下架 · 在 VIPortLive 上開啟",
+    keptCopy: "已下架 · 已保留已安裝的副本",
     update: "有可用的更新",
     imported: "匯入的建置版本",
     installedByLink: "已安裝 · 透過連結新增",
