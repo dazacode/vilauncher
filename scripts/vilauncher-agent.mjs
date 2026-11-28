@@ -18,7 +18,9 @@
 //   help                                this list and the safety rules
 //
 // Agent access is the setting "AI agent access" in the launcher. It is stored as
-// "agent_access": true in %APPDATA%\VILauncher\settings.json. Missing or false means off.
+// "agent_access": true in the launcher's settings.json (%APPDATA%\VILauncher on
+// Windows, ~/Library/Application Support/VILauncher on macOS, $XDG_DATA_HOME/VILauncher
+// or ~/.local/share/VILauncher on Linux). Missing or false means off.
 // The launcher's own state is read from there; this tool never writes it.
 //
 // Typical flow: status -> log -> change the code on a branch in repos\<slug> ->
@@ -35,9 +37,10 @@
 //   the player's PC and is the player's responsibility. They need agent access AND --yes.
 // - patch-apply refuses: paths outside repos\<slug>, .git paths, symlinks, submodules,
 //   binary changes, non-git diffs, and files over 2 MB. It runs git apply --check first.
-// - fix refuses while VILauncher.exe is running (it may hold the files). It runs the launcher's
-//   --fix command from src-tauri\target\release\VILauncher.exe, or the debug build if no release
-//   build exists. The launcher's --fix refuses too unless agent access is on and no window runs.
+// - fix refuses while the launcher is running (it may hold the files). It runs the launcher's
+//   --fix command from src-tauri/target/release/VILauncher(.exe), or the debug build if no
+//   release build exists. The launcher's --fix refuses too unless agent access is on and no
+//   window runs.
 //
 // Exit codes: 0 ok, 1 refused (agent access off, --yes missing, unsafe patch, launcher running),
 // 2 usage error, 3 failure (missing clone or build, git or launcher failed).
@@ -51,7 +54,18 @@ import { fileURLToPath } from "node:url";
 
 const EXIT = { ok: 0, refused: 1, usage: 2, failure: 3 };
 const FOLDER = "VILauncher";
-const EXE_NAME = "VILauncher.exe";
+const WINDOWS = process.platform === "win32";
+const MACOS = process.platform === "darwin";
+const EXE_NAME = WINDOWS ? "VILauncher.exe" : "VILauncher";
+// The launcher's folders as the status line names them: never the real home-folder path.
+const DEFAULT_SETTINGS_LABEL = WINDOWS
+  ? `%APPDATA%\\${FOLDER}`
+  : MACOS
+    ? `~/Library/Application Support/${FOLDER}`
+    : `$XDG_DATA_HOME/${FOLDER}`;
+const DEFAULT_WORKSPACE_LABEL = WINDOWS ? `%LOCALAPPDATA%\\${FOLDER}` : DEFAULT_SETTINGS_LABEL;
+// Also the name the victory program has on this system.
+const VICTORY = WINDOWS ? "victory.exe" : "victory";
 const MAX_PATCH_BYTES = 2 * 1024 * 1024;
 const COMMIT = /^[0-9a-f]{7,40}$/;
 const OWNER_NAME = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -103,6 +117,13 @@ function redact(text, extra = []) {
 // ---------- launcher folders and settings ----------
 
 function launcherFolders() {
+  // Off Windows one folder holds settings and data, as brand.rs data_base() has it.
+  if (!WINDOWS) {
+    const base = MACOS
+      ? join(homedir(), "Library", "Application Support", FOLDER)
+      : join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), FOLDER);
+    return { roaming: base, local: base, settings: join(base, "settings.json") };
+  }
   const roaming = process.env.APPDATA ? join(process.env.APPDATA, FOLDER) : null;
   const local = process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, FOLDER) : null;
   return { roaming, local, settings: roaming ? join(roaming, "settings.json") : null };
@@ -179,7 +200,7 @@ function workspaceOf(settings, folders) {
 
 function requireWorkspace(settings, folders) {
   const ws = workspaceOf(settings, folders);
-  if (!ws) throw failure("the launcher folder is unknown: APPDATA or LOCALAPPDATA is not set");
+  if (!ws) throw failure("the launcher folder is unknown: its settings folder could not be read");
   return ws;
 }
 
@@ -218,7 +239,7 @@ function layoutOf(wsPath, slug) {
 
 async function requireClone(repo, slug, repoDir) {
   if (!(await exists(join(repoDir, ".git")))) {
-    throw failure(`no clone of ${repo} in repos\\${slug} yet. Install or build the project in the launcher first.`);
+    throw failure(`no clone of ${repo} in repos/${slug} yet. Install or build the project in the launcher first.`);
   }
 }
 
@@ -260,7 +281,7 @@ async function readCargoProfile(repoDir) {
   }
 }
 
-// Mirrors launcher.rs project_installed(): the recorded Rust install, else victory.exe under the profile.
+// Mirrors launcher.rs project_installed(): the recorded Rust install, else the victory program under the profile.
 async function isInstalled(repoDir, targetDir) {
   const rustFile = join(targetDir, "mandyhub-rust.json");
   if (await isFile(rustFile)) {
@@ -273,7 +294,9 @@ async function isInstalled(repoDir, targetDir) {
     }
   }
   const profile = await readCargoProfile(repoDir);
-  return isFile(join(targetDir, profile, "victory.exe"));
+  if (await isFile(join(targetDir, profile, VICTORY))) return true;
+  // A build made on the other system still counts as installed.
+  return isFile(join(targetDir, profile, WINDOWS ? "victory" : "victory.exe"));
 }
 
 async function projectStatus(wsPath, entry) {
@@ -381,8 +404,8 @@ async function cmdStatus() {
   };
   const lines = [
     "VILauncher agent status",
-    `Settings:       %APPDATA%\\${FOLDER}\\settings.json  ${data.settings_file}`,
-    `Install folder: ${ws ? (ws.kind === "custom" ? "custom folder set in Settings" : `%LOCALAPPDATA%\\${FOLDER}`) : "unknown"}  ${wsExists ? "found" : "missing"}`,
+    `Settings:       ${join(DEFAULT_SETTINGS_LABEL, "settings.json")}  ${data.settings_file}`,
+    `Install folder: ${ws ? (ws.kind === "custom" ? "custom folder set in Settings" : DEFAULT_WORKSPACE_LABEL) : "unknown"}  ${wsExists ? "found" : "missing"}`,
     `Agent access:  ${accessOn ? "on" : "off (fix and patch-apply are refused)"}`,
     `Tools:          git ${data.tools.git ? "found" : "not found"}, cargo ${data.tools.cargo ? "found" : "not found"}`,
     `Free space:     ${data.free_disk_gib === null ? "unknown" : `${data.free_disk_gib} GiB on the launcher's drive`}`,
@@ -620,7 +643,7 @@ async function cmdPatchApply(args, flags) {
   const next = `node scripts/vilauncher-agent.mjs fix ${repo} --yes`;
   const data = { ok: true, applied: true, committed: false, files, status, next };
   const lines = [
-    `Applied the patch to repos\\${slug} (working tree only, not committed, not pushed).`,
+    `Applied the patch to repos/${slug} (working tree only, not committed, not pushed).`,
     ...files.map((f) => `  ${f}`),
     `Next: ${next}`,
   ];
@@ -637,7 +660,7 @@ async function cmdFix(args, flags, emit) {
   const debugExe = join(ROOT, "src-tauri", "target", "debug", EXE_NAME);
   const exe = (await isFile(releaseExe)) ? releaseExe : (await isFile(debugExe)) ? debugExe : null;
   if (!exe) {
-    throw failure("the launcher is not built. Run cargo build --release in src-tauri first (src-tauri\\target\\release\\VILauncher.exe)");
+    throw failure(`the launcher is not built. Run cargo build --release in src-tauri first (src-tauri/target/release/${EXE_NAME})`);
   }
   const running = await launcherRunning();
   if (running) throw refused("VILauncher is running. Close it first: it may hold the files Fix needs.");
@@ -701,10 +724,22 @@ function lineSplitter(onLine) {
 
 function launcherRunning() {
   return new Promise((done, reject) => {
-    execFile("tasklist", ["/FI", `IMAGENAME eq ${EXE_NAME}`, "/FO", "CSV", "/NH"], { windowsHide: true }, (error, stdout) => {
-      if (error) reject(failure("could not check whether VILauncher is running (tasklist failed), so Fix was not started"));
-      else done(/"VILauncher\.exe"/i.test(String(stdout)));
-    });
+    const fail = () =>
+      reject(failure("could not check whether VILauncher is running, so Fix was not started"));
+    if (WINDOWS) {
+      execFile("tasklist", ["/FI", `IMAGENAME eq ${EXE_NAME}`, "/FO", "CSV", "/NH"], { windowsHide: true }, (error, stdout) => {
+        if (error) fail();
+        else done(/"VILauncher\.exe"/i.test(String(stdout)));
+      });
+    } else {
+      // macOS: `pgrep -f` matches the bundle's program path. Linux: the process name.
+      // Exit code 1 means none.
+      const args = MACOS ? ["-f", "VILauncher.app/Contents/MacOS/VILauncher"] : ["-x", EXE_NAME];
+      execFile("pgrep", args, (error, stdout) => {
+        if (error && error.code !== 1) fail();
+        else done(String(stdout).trim().length > 0);
+      });
+    }
   });
 }
 

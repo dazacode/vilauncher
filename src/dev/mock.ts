@@ -1,6 +1,7 @@
 // A stand-in launcher for working on the UI in a plain browser (pnpm dev).
 // Never part of the app: api.ts loads it only outside the Tauri window.
 // ?state=fresh (nothing set up) · ready (set up, one installed) · job (a build running).
+// ?platform=macos (or windows) previews the other system's labels and chrome.
 
 import { isLocale, systemLocale } from "@/i18n/locales"
 import type { Action, Graphics, LogView, Project, ResponsibilityId, Snapshot, StageKind, StorageView } from "@/lib/types"
@@ -28,6 +29,7 @@ const mode = params.get("state") ?? "ready"
 const listeners = new Set<() => void>()
 const changed = () => listeners.forEach((l) => l())
 
+const platform = (params.get("platform") ?? (navigator.userAgent.includes("Mac") ? "macos" : "windows")) as "macos" | "windows"
 const graphics: Graphics = { series_s: true, render_scale: 0.5, fix_8gb: true, bright_shadows: true, fullscreen: false, output: "Default" }
 const state = {
   selected: (params.get("select") ?? SAMPLE[1]?.repo ?? null) as string | null,
@@ -89,7 +91,8 @@ function project(s: (typeof SAMPLE)[number], index: number): Project {
     reported: index === 1 ? { ram_gb: 30, vram_gb: 12 } : { ram_gb: null, vram_gb: null },
     owner: s.repo.split("/")[0],
     custom: false,
-    kind: "git",
+    kind: index === 3 ? "zip" : "git",
+    binary: index === 3 ? (platform === "macos" ? "windows" : "native") : "native",
     web_url: `https://github.com/${s.repo}`,
     installed,
     checking: false,
@@ -116,13 +119,19 @@ function project(s: (typeof SAMPLE)[number], index: number): Project {
 /** The team's name as the launcher sends it: translated, from each language's core.json in src-tauri/locales. */
 const TEAM: Record<string, string> = { en: "VIPortLive team", "zh-TW": "VIPortLive 團隊", "zh-CN": "VIPortLive 团队" }
 
+// The mocked PC follows the previewed platform, so both states look real.
+const system: Snapshot["system"] =
+  platform === "macos"
+    ? { gpus: [{ name: "Apple M3 (Unified Memory)", vendor: "Apple", vram_gb: 12 }], ram_gb: 16, cpu: "Apple M3", cpu_cores: 8, translated: false }
+    : { gpus: [{ name: "NVIDIA GeForce RTX 4060", vendor: "NVIDIA", vram_gb: 8 }], ram_gb: 16, cpu: "AMD Ryzen 7 5800X 8-Core Processor", cpu_cores: 16, translated: false }
+
 function snapshot(): Snapshot {
   const locale = state.language ?? systemLocale(state.systemLanguages)
   return {
     version: "0.1.0",
     locale,
     notice_accepted: state.notice,
-    brand: { name: "VILauncher", team: TEAM[locale] ?? TEAM.en, site: "https://viportlive.com", site_label: "viportlive.com", source: "https://github.com/dazacode/vilauncher" },
+    brand: { name: "VILauncher", team: TEAM[locale] ?? TEAM.en, site: "https://viportlive.com", site_label: "viportlive.com", source: "https://github.com/dazacode/vilauncher", platform },
     list: { status: "ready", error: null, items: SAMPLE.map(project) },
     custom: [],
     selected: state.selected,
@@ -142,7 +151,10 @@ function snapshot(): Snapshot {
       list_tier: state.listTier ?? 0,
       spec_ram_gb: state.specRam ?? null,
       spec_vram_gb: state.specVram ?? null,
-      backgrounds_dir: "C:\\Users\\you\\AppData\\Local\\VILauncher\\backgrounds",
+      backgrounds_dir:
+        platform === "macos"
+          ? "/Users/you/Library/Application Support/VILauncher/backgrounds"
+          : "C:\\Users\\you\\AppData\\Local\\VILauncher\\backgrounds",
       skip_update_warning: state.skipUpdateWarning,
       agent_access: state.agentAccess,
       controller_keys: {
@@ -153,7 +165,10 @@ function snapshot(): Snapshot {
       language: state.language,
     },
     files: { chosen: !!state.gameDir, ok: !!state.gameDir, empty: false, unplugged: false, missing: state.gameDir ? [] : [], searching: false, find_error: null },
-    tools: { ready: state.toolsReady, missing: state.toolsReady ? [] : ["C++ build tools"] },
+    tools: {
+      ready: state.toolsReady,
+      missing: state.toolsReady ? [] : [platform === "macos" ? "Xcode Command Line Tools" : "C++ build tools"],
+    },
     active_builds: 0,
     job: {
       running: !!state.job,
@@ -170,7 +185,7 @@ function snapshot(): Snapshot {
     pending_move: null,
     presets: [],
     backgrounds: [],
-    system: { gpus: [{ name: "NVIDIA GeForce RTX 4060", vendor: "NVIDIA", vram_gb: 8 }], ram_gb: 16, cpu: "AMD Ryzen 7 5800X 8-Core Processor", cpu_cores: 16 },
+    system,
   }
 }
 

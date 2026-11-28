@@ -12,5 +12,7 @@
   "New install · Not run yet": "全新安裝 · 尚未執行",
   "Updated · Not run yet": "已更新 · 尚未執行",
   "C++ build tools": "C++ 建置工具",
+  "Xcode Command Line Tools": "Xcode 命令列工具",
+  "C compiler": "C 編譯器",
   "VIPortLive team": "VIPortLive 團隊"
 }

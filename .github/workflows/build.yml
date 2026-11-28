@@ -172,10 +172,101 @@ jobs:
             src-tauri/target/release/bundle/deb/*.deb
           if-no-files-found: error
 
+  build-macos:
+    name: Build for macOS
+    runs-on: macos-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the pnpm version
+        id: pnpm
+        run: |
+          version=$(node -p "((require('./package.json').packageManager || '').match(/^pnpm@([^+]+)/) || [])[1] || '10'")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ steps.pnpm.outputs.version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # One universal app for Apple silicon and Intel.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install packages
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check the UI
+        run: pnpm exec tsc -b
+
+      - name: Build the UI
+        run: pnpm exec vite build
+
+      - name: Test the launcher
+        working-directory: src-tauri
+        run: cargo test --locked
+
+      # Optional. Without the secrets the app is ad-hoc signed and not notarized, so forks
+      # and pull requests still build. Tauri reads these names itself (docs/MACOS.md).
+      - name: Set up signing and notarization
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo 'No Apple certificate is set: this build is ad-hoc signed and not notarized.'
+            exit 0
+          fi
+          {
+            echo "APPLE_CERTIFICATE=$(printf '%s' "$APPLE_CERTIFICATE" | tr -d '[:space:]')"
+            for name in APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+              if [ -n "${!name}" ]; then echo "$name=${!name}"; fi
+            done
+          } >> "$GITHUB_ENV"
+
+      - name: Build the app and disk image
+        run: pnpm tauri build --target universal-apple-darwin
+
+      # The in-app updater looks for an asset named exactly VILauncher-macos.app.tar.gz
+      # holding VILauncher.app, and checks it against the digest GitHub records.
+      - name: Pack the app for the updater
+        working-directory: src-tauri/target/universal-apple-darwin/release/bundle
+        run: |
+          out="$GITHUB_WORKSPACE/src-tauri/target/macos-release"
+          mkdir -p "$out"
+          tar -czf "$out/VILauncher-macos.app.tar.gz" -C macos VILauncher.app
+          cp dmg/*.dmg "$out/"
+
+      - name: Print the SHA-256 digests
+        run: shasum -a 256 src-tauri/target/macos-release/*
+
+      - name: Upload the macOS downloads
+        uses: actions/upload-artifact@v4
+        with:
+          name: VILauncher-macos
+          path: src-tauri/target/macos-release/*
+          if-no-files-found: error
+
   release:
     name: Publish the release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build, build-linux]
+    needs: [build, build-linux, build-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -206,8 +297,14 @@ jobs:
           name: VILauncher-linux
           path: release/linux
 
-      # The in-app updater looks for an asset named exactly VILauncher.exe and
-      # checks it against the sha256 digest GitHub records for the upload.
+      - uses: actions/download-artifact@v4
+        with:
+          name: VILauncher-macos
+          path: release/macos
+
+      # The in-app updater looks for an asset named exactly VILauncher.exe (Windows) or
+      # VILauncher-macos.app.tar.gz (macOS) and checks it against the sha256 digest GitHub
+      # records for the upload.
       - uses: softprops/action-gh-release@v2
         with:
           name: VILauncher ${{ github.ref_name }}
@@ -219,3 +316,5 @@ jobs:
             release/installer/*.exe
             release/linux/**/*.AppImage
             release/linux/**/*.deb
+            release/macos/*.dmg
+            release/macos/VILauncher-macos.app.tar.gz

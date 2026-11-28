@@ -309,13 +309,13 @@ impl App {
                         .unwrap_or_default()
                 };
                 let system = self.system.lock().unwrap().clone().unwrap_or_default();
-                let mut private = vec![
+                let mut private = crate::report::private_paths(&workspace());
+                private.extend([
                     std::env::var("USERNAME").unwrap_or_default(),
                     std::env::var("USERPROFILE").unwrap_or_default(),
                     self.saved.install_dir.clone(),
                     self.saved.game_dir.clone(),
-                    workspace().display().to_string(),
-                ];
+                ]);
                 private.retain(|s| !s.trim().is_empty());
                 let report = crate::report::make(&crate::report::Facts {
                     project: &p.name,
@@ -801,9 +801,9 @@ impl App {
                 Value::Null
             }
             Action::Open { what, repo } => {
-                let path = match (what.as_str(), repo) {
+                let path = match (what.as_str(), repo.as_deref()) {
                     ("project_folder", Some(repo)) => {
-                        let p = self.project(&repo)?;
+                        let p = self.project(repo)?;
                         p.local_exe
                             .as_deref()
                             .and_then(|exe| Path::new(exe).parent())
@@ -822,7 +822,15 @@ impl App {
                     _ => return Err(msg!("Nothing to open for {what}.")),
                 };
                 let _ = std::fs::create_dir_all(&path);
-                open_folder(&path)?;
+                // A build's folder opens with its program selected where the
+                // system can (Finder); everything else opens the folder itself.
+                match repo.as_deref().and_then(|repo| self.project(repo).ok()) {
+                    Some(p) if what == "project_folder" => match p.local_exe.as_deref() {
+                        Some(exe) if Path::new(exe).is_file() => reveal(Path::new(exe))?,
+                        _ => open_folder(&path)?,
+                    },
+                    _ => open_folder(&path)?,
+                }
                 Value::Null
             }
             Action::ExportLog { path, repo } => {
@@ -1091,26 +1099,8 @@ impl App {
             j.pid
         };
         if let Some(pid) = pid {
-            #[cfg(windows)]
-            {
-                // A window close first, so the game can save; forced only if it is still running a few seconds later.
-                let pid = pid.to_string();
-                std::thread::spawn(move || {
-                    let mut close = Command::new("taskkill");
-                    close.args(["/PID", &pid, "/T"]);
-                    hide_window(&mut close);
-                    let _ = close.status();
-                    std::thread::sleep(std::time::Duration::from_secs(8));
-                    let mut force = Command::new("taskkill");
-                    force.args(["/PID", &pid, "/T", "/F"]);
-                    hide_window(&mut force);
-                    let _ = force.status();
-                });
-            }
-            #[cfg(not(windows))]
-            {
-                let _ = Command::new("kill").arg(pid.to_string()).spawn();
-            }
+            // A close first, so the game can save; forced only if it is still running later.
+            crate::platform::stop_program(pid);
         }
     }
 
@@ -1166,33 +1156,15 @@ fn open_link(url: &str) -> Result<(), String> {
     if !plain {
         return Err(msg_str!("Only https links can be opened from the launcher.").into());
     }
-    let opener = if cfg!(windows) {
-        "explorer.exe"
-    } else if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    std::process::Command::new(opener)
-        .arg(url)
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| msg!("Could not open the link: {error}"))
+    crate::platform::open_url(url)
 }
 
 fn open_folder(path: &Path) -> Result<(), String> {
-    let program = if cfg!(windows) {
-        "explorer"
-    } else if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    Command::new(program)
-        .arg(path)
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| msg!("Could not open {path}: {error}", path = path.display()))
+    crate::platform::open_folder(path)
+}
+
+fn reveal(path: &Path) -> Result<(), String> {
+    crate::platform::reveal(path)
 }
 
 /// The saves a project can start from: this build's, other builds' and the favourites.
