@@ -93,6 +93,10 @@ pub(super) fn build_tools_installed() -> bool {
 /// On some Linux graphics setups (NVIDIA on Wayland, AppImage bundles) WebKitGTK paints a
 /// blank white window, because it draws through DMA-BUF buffers the driver cannot share.
 /// The launcher's interface is light, so the renderer is turned off unless the player set it.
+///
+/// The renderer used instead loses whatever it does not repaint in a transparent window, so
+/// only animated parts showed and the rest stayed white. That is why the Linux window is
+/// opaque (`tauri.linux.conf.json`); keep it so while this renderer is off.
 pub(super) fn avoid_blank_webview() {
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
         std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
