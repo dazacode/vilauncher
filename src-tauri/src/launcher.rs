@@ -2922,16 +2922,15 @@ fn native_nvidia_command(
     l: &Launch,
     args: &[String],
 ) -> Command {
-    let baseline = l
-        .foxhound_preset
-        .then(|| {
-            std::fs::read_to_string(root.join("scripts/play-foxhound.ps1"))
-                .ok()
-                .and_then(|script| script_preset::parse(&script).ok())
-                .map(|(switches, _)| switches)
-                .unwrap_or_default()
-        })
-        .unwrap_or_default();
+    let baseline = if l.foxhound_preset {
+        std::fs::read_to_string(root.join("scripts/play-foxhound.ps1"))
+            .ok()
+            .and_then(|script| script_preset::parse(&script).ok())
+            .map(|(switches, _)| switches)
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
     let defaults: std::collections::BTreeMap<_, _> = baseline
         .lines()
         .filter_map(|line| line.split_once('='))
