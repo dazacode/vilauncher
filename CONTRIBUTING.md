@@ -16,16 +16,26 @@ Thank you for helping. VILauncher is free software under the GPL-3.0-or-later (s
 
 ## Setting up
 
-You need Windows 10 or 11, Node.js 22, pnpm 10, and Rust stable with the MSVC toolchain.
+The launcher builds and runs on Windows, macOS and Linux, and CI checks all three. On every system you need Node.js 22, pnpm 10 and Rust stable, plus:
 
-```powershell
+- **Windows 10 or 11:** Rust's MSVC toolchain and the Visual Studio C++ build tools. WebView2 ships with Windows.
+- **macOS 13 or later:** Xcode Command Line Tools (`xcode-select --install`). For the universal app, also run `rustup target add aarch64-apple-darwin x86_64-apple-darwin`. Building and signing on a Mac: [docs/MACOS.md](docs/MACOS.md#building-on-a-mac).
+- **Linux:** a C compiler and the WebKitGTK 4.1 libraries Tauri links against. On Debian or Ubuntu, CI installs:
+
+  ```sh
+  sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev patchelf libssl-dev
+  ```
+
+Then:
+
+```sh
 git clone https://github.com/<your-account>/vilauncher
 cd vilauncher
 pnpm install
 pnpm tauri dev
 ```
 
-The UI also runs in a browser with a mock backend (`src/dev/mock.ts`), which is useful for layout work.
+The UI also runs in a browser with a mock backend (`src/dev/mock.ts`), which is useful for layout work: run `pnpm dev` and open `http://localhost:1420`. Add `?platform=macos` or `?platform=windows` to the address to preview that system's labels and window.
 
 ## Before you open a pull request
 
@@ -44,6 +54,8 @@ If you change a Tauri command or a settings field, update `src/lib/types.ts` and
 - **No personal data.** Do not commit names, paths, tokens, logs with private information, or game files. Do not add telemetry.
 - **Respect the safety model.** The launcher runs other people's code, so new features must warn before they run code, change files outside the project's own folder, or act on the player's behalf. Saves must never be read, moved or deleted by update, rollback or cleanup code.
 - **Keep warnings honest.** If a feature can cause harm, say what could happen in the UI and in the docs, and require the player to accept it.
+- **Keep system differences in one place.** Code that differs between Windows, macOS and Linux goes in `src-tauri/src/platform/` (`mod.rs` dispatches to `windows.rs`, `macos.rs` and `linux.rs`), so other modules need no `#[cfg]`. A change must still build and test on all three.
+- **Translate UI text.** The window speaks English, zh-TW and zh-CN. New UI text goes through `t` / `<Trans>` from `@/i18n`, and launcher messages that reach the window are marked `msg!` / `msg_str!` in Rust. Every language needs a translation, and `pnpm i18n:check` and `cargo test` fail if one is missing. See [docs/I18N.md](docs/I18N.md).
 - **Dependencies** need a reason and a licence compatible with GPL-3.0-or-later. Say which in the pull request.
 - **Generated files** (`tsconfig.tsbuildinfo`, `.ci/`, build output) do not belong in commits.
 
