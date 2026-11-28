@@ -44,6 +44,7 @@
   "Tools not installed (see the log)": "工具未安裝（詳見記錄）",
   "Moving installed projects": "正在搬移已安裝的專案",
   "Moved: projects are in the new folder": "搬移完成：專案已在新資料夾中",
+  "That is not a branch name.": "這不是有效的分支名稱。",
   "Wait for the current job to finish.": "請等待目前的工作完成。",
   "Wait for the current job to finish first.": "請先等待目前的工作完成。",
   "Wait until the current job finishes.": "請等待目前的工作完成。",

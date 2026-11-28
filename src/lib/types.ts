@@ -67,6 +67,10 @@ export interface Project {
   highlights: string[]
   /** What still stops it, from the tracker. */
   blockers: string[]
+  /** The branch a git project is built from: the player's choice, else the feed's. */
+  branch: string | null
+  /** Whether the player chose `branch`. */
+  branch_chosen: boolean
   listing: {
     id: string | null
     /** Why VIPortLive took it down, when it did. */
@@ -302,6 +306,7 @@ export type Action =
   | { type: "set_project_graphics"; repo: string; graphics: Graphics | null }
   | { type: "set_project_keep_game_settings"; repo: string; value: boolean }
   | { type: "set_project_args"; repo: string; value: string | null }
+  | { type: "set_project_branch"; repo: string; value: string | null }
   | { type: "set_project_switches"; repo: string; value: string | null }
   | { type: "set_script_option"; repo: string; option: keyof ScriptOptions; enabled: boolean }
   | { type: "set_project_notes"; repo: string; notes: string }

@@ -100,6 +100,10 @@ pub(crate) struct ProjectView {
     highlights: Vec<String>,
     /// What still stops it, from the tracker.
     blockers: Vec<String>,
+    /// The branch a git project is built from (the player's choice, else the feed's).
+    branch: Option<String>,
+    /// Whether the player chose `branch` (otherwise it is the feed's).
+    branch_chosen: bool,
     /// The memory the author says it uses, read from the words above.
     reported: reported::Reported,
     custom: bool,
@@ -491,6 +495,8 @@ impl App {
             summary: p.summary.clone(),
             highlights: p.highlights.clone(),
             blockers: p.blockers.clone(),
+            branch: p.branch.clone(),
+            branch_chosen: self.chosen_branch(&p.repo).is_some(),
             reported: reported::parse(
                 std::iter::once(p.summary.as_str())
                     .chain(p.highlights.iter().chain(&p.blockers).map(String::as_str)),

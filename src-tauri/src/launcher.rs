@@ -134,6 +134,9 @@ pub(crate) struct Saved {
     install_dir: String,
     /// Updates put off with "Later": (repo, the new version's commit).
     later: Vec<(String, String)>,
+    /// The branch a git project is built from when the player chose one (repo, branch).
+    /// Without one, the project's own branch from the feed is used.
+    branches: Vec<(String, String)>,
     selected: Option<String>,
     custom: Vec<Project>,
     series_s: bool,
@@ -408,6 +411,17 @@ fn a_repo_with_no_rust_source_says_so() {
     let error = cargo_workspace(&root).unwrap_err();
     assert!(error.contains("no Rust source"), "{error}");
     std::fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(test)]
+#[test]
+fn a_chosen_branch_must_be_a_plain_git_branch_name() {
+    for good in ["dev", "main", "feat/auto-vram", "release-1.2", "v2026.11.27"] {
+        assert!(valid_branch(good), "{good}");
+    }
+    for bad in ["", "-x", "a..b", "a//b", "/a", "a/", "a.lock", "a b", "a;rm", "a$b", "x.", "é"] {
+        assert!(!valid_branch(bad), "{bad}");
+    }
 }
 
 #[cfg(test)]
@@ -715,6 +729,21 @@ pub(crate) enum Kind {
     Fix,
     /// Swap the installed build with the previous one (previous.rs).
     Rollback,
+}
+
+/// Whether `name` is a branch a player may build: letters, digits and `._/-`, in git's
+/// rules for branch names (no `..`, no empty parts, no leading `-`), checked before git sees it.
+pub(crate) fn valid_branch(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 200
+        && !name.starts_with(['-', '/'])
+        && !name.ends_with(['/', '.'])
+        && !name.ends_with(".lock")
+        && !name.contains("..")
+        && !name.contains("//")
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._/-".contains(&byte))
 }
 
 fn project_key(repo: &str) -> String {
@@ -1595,7 +1624,22 @@ impl App {
         if let Some(Ok(list)) = &*self.projects.lock().unwrap() {
             v.extend(list.iter().cloned());
         }
+        // A branch the player chose replaces the feed's, for install, update and the version check.
+        for p in v.iter_mut().filter(|p| p.is_git()) {
+            if let Some(chosen) = self.chosen_branch(&p.repo) {
+                p.branch = Some(chosen.to_owned());
+            }
+        }
         v
+    }
+
+    /// The branch the player chose for `repo`, if any.
+    fn chosen_branch(&self, repo: &str) -> Option<&str> {
+        self.saved
+            .branches
+            .iter()
+            .find(|(saved, _)| project_key(saved) == project_key(repo))
+            .map(|(_, branch)| branch.as_str())
     }
 
     /// Looks again at `p`'s install and the newest version online.

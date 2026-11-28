@@ -44,6 +44,7 @@
   "Tools not installed (see the log)": "工具未安装（详见日志）",
   "Moving installed projects": "正在移动已安装的项目",
   "Moved: projects are in the new folder": "移动完成：项目已在新文件夹中",
+  "That is not a branch name.": "这不是有效的分支名。",
   "Wait for the current job to finish.": "请等待当前任务完成。",
   "Wait for the current job to finish first.": "请先等待当前任务完成。",
   "Wait until the current job finishes.": "请等待当前任务完成。",

@@ -152,6 +152,10 @@ export default {
     placeholder: "執行狀況、看到的問題、下次想試的設定…",
   },
   launch: {
+    branch: "建置分支",
+    branchHint: "這個專案建置所用的分支。變更會在下次安裝或更新時生效。留空則使用專案自己的分支。",
+    branchChosen: "你選的分支",
+    branchFeed: "預設分支（來自專案清單）",
     args: "參數",
     argsStandalone: "程式啟動時傳入。",
     argsHint: "加在 victory run 後面。遊戲本身的參數放在 -- 之後。",
@@ -159,6 +163,7 @@ export default {
     projectArgs: "這個專案的參數",
     programArgs: "程式參數",
     argsLabel: "啟動參數",
+    branchLabel: "建置分支名稱",
     useDefault: "使用預設值",
     switches: "開關",
     switchesHint: "每行一個 VICTORY_NAME=value。",

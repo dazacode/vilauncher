@@ -144,6 +144,11 @@ pub(crate) enum Action {
         repo: String,
         value: Option<String>,
     },
+    /// The branch a git project is built from; `None` goes back to the feed's branch.
+    SetProjectBranch {
+        repo: String,
+        value: Option<String>,
+    },
     SetProjectSwitches {
         repo: String,
         value: Option<String>,
@@ -600,6 +605,21 @@ impl App {
             Action::SetProjectGraphics { repo, graphics } => {
                 self.launch_mut(&repo).graphics = graphics;
                 self.tidy_launch(&repo);
+                Value::Null
+            }
+            Action::SetProjectBranch { repo, value } => {
+                let value = value.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
+                if let Some(branch) = &value {
+                    if !crate::launcher::valid_branch(branch) {
+                        return Err(msg_str!("That is not a branch name.").into());
+                    }
+                }
+                self.saved
+                    .branches
+                    .retain(|(saved, _)| crate::launcher::project_key(saved) != crate::launcher::project_key(&repo));
+                if let Some(branch) = value {
+                    self.saved.branches.push((repo, branch));
+                }
                 Value::Null
             }
             Action::SetProjectKeepGameSettings { repo, value } => {

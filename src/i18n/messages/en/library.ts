@@ -157,6 +157,11 @@ export default {
     placeholder: "How it ran, glitches you saw, settings to try next…",
   },
   launch: {
+    branch: "Build branch",
+    branchHint: "The branch this project is built from. A change applies on the next Install or Update. Leave it empty to use the project's own branch.",
+    branchLabel: "Build branch name",
+    branchChosen: "Your branch",
+    branchFeed: "Default branch (from the project list)",
     args: "Arguments",
     argsStandalone: "Passed to the program when it starts.",
     argsHint: "Added to victory run. Arguments for the game itself go after --.",

@@ -49,6 +49,7 @@ const state = {
   graphics,
   overrides: new Map<string, Graphics>(),
   keepGame: new Set<string>(),
+  branches: new Map<string, string>(),
   notes: new Map<string, string>(),
   warm: false,
   notice: params.get("notice") !== "0",
@@ -93,6 +94,8 @@ function project(s: (typeof SAMPLE)[number], index: number): Project {
     custom: false,
     kind: index === 3 ? "zip" : "git",
     binary: index === 3 ? (platform === "macos" ? "windows" : "native") : "native",
+    branch: state.branches.get(s.repo) ?? (index === 4 ? "main" : null),
+    branch_chosen: state.branches.has(s.repo),
     web_url: `https://github.com/${s.repo}`,
     installed,
     checking: false,
@@ -280,6 +283,11 @@ async function act(a: Action): Promise<unknown> {
       }
     case "set_default_graphics":
       state.graphics = a.graphics
+      break
+    case "set_project_branch":
+      if (a.value && /^[A-Za-z0-9._/-]+$/.test(a.value) && !a.value.startsWith("-") && !a.value.includes("..")) state.branches.set(a.repo, a.value.trim())
+      else if (!a.value) state.branches.delete(a.repo)
+      else throw new Error("That is not a branch name.")
       break
     case "set_project_keep_game_settings":
       if (a.value) state.keepGame.add(a.repo)

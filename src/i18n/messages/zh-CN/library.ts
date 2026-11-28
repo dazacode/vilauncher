@@ -152,6 +152,10 @@ export default {
     placeholder: "运行情况、遇到的问题、下次想试的设置…",
   },
   launch: {
+    branch: "构建分支",
+    branchHint: "这个项目构建所用的分支。修改会在下次安装或更新时生效。留空则使用项目自己的分支。",
+    branchChosen: "你选的分支",
+    branchFeed: "默认分支（来自项目列表）",
     args: "参数",
     argsStandalone: "程序启动时传入。",
     argsHint: "加在 victory run 后面。游戏本身的参数放在 -- 之后。",
@@ -159,6 +163,7 @@ export default {
     projectArgs: "这个项目的参数",
     programArgs: "程序参数",
     argsLabel: "启动参数",
+    branchLabel: "构建分支名称",
     useDefault: "使用默认值",
     switches: "开关",
     switchesHint: "每行一个 VICTORY_NAME=value。",
