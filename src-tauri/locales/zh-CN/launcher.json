@@ -141,5 +141,21 @@
   "Could not keep {file}: {error}. The files are not usable until Get NVIDIA's files runs again.": "无法保留 {file}：{error}。在重新运行“获取 NVIDIA 文件”之前，这些文件无法使用。",
   "Getting NVIDIA's files stopped unexpectedly: nothing kept.": "获取 NVIDIA 文件时意外中止：未保留任何文件。",
   "LOCALAPPDATA is not set, so there is no folder to keep NVIDIA's files in.": "未设置 LOCALAPPDATA，因此没有可保存 NVIDIA 文件的文件夹。",
-  "{name}: the system folder is not known": "{name}：无法找到系统文件夹"
+  "{name}: the system folder is not known": "{name}：无法找到系统文件夹",
+  "The project has uncommitted changes. Save or discard them before turning on an add-on.": "项目有尚未提交的更改。请先保存或丢弃这些更改，再开启附加组件。",
+  "The branch {branch} exists without the add-on's commits. Delete it, then turn the add-on on again.": "分支 {branch} 已存在，但没有附加组件的提交。请删除它，再重新开启附加组件。",
+  "The add-on's patches do not apply to this project, so nothing was changed. To port them by hand, read {guide} in {source}. Git said: {error}": "附加组件的补丁无法应用到这个项目，因此没有做任何更改。若要手动移植，请阅读 {source} 中的 {guide}。Git 的信息：{error}",
+  "The add-on's patches do not apply to this project, so nothing was changed. Git said: {error}": "附加组件的补丁无法应用到这个项目，因此没有做任何更改。Git 的信息：{error}",
+  "The project has uncommitted changes on the add-on's branch. Save or discard them before turning the add-on off.": "项目在附加组件的分支上有尚未提交的更改。请先保存或丢弃这些更改，再关闭附加组件。",
+  "The project is not on {branch} now, so the add-on stays on. Switch the project back to {branch} to turn it off.": "项目目前不在 {branch} 上，因此附加组件保持开启。请把项目切回 {branch} 再关闭它。",
+  "Could not download {source}: {error}": "无法下载 {source}：{error}",
+  "Could not update {source}: {error}": "无法更新 {source}：{error}",
+  "{source} has no commit {commit}: {error}": "{source} 没有提交 {commit}：{error}",
+  "Turn off {addons} before updating this project: an update resets its code, and the add-on's patches would be lost.": "更新这个项目前，请先关闭 {addons}：更新会重置项目的代码，附加组件的补丁会因此丢失。",
+  "There is no add-on {id}.": "没有名为 {id} 的附加组件。",
+  "{warning} Confirm to turn it on.": "{warning} 请确认后再开启。",
+  "Install the project first.": "请先安装项目。",
+  "Memory stack": "内存精简补丁",
+  "Cuts VRAM and private memory with no change to what is drawn. On the author's RTX 5080 16 GB: VRAM about 12.6 GB down to 8.55 GB, private commit about 26 GB down to about 20.5 GB.": "降低显存与私有内存用量，画面完全不变。在作者的 RTX 5080 16 GB 上：显存约从 12.6 GB 降到 8.55 GB，私有提交约从 26 GB 降到约 20.5 GB。",
+  "Turning this on commits the memory stack's patches to a vilauncher/memory-stack branch of this project, then switches the project to that branch. It only applies if the project is close to the stack's base (e94251a). Forks that have moved further do not take the patches: the launcher says so and changes nothing. The first run after turning it on makes the shaders again (minutes of missing draws). Turning it off goes back to the project's own branch.": "开启后，内存精简补丁会提交到这个项目的 vilauncher/memory-stack 分支，并把项目切换到该分支。只有接近补丁基准（e94251a）的项目才能应用。差异更大的分支无法应用这些补丁：启动器会说明原因，且不做任何更改。开启后第一次运行会重新生成着色器（会有几分钟缺少画面）。关闭后会回到项目原本的分支。"
 }

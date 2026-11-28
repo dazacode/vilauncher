@@ -6,7 +6,7 @@ use super::*;
 use crate::addons;
 use crate::i18n::localize;
 use crate::save_zip;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 #[derive(Deserialize)]
@@ -171,6 +171,11 @@ pub(crate) enum Action {
     ApplyAdvice {
         repo: String,
         id: String,
+    },
+    /// The add-ons the player can turn on for a project, with whether each is on and
+    /// whether its patches were made for this project.
+    Addons {
+        repo: String,
     },
     /// Turns an add-on on or off for a project. Turning on needs `confirmed`.
     AddonSet {
@@ -414,9 +419,9 @@ impl App {
                     .map(|launch| launch.addons.keys().cloned().collect::<Vec<_>>())
                     .unwrap_or_default();
                 if !on.is_empty() {
-                    return Err(format!(
-                        "Turn off {} before updating this project: an update resets its code, and the add-on's patches would be lost.",
-                        on.join(", ")
+                    let addons = on.join(", ");
+                    return Err(msg!(
+                        "Turn off {addons} before updating this project: an update resets its code, and the add-on's patches would be lost."
                     ));
                 }
                 self.start(&ctx, p, Kind::Install);
@@ -716,6 +721,7 @@ impl App {
                 self.tidy_launch(&repo);
                 Value::Null
             }
+            Action::Addons { repo } => json!(self.addons_for(&repo)?),
             Action::AddonSet {
                 repo,
                 id,
@@ -1060,11 +1066,43 @@ impl App {
             .ok_or_else(|| msg_str!("That project is no longer in the list.").to_owned())
     }
 
+    /// The add-ons for a project, as the Launch tab lists them. The shipped add-ons' texts
+    /// are translated; a player's own manifest shows as its author wrote it.
+    fn addons_for(&self, repo: &str) -> Result<Vec<AddonView>, String> {
+        let p = self.project(repo)?;
+        let dir = repo_dir(&p.repo);
+        let launch = self.saved.project_launch.get(&project_key(repo));
+        let (catalog, _) = addons::catalog(&workspace().join("add-ons"));
+        Ok(catalog
+            .into_iter()
+            .map(|addon| AddonView {
+                on: launch.is_some_and(|launch| launch.addons.contains_key(&addon.id)),
+                fits: addons::fits(&dir, &addon),
+                name: localize(&addon.name),
+                summary: localize(&addon.summary),
+                warning: localize(&addon.warning),
+                source: addon.source.repo.clone(),
+                source_url: addons::source_page(&addon, None),
+                guide_url: addon
+                    .guide
+                    .as_deref()
+                    .and_then(|guide| addons::source_page(&addon, Some(guide))),
+                base: addon.patches.as_ref().and_then(|p| p.base.clone()),
+                switches: addon
+                    .switches
+                    .iter()
+                    .map(|(key, value)| format!("{key}={value}"))
+                    .collect(),
+                id: addon.id,
+            })
+            .collect())
+    }
+
     /// Turns an add-on on or off for a project (addons.rs). Turning on runs the add-on's
     /// patches on the project's code, so it needs the player's confirmation.
     fn set_addon(&mut self, repo: &str, id: &str, on: bool, confirmed: bool) -> Result<(), String> {
         if self.job_running().0 {
-            return Err("Wait for the current job to finish.".into());
+            return Err(msg_str!("Wait for the current job to finish.").into());
         }
         let p = self.project(repo)?;
         let dir = repo_dir(&p.repo);
@@ -1082,12 +1120,13 @@ impl App {
             let addon = catalog
                 .into_iter()
                 .find(|a| a.id == id)
-                .ok_or_else(|| format!("There is no add-on {id}."))?;
+                .ok_or_else(|| msg!("There is no add-on {id}."))?;
             if !confirmed {
-                return Err(format!("{}\n\nConfirm to turn it on.", addon.warning));
+                let warning = &addon.warning;
+                return Err(msg!("{warning} Confirm to turn it on."));
             }
             if !dir.join(".git").is_dir() {
-                return Err("Install the project first.".into());
+                return Err(msg_str!("Install the project first.").into());
             }
             let source =
                 addons::fetch_source(&addon, &workspace().join("add-on-sources").join(id))?;
@@ -1408,6 +1447,28 @@ fn with_advice_switch(current: &str, switch: &str) -> Result<String, String> {
     let mut pairs = std::collections::BTreeMap::new();
     pairs.insert(name.to_string(), value.to_string());
     Ok(addons::with_switches(current, &pairs, true))
+}
+
+/// One add-on for the Launch tab (`addons`).
+#[derive(Serialize)]
+struct AddonView {
+    id: String,
+    name: String,
+    summary: String,
+    /// What turning it on changes, shown before the player confirms.
+    warning: String,
+    /// The source's clone address, and its page at the pinned commit (GitHub only).
+    source: String,
+    source_url: Option<String>,
+    /// The porting guide at the pinned commit, for a project the patches don't fit.
+    guide_url: Option<String>,
+    /// The commit the patches were cut against.
+    base: Option<String>,
+    /// The switches it sets, as `NAME=value` lines.
+    switches: Vec<String>,
+    on: bool,
+    /// Whether the project's history has `base`; null when that can't be told.
+    fits: Option<bool>,
 }
 
 #[cfg(test)]

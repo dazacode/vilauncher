@@ -555,6 +555,26 @@ mod tests {
                 .unwrap_or_else(|| panic!("known-problems.json: unclosed brace in {summary:?}"));
             found.insert(normalized, "known-problems/known-problems.json".to_owned());
         }
+        // The shipped add-ons' name, summary and warning reach the window translated
+        // (the Launch tab's add-ons), so each is a message too.
+        let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("addons");
+        let mut manifests: Vec<PathBuf> = std::fs::read_dir(&folder)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().is_some_and(|e| e == "json"))
+            .collect();
+        manifests.sort();
+        for manifest in manifests {
+            let name = format!("addons/{}", manifest.file_name().unwrap().to_string_lossy());
+            let json: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&manifest).unwrap()).unwrap();
+            for field in ["name", "summary", "warning"] {
+                let text = json[field].as_str().unwrap_or_default();
+                let normalized =
+                    normalize(text).unwrap_or_else(|| panic!("{name}: unclosed brace in {text:?}"));
+                found.insert(normalized, name.clone());
+            }
+        }
         found
     }
 

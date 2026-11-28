@@ -1,17 +1,18 @@
 import { ClipboardPaste, Copy, Download, FileUp, MoreHorizontal, Save, Trash2 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { Dialog } from "@/components/ui/dialog"
 import { Group, Row } from "@/components/ui/group"
 import { Input, Textarea } from "@/components/ui/input"
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from "@/components/ui/menu"
 import { Select } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { useT } from "@/i18n"
+import { Trans, useT } from "@/i18n"
 import { copyText, pickFile, saveFile } from "@/lib/api"
 import { useDraft } from "@/lib/hooks"
 import { run, useStore } from "@/lib/store"
-import type { Project } from "@/lib/types"
+import type { AddonView, Project } from "@/lib/types"
 
 export function LaunchTab({ project: p }: { project: Project }) {
   const t = useT()
@@ -92,8 +93,102 @@ export function LaunchTab({ project: p }: { project: Project }) {
           </Row>
         </Group>
       )}
+      {p.kind === "git" && !p.standalone && <Addons project={p} />}
       <Presets project={p} />
     </div>
+  )
+}
+
+
+/** The add-ons for this project (addons.rs): each puts a patch series on a branch of the project's code and sets its switches. */
+function Addons({ project: p }: { project: Project }) {
+  const t = useT()
+  const busy = useStore((s) => s.snap!.job.running || s.snap!.active_builds > 0)
+  const [list, setList] = useState<AddonView[] | null>(null)
+  const [asking, setAsking] = useState<AddonView | null>(null)
+  const [working, setWorking] = useState<string | null>(null)
+  const load = useCallback(() => {
+    void run<AddonView[]>({ type: "addons", repo: p.repo }).then((found) => setList(found ?? []))
+  }, [p.repo])
+  useEffect(load, [load, p.installed, p.built, p.launch.switches])
+  if (!list || list.length === 0) return null
+
+  const set = async (addon: AddonView, on: boolean) => {
+    setWorking(addon.id)
+    const done = await run({ type: "addon_set", repo: p.repo, id: addon.id, on, confirmed: on }, t(on ? "library.addons.turnedOn" : "library.addons.turnedOff", { name: addon.name }))
+    setWorking(null)
+    if (done !== undefined) setAsking(null)
+    load()
+  }
+  const openLink = (url: string) => void run({ type: "open_link", url })
+
+  return (
+    <Group title={t("library.addons.title")} description={t("library.addons.description")}>
+      {list.map((addon) => {
+        const status = addon.on ? (
+          t("library.addons.on", { id: addon.id })
+        ) : !p.installed || addon.fits === null ? (
+          p.installed ? null : t("library.addons.needsInstall")
+        ) : addon.fits ? (
+          addon.base && t("library.addons.fits", { base: addon.base })
+        ) : addon.guide_url ? (
+          <Trans
+            k="library.addons.notFit"
+            values={{ base: addon.base ?? "" }}
+            tags={{ link: (s) => <button type="button" className="cursor-pointer text-accent-fg underline-offset-2 hover:underline" onClick={() => openLink(addon.guide_url!)}>{s}</button> }}
+          />
+        ) : (
+          t("library.addons.notFitNoGuide", { base: addon.base ?? "" })
+        )
+        const canTurnOn = p.installed && addon.fits !== false
+        return (
+          <Row
+            key={addon.id}
+            label={addon.name}
+            hint={
+              <>
+                <span className="block">{addon.summary}</span>
+                {status && <span className="mt-1 block">{status}</span>}
+              </>
+            }
+          >
+            {addon.source_url && (
+              <Button size="sm" variant="ghost" onClick={() => openLink(addon.source_url!)}>{t("library.addons.viewSource")}</Button>
+            )}
+            <Switch
+              checked={addon.on}
+              disabled={busy || working !== null || (!addon.on && !canTurnOn)}
+              onCheckedChange={(on) => (on ? setAsking(addon) : void set(addon, false))}
+              aria-label={t("library.addons.toggle", { name: addon.name })}
+            />
+          </Row>
+        )
+      })}
+      <Dialog
+        open={asking !== null}
+        onOpenChange={(open) => !open && working === null && setAsking(null)}
+        dismissable={working === null}
+        title={asking ? t("library.addons.confirmTitle", { name: asking.name }) : ""}
+        description={asking?.warning}
+        footer={
+          <>
+            <Button variant="primary" disabled={working !== null} onClick={() => asking && void set(asking, true)}>
+              {working ? t("library.addons.working") : t("library.addons.confirm")}
+            </Button>
+            <Button variant="ghost" disabled={working !== null} onClick={() => setAsking(null)}>
+              {t("common.cancel")}
+            </Button>
+          </>
+        }
+      >
+        {asking && asking.switches.length > 0 && (
+          <>
+            <p className="text-secondary font-medium text-fg">{t("library.addons.switches")}</p>
+            <pre className="mt-2 overflow-x-auto rounded-lg border border-line bg-fill-1 px-3 py-2 font-mono text-caption text-fg-2">{asking.switches.join("\n")}</pre>
+          </>
+        )}
+      </Dialog>
+    </Group>
   )
 }
 

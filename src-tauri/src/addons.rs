@@ -295,22 +295,44 @@ pub fn fetch_source(addon: &Addon, cache: &Path) -> Result<PathBuf, String> {
         c.args(["clone", "--quiet", "--"])
             .arg(&addon.source.repo)
             .arg(cache);
-        git_output(c)
-            .map_err(|error| format!("could not download {}: {error}", addon.source.repo))?;
+        let source = &addon.source.repo;
+        git_output(c).map_err(|error| msg!("Could not download {source}: {error}"))?;
     }
+    let source = &addon.source.repo;
     git(cache, &["fetch", "--quiet", "origin"])
-        .map_err(|error| format!("could not update {}: {error}", addon.source.repo))?;
+        .map_err(|error| msg!("Could not update {source}: {error}"))?;
     git(
         cache,
         &["checkout", "--quiet", "--detach", &addon.source.reference],
     )
     .map_err(|error| {
-        format!(
-            "{} has no commit {}: {error}",
-            addon.source.repo, addon.source.reference
-        )
+        let commit = &addon.source.reference;
+        msg!("{source} has no commit {commit}: {error}")
     })?;
     Ok(cache.to_path_buf())
+}
+
+/// Whether the add-on's patches were made for this project: its history has the commit
+/// the patches were cut against. None when that cannot be told (no patches or no base,
+/// or the project is not a Git checkout yet). A project without the base almost never
+/// takes the series: `git am` finds neither the context nor the blobs for a three-way merge.
+pub fn fits(repo: &Path, addon: &Addon) -> Option<bool> {
+    let base = addon.patches.as_ref()?.base.as_deref()?;
+    if !repo.join(".git").exists() {
+        return None;
+    }
+    Some(git(repo, &["cat-file", "-e", &format!("{base}^{{commit}}")]).is_ok())
+}
+
+/// A web page for a file of the source at the pinned commit, when the source is on GitHub.
+pub fn source_page(addon: &Addon, path: Option<&str>) -> Option<String> {
+    let repo = addon.source.repo.strip_prefix("https://github.com/")?;
+    let repo = repo.trim_end_matches('/').trim_end_matches(".git");
+    let reference = &addon.source.reference;
+    Some(match path {
+        Some(path) => format!("https://github.com/{repo}/blob/{reference}/{path}"),
+        None => format!("https://github.com/{repo}/tree/{reference}"),
+    })
 }
 
 /// The branch the project is on, or its commit when it is detached.
@@ -347,10 +369,10 @@ fn patch_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
 /// An add-on with no patches only records where the project was.
 pub fn apply(repo: &Path, addon: &Addon, source: &Path) -> Result<Applied, String> {
     if has_changes(repo)? {
-        return Err(
+        return Err(msg_str!(
             "The project has uncommitted changes. Save or discard them before turning on an add-on."
-                .into(),
-        );
+        )
+        .into());
     }
     let original = current_ref(repo)?;
     let Some(patches) = &addon.patches else {
@@ -379,7 +401,7 @@ pub fn apply(repo: &Path, addon: &Addon, source: &Path) -> Result<Applied, Strin
             &["rev-list", "--count", &format!("{original}..{branch}")],
         )?;
         if ahead == "0" {
-            return Err(format!(
+            return Err(msg!(
                 "The branch {branch} exists without the add-on's commits. Delete it, then turn the add-on on again."
             ));
         }
@@ -412,19 +434,15 @@ pub fn apply(repo: &Path, addon: &Addon, source: &Path) -> Result<Applied, Strin
             let _ = git(repo, &["am", "--abort"]);
             let _ = git(repo, &["checkout", "--quiet", &original]);
             let _ = git(repo, &["branch", "-D", &branch]);
-            let guide = addon
-                .guide
-                .as_deref()
-                .map(|guide| {
-                    format!(
-                        " To port it by hand, read {guide} in {}.",
-                        addon.source.repo
-                    )
-                })
-                .unwrap_or_default();
-            Err(format!(
-                "The add-on's patches do not apply to this project, so nothing was changed ({error}).{guide}"
-            ))
+            let source = &addon.source.repo;
+            Err(match addon.guide.as_deref() {
+                Some(guide) => msg!(
+                    "The add-on's patches do not apply to this project, so nothing was changed. To port them by hand, read {guide} in {source}. Git said: {error}"
+                ),
+                None => msg!(
+                    "The add-on's patches do not apply to this project, so nothing was changed. Git said: {error}"
+                ),
+            })
         }
     }
 }
@@ -436,15 +454,15 @@ pub fn remove(repo: &Path, applied: &Applied) -> Result<(), String> {
         return Ok(());
     }
     if has_changes(repo)? {
-        return Err(
+        return Err(msg_str!(
             "The project has uncommitted changes on the add-on's branch. Save or discard them before turning the add-on off."
-                .into(),
-        );
+        )
+        .into());
     }
     if current_ref(repo)? != applied.branch {
-        return Err(format!(
-            "The project is not on {} now, so the add-on stays on. Switch the project back to {} to turn it off.",
-            applied.branch, applied.branch
+        let branch = &applied.branch;
+        return Err(msg!(
+            "The project is not on {branch} now, so the add-on stays on. Switch the project back to {branch} to turn it off."
         ));
     }
     git(repo, &["checkout", "--quiet", &applied.original]).map(|_| ())
@@ -689,6 +707,40 @@ two
             "Player work"
         );
         std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_project_fits_only_when_its_history_has_the_patch_base() {
+        let root = temp("fits");
+        run_git(&root, &["init", "-q", "-b", "main"]);
+        std::fs::write(root.join("engine.txt"), "one\n").unwrap();
+        run_git(&root, &["add", "."]);
+        run_git(&root, &["commit", "-q", "-m", "base"]);
+        let base = run_git(&root, &["rev-parse", "HEAD"]);
+        let mut addon = parse(&manifest(Some("patches"), &base, &[])).unwrap();
+        addon.patches.as_mut().unwrap().base = Some(base[..10].to_string());
+        assert_eq!(fits(&root, &addon), Some(true));
+        addon.patches.as_mut().unwrap().base = Some("0123456789abcdef".into());
+        assert_eq!(fits(&root, &addon), Some(false));
+        addon.patches.as_mut().unwrap().base = None;
+        assert_eq!(fits(&root, &addon), None);
+        assert_eq!(fits(&root.join("not-a-repo"), &addon), None);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn source_pages_point_at_the_pinned_commit_on_github() {
+        let mut addon = parse(&manifest(None, "85c86c1", &[])).unwrap();
+        assert_eq!(source_page(&addon, Some("AGENTS.md")), None);
+        addon.source.repo = "https://github.com/someone/stack.git".into();
+        assert_eq!(
+            source_page(&addon, Some("AGENTS.md")).as_deref(),
+            Some("https://github.com/someone/stack/blob/85c86c1/AGENTS.md")
+        );
+        assert_eq!(
+            source_page(&addon, None).as_deref(),
+            Some("https://github.com/someone/stack/tree/85c86c1")
+        );
     }
 
     #[test]
