@@ -706,7 +706,6 @@ fn finds_a_unique_nested_victory_workspace_and_prefers_the_root() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
-/// Checks a cloned repo's Cargo.toml for a custom build profile (e.g. `diag`).
 fn documented_scarlet_script(root: &Path) -> Option<&'static str> {
     let readme = std::fs::read_to_string(root.join("README.md"))
         .ok()?
@@ -729,6 +728,7 @@ fn documented_scarlet_script(root: &Path) -> Option<&'static str> {
     })
 }
 
+/// Chooses the project's build profile, honoring a documented Scarlet release build.
 fn detect_build_profile(repo_dir: &Path) -> &'static str {
     if documented_scarlet_script(repo_dir).is_some() {
         return "release";
