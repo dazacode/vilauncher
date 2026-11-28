@@ -2753,6 +2753,11 @@ fn run_until_f1_restart(
                     let pid = job.lock().unwrap().pid;
                     if let Some(pid) = pid {
                         if f1_menu_text() != before {
+                            // Give the game time to finish writing the file, and check it still differs.
+                            std::thread::sleep(std::time::Duration::from_millis(1500));
+                            if finished.load(Ordering::Relaxed) || f1_menu_text() == before {
+                                continue;
+                            }
                             changed.store(true, Ordering::Relaxed);
                             crate::platform::stop_program(pid);
                             break;
@@ -2762,11 +2767,17 @@ fn run_until_f1_restart(
             })
         };
         let result = run_with(job, ctx, c, |pid| spawned(pid));
+        // The process has exited: no pid is left for the watcher to end.
+        job.lock().unwrap().pid = None;
         finished.store(true, Ordering::Relaxed);
         let _ = watcher.join();
         let stopped = job.lock().unwrap().stopped;
-        if !changed.load(Ordering::Relaxed) || stopped || restarts >= RESTARTS_AT_MOST {
+        if !changed.load(Ordering::Relaxed) {
             return result;
+        }
+        // The launcher closed the game for the F1 menu: that is not a crash, so nothing is reported for it.
+        if stopped || restarts >= RESTARTS_AT_MOST {
+            return Ok(());
         }
         restarts += 1;
         job.lock().unwrap().play_stats = history.clone();
@@ -3918,6 +3929,10 @@ fn run_with(
 fn record_play_spawn(job: &Arc<Mutex<Job>>, p: &Project, pid: u32) {
     let mut job = job.lock().unwrap();
     job.pid = Some(pid);
+    // A Stop pressed while the program was starting found no pid to end: end it now.
+    if job.stopped {
+        crate::platform::stop_program(pid);
+    }
     job.session = job
         .play_stats
         .take()

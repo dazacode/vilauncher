@@ -134,7 +134,10 @@
   "{file} is not in the SDK: nothing kept.": "SDK 中沒有 {file}：未保留任何檔案。",
   "Could not read {file} from the SDK: {error}. Nothing was kept.": "無法從 SDK 讀取 {file}：{error}。未保留任何檔案。",
   "Could not write {file}: {error}. Nothing was kept.": "無法寫入 {file}：{error}。未保留任何檔案。",
-  "Could not keep {file}: {error}.": "無法保留 {file}：{error}。",
   "The upscaler DLL {path} is not a file.": "升頻 DLL {path} 不是檔案。",
-  "The upscaler must be a .dll file.": "升頻檔案必須是 .dll 檔。"
+  "The upscaler must be a .dll file.": "升頻檔案必須是 .dll 檔。",
+  "Could not keep {file}: {error}. The files are not usable until Get NVIDIA's files runs again.": "無法保留 {file}：{error}。在重新執行「取得 NVIDIA 檔案」之前，這些檔案無法使用。",
+  "Getting NVIDIA's files stopped unexpectedly: nothing kept.": "取得 NVIDIA 檔案時意外中止：未保留任何檔案。",
+  "LOCALAPPDATA is not set, so there is no folder to keep NVIDIA's files in.": "未設定 LOCALAPPDATA，因此沒有可保存 NVIDIA 檔案的資料夾。",
+  "{name}: the system folder is not known": "{name}：無法找到系統資料夾"
 }

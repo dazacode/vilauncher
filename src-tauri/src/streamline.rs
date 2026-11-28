@@ -6,8 +6,9 @@
 //! a plain GET of one fixed URL, and only when the player presses the button.
 //!
 //! The same folder is the one Neptune's own launcher uses, so files fetched by either are used by both.
-//! Each kept file is recorded in `verified.txt` with its size and time; a run checks that record instead
-//! of running the signature check again, and a file that changed since is not used until it is checked.
+//! Each kept file is recorded in `verified.txt` with its size and SHA-256 hash. A run checks that record
+//! (a read and a hash of each file, no signature check), so a file that changed since it was checked is
+//! not used until it is checked again.
 
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -15,7 +16,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use crate::notify::Ctx;
 
@@ -45,39 +46,36 @@ pub(crate) fn needed(framegen: bool, dlss: bool) -> Vec<&'static str> {
 }
 
 /// Where the files are kept: `%LOCALAPPDATA%\Neptune\streamline`, the folder Neptune's launcher uses.
+/// Empty when `LOCALAPPDATA` is not set, which means nothing can be kept.
 pub(crate) fn default_dir() -> PathBuf {
     std::env::var_os("LOCALAPPDATA")
         .map(|dir| PathBuf::from(dir).join("Neptune").join("streamline"))
         .unwrap_or_default()
 }
 
-/// Why `dir` cannot serve `files` for a run, or None when it can: each is there, and was checked
-/// (signed by NVIDIA) and has not changed since. Reads files and one record only; it runs at each Play.
+/// Why `dir` cannot serve `files` for a run, or None when it can: each is there and matches the record
+/// written when it was checked (same size and SHA-256). It runs at each Play, so it reads and hashes the
+/// files but does not run the signature check again.
 pub(crate) fn missing(dir: &Path, files: &[&str]) -> Option<String> {
     if !dir.is_dir() {
         return Some(format!("no folder {}", dir.display()));
     }
     let record = read_record(dir);
     for file in files {
-        let Ok(meta) = fs::metadata(dir.join(file)) else {
+        let path = dir.join(file);
+        let Ok(meta) = fs::metadata(&path) else {
             return Some(format!("{file} is not in {}", dir.display()));
         };
         match record.get(*file) {
-            Some(&(size, time)) if size == meta.len() && time == modified_secs(&meta) => {}
+            Some((size, hash)) if *size == meta.len() && file_sha256(&path).is_ok_and(|now| &now == hash) => {}
             _ => return Some(format!("{file} is not checked as NVIDIA's: use Get NVIDIA's files")),
         }
     }
     None
 }
 
-fn modified_secs(meta: &fs::Metadata) -> u64 {
-    meta.modified()
-        .ok()
-        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-        .map_or(0, |time| time.as_secs())
-}
-
-fn read_record(dir: &Path) -> HashMap<String, (u64, u64)> {
+/// The record: `name<TAB>size<TAB>sha256` per file.
+fn read_record(dir: &Path) -> HashMap<String, (u64, String)> {
     fs::read_to_string(dir.join(MARKER))
         .unwrap_or_default()
         .lines()
@@ -85,10 +83,28 @@ fn read_record(dir: &Path) -> HashMap<String, (u64, u64)> {
             let mut parts = line.split('\t');
             let name = parts.next()?;
             let size = parts.next()?.parse().ok()?;
-            let time = parts.next()?.parse().ok()?;
-            Some((name.to_string(), (size, time)))
+            let hash = parts.next()?.to_string();
+            Some((name.to_string(), (size, hash)))
         })
         .collect()
+}
+
+fn file_sha256(path: &Path) -> io::Result<String> {
+    let mut file = File::open(path)?;
+    let mut context = ring::digest::Context::new(&ring::digest::SHA256);
+    let mut buffer = vec![0u8; 1 << 20];
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        context.update(&buffer[..read]);
+    }
+    Ok(hex(context.finish().as_ref()))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Checks each of `files` in `dir` (presence and NVIDIA's signature), and records them as checked.
@@ -97,8 +113,11 @@ pub(crate) fn verify_and_record(dir: &Path, files: &[&str]) -> Result<(), String
     for file in files {
         let path = dir.join(file);
         signed_by_nvidia(&path)?;
-        let meta = fs::metadata(&path).map_err(|error| msg!("{file} could not be read: {error}"))?;
-        lines.push_str(&format!("{file}\t{}\t{}\n", meta.len(), modified_secs(&meta)));
+        let size = fs::metadata(&path)
+            .map_err(|error| msg!("{file} could not be read: {error}"))?
+            .len();
+        let hash = file_sha256(&path).map_err(|error| msg!("{file} could not be read: {error}"))?;
+        lines.push_str(&format!("{file}\t{size}\t{hash}\n"));
     }
     fs::write(dir.join(MARKER), lines).map_err(|error| msg!("could not record the checked files: {error}"))
 }
@@ -109,7 +128,11 @@ pub(crate) fn verify_and_record(dir: &Path, files: &[&str]) -> Result<(), String
 fn signed_by_nvidia(path: &Path) -> Result<(), String> {
     const SCRIPT: &str = "$s = Get-AuthenticodeSignature -LiteralPath $env:VL_SIGNED_FILE; if ($s.Status -ne 'Valid') { 'status:' + $s.Status } else { 'signer:' + $s.SignerCertificate.GetNameInfo('SimpleName', $false) }";
     let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
-    let mut command = Command::new("powershell.exe");
+    // The full path to Windows PowerShell: a plain name would be looked up in the search path, where a
+    // writable folder could hold a copy.
+    let root = std::env::var_os("SystemRoot").ok_or_else(|| msg!("{name}: the system folder is not known"))?;
+    let powershell = PathBuf::from(root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
+    let mut command = Command::new(powershell);
     command
         .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", SCRIPT])
         .env("VL_SIGNED_FILE", path)
@@ -148,10 +171,14 @@ pub(crate) struct Fetch {
 
 pub(crate) type Shared = Arc<Mutex<Fetch>>;
 
+fn lock(state: &Shared) -> std::sync::MutexGuard<'_, Fetch> {
+    state.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Starts the fetch on its own thread, unless one runs already.
 pub(crate) fn start(state: &Shared, ctx: &Ctx, dir: PathBuf) {
     {
-        let mut fetch = state.lock().unwrap();
+        let mut fetch = lock(state);
         if fetch.busy {
             return;
         }
@@ -160,30 +187,36 @@ pub(crate) fn start(state: &Shared, ctx: &Ctx, dir: PathBuf) {
     let (state, ctx) = (state.clone(), ctx.clone());
     std::thread::spawn(move || {
         let set = |text: String| {
-            let mut fetch = state.lock().unwrap();
-            fetch.status = Some(text);
-            drop(fetch);
+            lock(&state).status = Some(text);
             ctx.request_repaint();
         };
-        let result = fetch_into(&dir, &|got: u64| {
-            let mut fetch = state.lock().unwrap();
-            fetch.got = got;
-            drop(fetch);
+        let progress = |got: u64| {
+            lock(&state).got = got;
             ctx.request_repaint();
-        }, &set);
-        let mut fetch = state.lock().unwrap();
-        fetch.busy = false;
-        fetch.status = Some(match result {
-            Ok(text) => text,
-            Err(error) => error,
-        });
-        drop(fetch);
+        };
+        // A panic inside the fetch must still clear `busy`, or the button stays disabled until restart.
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            fetch_into(&dir, &progress, &set)
+        }));
+        let status = match outcome {
+            Ok(Ok(text)) => text,
+            Ok(Err(error)) => error,
+            Err(_) => msg_str!("Getting NVIDIA's files stopped unexpectedly: nothing kept.").to_string(),
+        };
+        {
+            let mut fetch = lock(&state);
+            fetch.busy = false;
+            fetch.status = Some(status);
+        }
         ctx.request_repaint();
     });
 }
 
 /// The fetch itself: returns the closing status line, or the error to show. Keeps nothing on an error.
 fn fetch_into(dir: &Path, progress: &dyn Fn(u64), say: &dyn Fn(String)) -> Result<String, String> {
+    if dir.as_os_str().is_empty() {
+        return Err(msg_str!("LOCALAPPDATA is not set, so there is no folder to keep NVIDIA's files in.").to_string());
+    }
     let files = needed(true, true);
     let dir_text = dir.display().to_string();
     if dir.is_dir() && files.iter().all(|file| dir.join(file).is_file()) {
@@ -252,7 +285,7 @@ fn download_and_check(
     if got != ZIP_SIZE {
         return Err(msg!("The download ended early at {got} bytes: nothing kept."));
     }
-    let hash: String = digest.finish().as_ref().iter().map(|b| format!("{b:02x}")).collect();
+    let hash = hex(digest.finish().as_ref());
     if hash != ZIP_SHA256 {
         return Err(msg_str!("The download's SHA-256 is not NVIDIA's release's: nothing kept.").to_string());
     }
@@ -275,6 +308,7 @@ fn download_and_check(
             }
         }
         let index = found.ok_or_else(|| msg!("{file} is not in the SDK: nothing kept."))?;
+        // The output name is the constant name from our own list, never the zip's entry name.
         let fresh = work.join(file);
         let mut entry = archive
             .by_index(index)
@@ -284,14 +318,17 @@ fn download_and_check(
         drop(out);
         extracted.push(*file);
     }
-    // Every file is checked before any is kept, so the folder never holds a mix.
+    // Every file is checked before any is kept, so the folder never holds a mix of new and old.
     for file in &extracted {
         signed_by_nvidia(&work.join(file))?;
     }
+    // Replacing the files one at a time can fail part way (a DLL in use, say). If it does, the record is
+    // removed first, so the folder is not used until a later fetch checks it again.
+    let _ = fs::remove_file(dir.join(MARKER));
     for file in &extracted {
         fs::rename(work.join(file), dir.join(file))
             .or_else(|_| fs::copy(work.join(file), dir.join(file)).map(|_| ()))
-            .map_err(|error| msg!("Could not keep {file}: {error}."))?;
+            .map_err(|error| msg!("Could not keep {file}: {error}. The files are not usable until Get NVIDIA's files runs again."))?;
     }
     verify_and_record(dir, files)
 }
@@ -301,8 +338,9 @@ fn download_and_check(
 pub(crate) fn record_for_tests(dir: &Path, files: &[&str]) {
     let mut lines = String::new();
     for file in files {
-        if let Ok(meta) = fs::metadata(dir.join(file)) {
-            lines.push_str(&format!("{file}\t{}\t{}\n", meta.len(), modified_secs(&meta)));
+        let path = dir.join(file);
+        if let (Ok(meta), Ok(hash)) = (fs::metadata(&path), file_sha256(&path)) {
+            lines.push_str(&format!("{file}\t{}\t{hash}\n", meta.len()));
         }
     }
     fs::write(dir.join(MARKER), lines).unwrap();
@@ -328,7 +366,7 @@ mod tests {
     }
 
     #[test]
-    fn a_file_is_used_only_once_its_record_matches_it() {
+    fn a_file_is_used_only_once_its_record_matches_its_contents() {
         let dir = scratch("record");
         let files = needed(false, false);
         for file in &files {
@@ -339,8 +377,8 @@ mod tests {
         // Recorded as checked: used.
         record_for_tests(&dir, &files);
         assert_eq!(missing(&dir, &files), None);
-        // Changed since it was checked (a different size): not used until checked again.
-        fs::write(dir.join(files[0]), b"a different file, longer").unwrap();
+        // Same size, different bytes: not used, even though the size still matches.
+        fs::write(dir.join(files[0]), b"NOT really a dll").unwrap();
         assert!(missing(&dir, &files).is_some_and(|why| why.contains(files[0])));
         fs::remove_dir_all(&dir).ok();
     }
