@@ -164,8 +164,8 @@ function group(snap: Snapshot, query: string, filter: number) {
     const text = !query || p.name.toLowerCase().includes(query) || p.repo.toLowerCase().includes(query)
     const card = (name: string) => p.custom || p.gpu.some((g) => g.toLowerCase() === name)
     const tier = p.custom || s.list_tier === 0 || p.listing.tier === (s.list_tier === 1 ? "tracked" : "watchlist")
-    // Taken-down projects are hidden unless the player turns them on.
-    const taken = s.show_nuked || !p.listing.nuked
+    // Taken-down projects are hidden unless the player turns them on. An installed copy is always shown.
+    const taken = s.show_nuked || !p.listing.nuked || p.installed
     return text && tier && taken && (filter === 1 ? card("nvidia") : filter === 2 ? card("amd") : true)
   }
   const listed = sortProjects(snap.list.items.filter(keep), s.list_sort)
@@ -390,7 +390,7 @@ function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: 
     line = <><Spinner className="size-3 text-accent-fg" /> {shortStage(job.stage_kind, job.stage)}</>
     tone = "text-accent-fg"
   } else if (p.listing.nuked) {
-    line = t("shell.row.takenDown")
+    line = t(p.installed ? "shell.row.keptCopy" : "shell.row.takenDown")
     tone = "text-warn"
   } else if (p.update) {
     line = t("shell.row.update")
@@ -415,8 +415,8 @@ function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: 
       onFocus={onFocus}
       aria-current={selected ? "true" : undefined}
       onClick={() => {
-        // A taken-down project has nothing to install: its page on VIPortLive explains it.
-        if (p.listing.nuked) {
+        // A taken-down project has nothing to install: its page on VIPortLive explains it. An installed copy still plays.
+        if (p.listing.nuked && !p.installed) {
           void openUrl(p.listing.id ? `${snap.brand.site}/projects/${p.listing.id}` : snap.brand.site)
           return
         }

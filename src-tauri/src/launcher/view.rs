@@ -344,11 +344,20 @@ impl App {
     pub(crate) fn snapshot(&mut self) -> Snapshot {
         self.tick();
         let projects = self.projects.lock().unwrap().clone();
-        let (status, error, listed) = match projects {
+        if let Some(Ok(list)) = &projects {
+            if !self.kept_synced {
+                self.sync_kept(list);
+                self.kept_synced = true;
+            }
+        }
+        let (status, error, mut listed) = match projects {
             None => ("loading", None, Vec::new()),
             Some(Err(e)) => ("error", Some(e), Vec::new()),
             Some(Ok(list)) => ("ready", None, list),
         };
+        // Installed projects the list does not carry (or not yet, while it loads) stay in the list.
+        let kept = self.kept_missing(&listed);
+        listed.extend(kept);
         let items = listed.iter().map(|p| self.project_view(p)).collect();
         let custom = self
             .saved
