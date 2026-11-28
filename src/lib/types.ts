@@ -49,6 +49,19 @@ export interface SystemInfo {
   cpu_cores: number | null
   /** Running under Rosetta 2 (a translated process on Apple silicon). */
   translated?: boolean
+  /** Windows only (null elsewhere): the most memory programs may commit (RAM plus page file), in GB. */
+  commit_limit_gb?: number | null
+  /** Windows only: the memory committed right now, in GB. */
+  commit_used_gb?: number | null
+}
+
+/** A possible setting for this PC (src-tauri/src/known_problems.rs). `recommended` only for two-machine A/B evidence. */
+export interface AdviceItem {
+  id: string
+  switch: string
+  summary: string
+  source: string
+  recommended: boolean
 }
 
 export interface Project {
@@ -67,6 +80,8 @@ export interface Project {
   highlights: string[]
   /** What still stops it, from the tracker. */
   blockers: string[]
+  /** Possible settings for this PC (known_problems.rs); only Apply sets one. */
+  advice: AdviceItem[]
   listing: {
     id: string | null
     /** Why VIPortLive took it down, when it did. */
@@ -76,7 +91,9 @@ export interface Project {
     commits7d: number | null
   }
   /** Memory the author reported it using, read from the summary; null when not said. */
-  reported: { ram_gb: number | null; vram_gb: number | null }
+  reported: { ram_gb: number | null; vram_gb: number | null; commit_gb: number | null }
+  /** Whether the PC's commit limit is short of the author's peak commit plus the margin; null when either is not known. */
+  commit_short: boolean | null
   custom: boolean
   kind: "git" | "zip" | "local"
   /** The program's format, when there is one: a Windows program needs a runner on a Mac. */
@@ -97,6 +114,8 @@ export interface Project {
     pending: string | null
     new_install: boolean
     last_run: string | null
+    /** The build has not run since it was made: its first minutes are slow while shaders compile. */
+    warm_up: boolean
   } | null
   launch: {
     args: string | null
@@ -129,6 +148,9 @@ export interface Snapshot {
     launch_args: string
     extra_env: string
     graphics: Graphics
+    nvidia: { busy: boolean; status: string | null; ready: boolean; got_mb: number; total_mb: number; dir: string }
+    fsr_dll: string | null
+    fsr_ok: boolean
     gpu_filter: number
     show_nuked: boolean
     /** 0 VIPortLive's order, 1 name, 2 frame rate, 3 stars, 4 recent commits. */
@@ -269,6 +291,7 @@ export type Action =
   | { type: "set_gpu_filter"; value: number }
   | { type: "set_list_options"; show_nuked: boolean; sort: number; tier: number }
   | { type: "report"; repo: string }
+  | { type: "diagnostic_summary"; repo: string }
   | { type: "open_link"; url: string }
   | { type: "set_spec"; ram_gb: number | null; vram_gb: number | null }
   | { type: "check_repo"; repo: string }
@@ -279,6 +302,7 @@ export type Action =
   | { type: "start_with_save"; repo: string; choice: SaveChoice }
   | { type: "warm"; repo: string }
   | { type: "fix"; repo: string }
+  | { type: "clear_shader_cache"; repo: string }
   | { type: "rollback"; repo: string }
   | { type: "set_update_warning"; show: boolean }
   | { type: "set_agent_access"; enabled: boolean }
@@ -303,6 +327,7 @@ export type Action =
   | { type: "set_project_keep_game_settings"; repo: string; value: boolean }
   | { type: "set_project_args"; repo: string; value: string | null }
   | { type: "set_project_switches"; repo: string; value: string | null }
+  | { type: "apply_advice"; repo: string; id: string }
   | { type: "set_script_option"; repo: string; option: keyof ScriptOptions; enabled: boolean }
   | { type: "set_project_notes"; repo: string; notes: string }
   | { type: "save_preset"; repo: string; name: string; include_switches: boolean }
@@ -329,6 +354,8 @@ export type Action =
   | { type: "accept_notice" }
   | { type: "storage_scan" }
   | { type: "clear_cache"; repo: string }
+  | { type: "get_nvidia_files" }
+  | { type: "set_fsr_dll"; path: string | null }
   | { type: "clear_previous"; repo: string }
   | { type: "set_language"; language: string | null }
   | { type: "set_system_languages"; languages: string[] }

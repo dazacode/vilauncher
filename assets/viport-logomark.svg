@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>ViPort logomark</title>
+  <defs>
+    <linearGradient id="sun" x1="0" y1="140" x2="0" y2="390" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffb36b"/>
+      <stop offset="0.45" stop-color="#ff5fae"/>
+      <stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <clipPath id="v">
+      <polygon points="110,160 196,160 256,290 316,160 402,160 278,380 234,380"/>
+    </clipPath>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#140b24"/>
+  <g transform="translate(256 256) scale(1.15) translate(-222 -257)"><g transform="translate(256 0) skewX(-12) translate(-256 0)">
+    <rect x="80" y="140" width="352" height="260" fill="url(#sun)" clip-path="url(#v)"/>
+    <g fill="#140b24" clip-path="url(#v)">
+      <rect x="60" y="246" width="400" height="8"/>
+      <rect x="60" y="268" width="400" height="11"/>
+      <rect x="60" y="294" width="400" height="14"/>
+      <rect x="60" y="324" width="400" height="18"/>
+      <rect x="60" y="356" width="400" height="24"/>
+    </g>
+  </g></g>
+</svg>

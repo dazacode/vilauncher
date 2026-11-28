@@ -11,7 +11,7 @@ import { ControllerKeysGroup } from "@/features/settings/controller-keys"
 import { LanguageSelect } from "@/features/shared/language-select"
 import { ResponsibilityDialog } from "@/features/shared/responsibility"
 import { formatBytes, formatList, Trans, useT } from "@/i18n"
-import { openUrl, pickFolder } from "@/lib/api"
+import { openUrl, pickFile, pickFolder } from "@/lib/api"
 import { useDraft } from "@/lib/hooks"
 import { pawsUnlocked, setTheme, THEMES, type Theme, themeLabel, useTheme } from "@/lib/theme"
 import { run, useStore } from "@/lib/store"
@@ -95,6 +95,35 @@ export function SettingsView() {
               </div>
               <GraphicsGroups graphics={s.graphics} onChange={(graphics) => void run({ type: "set_default_graphics", graphics })} />
             </div>
+
+            <Group title={t("settings.upscaling.title")} description={t("settings.upscaling.description")}>
+              <Row
+                label={t("settings.nvidia.title")}
+                hint={s.nvidia.busy ? s.nvidia.status ?? "" : s.nvidia.status ?? (s.nvidia.ready ? t("settings.nvidia.ready") : t("settings.nvidia.missing"))}
+              >
+                <Button size="sm" variant="primary" disabled={s.nvidia.busy} onClick={() => void run({ type: "get_nvidia_files" })}>
+                  {t("settings.nvidia.get")}
+                </Button>
+              </Row>
+              <Row label={t("settings.fsr.title")} hint={s.fsr_dll ? (s.fsr_ok ? s.fsr_dll : t("settings.fsr.gone")) : t("settings.fsr.none")}>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      const path = await pickFile(t("settings.fsr.pickTitle"), [{ name: t("settings.fsr.filter"), extensions: ["dll"] }])
+                      if (path) void run({ type: "set_fsr_dll", path })
+                    }}
+                  >
+                    {t("settings.fsr.choose")}
+                  </Button>
+                  {s.fsr_dll && (
+                    <Button size="sm" variant="ghost" onClick={() => void run({ type: "set_fsr_dll", path: null })}>
+                      {t("settings.fsr.clear")}
+                    </Button>
+                  )}
+                </div>
+              </Row>
+            </Group>
 
             <Group title={t("settings.shaders.title")} description={t("settings.shaders.description")}>
               <Row label={t("settings.shaders.warm")} hint={t("settings.shaders.warmHint")}>

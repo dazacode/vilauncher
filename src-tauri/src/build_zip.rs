@@ -33,7 +33,14 @@ fn valid_component(part: &str) -> bool {
             })
 }
 
-pub fn extract(input: &Path, destination: &Path) -> Result<PathBuf, String> {
+/// What a ZIP holds: a program to run, or a source tree (a Cargo workspace) to build.
+#[derive(Debug, PartialEq)]
+pub enum Extracted {
+    Program(PathBuf),
+    Source,
+}
+
+pub fn extract(input: &Path, destination: &Path) -> Result<Extracted, String> {
     let file = File::open(input).map_err(|error| error.to_string())?;
     let mut zip = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
     fs::create_dir(destination).map_err(|error| error.to_string())?;
@@ -44,13 +51,15 @@ pub fn extract(input: &Path, destination: &Path) -> Result<PathBuf, String> {
     result.map_err(|error| error.to_string())
 }
 
-fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::Result<PathBuf> {
+fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::Result<Extracted> {
     if zip.len() > 50_000 {
         return Err(io::Error::other(msg_str!("The build ZIP contains too many entries.")));
     }
     let mut remaining = MAX_EXPANDED_BYTES;
     let mut executables = Vec::new();
     let mut bundles = Vec::new();
+    // A Cargo.toml at the top or one folder down: the ZIP holds a source tree.
+    let mut manifest = false;
     for index in 0..zip.len() {
         let mut entry = zip.by_index(index)?;
         let name = entry.name()?;
@@ -62,6 +71,11 @@ fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::
         }
         let relative = PathBuf::from(name);
         let output = destination.join(&relative);
+        if relative.file_name().is_some_and(|file| file == "Cargo.toml")
+            && relative.components().count() <= 2
+        {
+            manifest = true;
+        }
         if entry.is_symlink() {
             // macOS bundles carry symlinks; they are recreated where the system has them.
             let mut target = String::new();
@@ -114,20 +128,25 @@ fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::
     crate::platform::clear_quarantine(destination);
     let mut victory = executables.iter().filter(|path| is_victory(path));
     let chosen = match (victory.next(), victory.next(), executables.as_slice()) {
-        (Some(exe), None, _) | (None, None, [exe]) => Ok(exe.clone()),
-        (None, None, []) => match bundles.as_slice() {
-            [app] => Ok(app.clone()),
-            [] => Err(io::Error::other(msg_str!("The ZIP contains no program."))),
-            _ => Err(io::Error::other(msg_str!(
-                "The ZIP contains multiple possible launch programs."
-            ))),
-        },
+        (Some(exe), None, _) | (None, None, [exe]) => Ok(Extracted::Program(exe.clone())),
+        (None, None, []) if bundles.len() == 1 => Ok(Extracted::Program(bundles[0].clone())),
+        // A source tree has its own scripts (git hooks, build helpers) that look like
+        // programs; it is built rather than run, so it is not refused for them.
+        _ if manifest => Ok(Extracted::Source),
+        (None, None, []) if bundles.is_empty() => {
+            Err(io::Error::other(msg_str!("The ZIP contains no program.")))
+        }
+        (None, None, []) => Err(io::Error::other(msg_str!(
+            "The ZIP contains multiple possible launch programs."
+        ))),
         _ => Err(io::Error::other(
             msg_str!("The ZIP contains multiple possible launch executables."),
         )),
     }?;
-    // Bundles keep their own inner permissions; a lone binary is made runnable.
-    crate::platform::make_executable(&destination.join(&chosen));
+    if let Extracted::Program(exe) = &chosen {
+        // Bundles keep their own inner permissions; a lone binary is made runnable.
+        crate::platform::make_executable(&destination.join(exe));
+    }
     Ok(chosen)
 }
 
@@ -209,11 +228,28 @@ mod tests {
         let destination = root.join("build");
         assert_eq!(
             extract(&archive, &destination).unwrap(),
-            Path::new("cool_fox/victory.exe")
+            Extracted::Program(PathBuf::from("cool_fox/victory.exe"))
         );
         assert_eq!(
             launch_defaults(&destination.join("cool_fox")),
             [("VICTORY_RELAY".into(), "2".into())]
+        );
+
+        // A source tree whose scripts look like programs is imported for building.
+        let source = root.join("source.zip");
+        let mut writer = zip::ZipWriter::new(File::create(&source).unwrap());
+        writer
+            .start_file("tree-src/Cargo.toml", options)
+            .unwrap();
+        writer.write_all(b"[workspace]\n").unwrap();
+        writer.start_file("tree-src/.githooks/pre-commit", options).unwrap();
+        writer.write_all(b"#!/bin/sh\n").unwrap();
+        writer.start_file("tree-src/launcher/build.sh", options).unwrap();
+        writer.write_all(b"#!/bin/sh\n").unwrap();
+        writer.finish().unwrap();
+        assert_eq!(
+            extract(&source, &root.join("source")).unwrap(),
+            Extracted::Source
         );
 
         let malicious = root.join("unsafe.zip");

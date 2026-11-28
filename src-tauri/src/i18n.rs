@@ -511,6 +511,17 @@ mod tests {
                 }
             }
         }
+        // The shipped known problems' summaries reach the window inside a message
+        // ("Known problem reported for this project: {summary}"), so each is a message too.
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("known-problems/known-problems.json");
+        let text = std::fs::read_to_string(&manifest).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&text).unwrap();
+        for entry in json["entries"].as_array().into_iter().flatten() {
+            let summary = entry["summary"].as_str().unwrap_or_default();
+            let normalized = normalize(summary)
+                .unwrap_or_else(|| panic!("known-problems.json: unclosed brace in {summary:?}"));
+            found.insert(normalized, "known-problems/known-problems.json".to_owned());
+        }
         found
     }
 

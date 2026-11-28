@@ -48,6 +48,25 @@ export default {
     title: "默认图形设置",
     description: "所有项目都会使用这些设置，除非你在该项目的“图形”标签页中单独更改。",
   },
+  upscaling: {
+    title: "升频（NVIDIA 与 AMD）",
+    description: "DLSS 与帧生成使用 NVIDIA 自己的文件，只有在你点击按钮时启动器才会下载。FSR 使用你自己的 AMD 升频 DLL。",
+  },
+  nvidia: {
+    title: "NVIDIA 文件（DLSS、帧生成）",
+    ready: "已就绪：已检查并保存在 Neptune 文件夹中。",
+    missing: "尚未获取。请点击“获取 NVIDIA 文件”（约 276 MB，来自 NVIDIA 的 GitHub）。",
+    get: "获取 NVIDIA 文件",
+  },
+  fsr: {
+    title: "FSR 升频 DLL",
+    none: "尚未设置。请选择你自己的 AMD 或 FSR 下载中的 amd_fidelityfx_upscaler_dx12.dll。",
+    gone: "文件已不存在：请重新选择。",
+    choose: "选择…",
+    clear: "清除",
+    pickTitle: "选择 FSR 升频 DLL",
+    filter: "DLL 文件",
+  },
   shaders: {
     title: "着色器与启动",
     description: "VIctory 可以在你游玩前先转译游戏的着色器，游戏就不必在途中停下来处理。每个项目都有自己的缓存。",

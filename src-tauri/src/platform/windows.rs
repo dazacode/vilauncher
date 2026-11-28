@@ -10,6 +10,18 @@ pub(super) fn hide_window(c: &mut Command) {
     c.creation_flags(CREATE_NO_WINDOW);
 }
 
+/// The commit limit and the commit in use, from GetPerformanceInfo (psapi.dll).
+pub(super) fn commit_charge() -> Option<super::CommitCharge> {
+    use windows_sys::Win32::System::ProcessStatus::{GetPerformanceInfo, PERFORMANCE_INFORMATION};
+    let mut info: PERFORMANCE_INFORMATION = unsafe { std::mem::zeroed() };
+    let size = std::mem::size_of::<PERFORMANCE_INFORMATION>() as u32;
+    info.cb = size;
+    if unsafe { GetPerformanceInfo(&mut info, size) } == 0 {
+        return None;
+    }
+    super::commit_from_pages(info.CommitLimit, info.CommitTotal, info.PageSize)
+}
+
 /// Free bytes on the volume holding `dir`, read with `fsutil`.
 pub(super) fn free_bytes(dir: &Path) -> Option<u64> {
     let drive: String = dir

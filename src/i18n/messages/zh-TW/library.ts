@@ -92,6 +92,13 @@ export default {
     works: "可正常運作",
     issues: "已知問題",
   },
+  advice: {
+    title: "本機可能的設定",
+    recommended: "建議使用（已在兩台機器上驗證）",
+    possible: "可能的設定，未在你的硬體上驗證",
+    source: "來源：{source}",
+    apply: "套用",
+  },
   details: {
     title: "詳細資料",
     source: "來源",
@@ -214,7 +221,13 @@ export default {
   activity: {
     nothing: "目前沒有執行中的工作",
     fixTitle: "檢查所有已知問題、加以修復並驗證結果",
+    warmUp: "新建置版本的前幾分鐘可能較慢，因為正在編譯著色器。首次執行緩慢本身不是錯誤回報。",
+    clearCache: "清除著色器快取",
+    clearCacheTitle: "刪除此專案的著色器快取。下次遊玩會重新建立，前幾分鐘可能較慢。",
     logCopied: "已複製記錄",
+    summary: "複製診斷摘要",
+    summaryTitle: "複製啟動器版本、開關、顯示設定、記憶體，以及此專案記錄的結尾，供回報問題使用",
+    summaryCopied: "已複製診斷摘要",
     export: "匯出",
     exportTitle: "匯出活動記錄",
     exportFilter: "記錄檔",

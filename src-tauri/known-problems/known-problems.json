@@ -1,0 +1,15 @@
+{
+  "schema": 2,
+  "entries": [
+    {
+      "id": "victory-inplace-black-surfaces",
+      "project": "victory",
+      "gpu_vendor": null,
+      "symptom": "black surface",
+      "switch": "VICTORY_INPLACE=1",
+      "summary": "Black or incorrect surfaces.",
+      "source": "Research brief, Phase 1: one A/B run reported black or incorrect surfaces with VICTORY_INPLACE=1. Single run; no repo doc names this switch.",
+      "status": "single_run_report"
+    }
+  ]
+}
