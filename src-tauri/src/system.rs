@@ -150,9 +150,11 @@ fn detect_inner() -> SystemInfo {
 /// `recommendedMaxWorkingSetSize` is about three quarters, and the rest of
 /// the system needs the remainder. Kept shy of it so a Fit warning is not
 /// given to a build that fits.
+#[cfg(target_os = "macos")]
 const UNIFIED_SHARE: f64 = 0.7;
 
 /// The graphics memory budget to report for a chip with unified memory.
+#[cfg(target_os = "macos")]
 fn unified_budget(ram_gb: Option<f64>) -> Option<f64> {
     let ram = ram_gb?;
     // Half-gigabyte steps, never less than one.
