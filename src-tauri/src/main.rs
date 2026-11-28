@@ -32,6 +32,7 @@ mod saves;
 mod script_preset;
 mod settings_store;
 mod shader_cache;
+mod streamline;
 mod storage;
 mod system;
 mod tools;

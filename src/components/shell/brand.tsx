@@ -21,6 +21,7 @@ export function Brand() {
         src="/logo.svg"
         alt=""
         onClick={onLogo}
+        data-tauri-drag-region="false"
         className="size-6 rounded-[6px] [-webkit-app-region:no-drag]"
         draggable={false}
       />

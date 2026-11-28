@@ -49,6 +49,7 @@ const state = {
   graphics,
   overrides: new Map<string, Graphics>(),
   keepGame: new Set<string>(),
+  branches: new Map<string, string>(),
   notes: new Map<string, string>(),
   warm: false,
   notice: params.get("notice") !== "0",
@@ -81,6 +82,7 @@ function project(s: (typeof SAMPLE)[number], index: number): Project {
     build_job: null,
     highlights: index === 1 ? ["Open world renders lit, with textures, people and vehicles", "Plays through story missions without crashing"] : [],
     blockers: index === 1 ? ["About 3 fps in busy streets", "Needs 30 GB of system memory"] : [],
+    advice: [],
     listing: {
       id: `mock-${index}`,
       nuked: index === 2 ? "Taken down (mock)." : null,
@@ -88,11 +90,14 @@ function project(s: (typeof SAMPLE)[number], index: number): Project {
       stars: 100 - index,
       commits7d: index * 3,
     },
-    reported: index === 1 ? { ram_gb: 30, vram_gb: 12 } : { ram_gb: null, vram_gb: null },
+    reported: index === 1 ? { ram_gb: 30, vram_gb: 12, commit_gb: 40 } : { ram_gb: null, vram_gb: null, commit_gb: null },
+    commit_short: index === 1 ? true : null,
     owner: s.repo.split("/")[0],
     custom: false,
     kind: index === 3 ? "zip" : "git",
     binary: index === 3 ? (platform === "macos" ? "windows" : "native") : "native",
+    branch: state.branches.get(s.repo) ?? (index === 4 ? "main" : null),
+    branch_chosen: state.branches.has(s.repo),
     web_url: `https://github.com/${s.repo}`,
     installed,
     checking: false,
@@ -101,7 +106,7 @@ function project(s: (typeof SAMPLE)[number], index: number): Project {
     previous_build: installed && index === 4 ? "9a8b7c6d5e4f" : null,
     standalone: false,
     runnable: true,
-    activity: installed ? { updated_ago: "Updated 2 days ago", updated_when: "2 days ago", pending: null, new_install: false, last_run: "Yesterday, 21:14" } : null,
+    activity: installed ? { updated_ago: "Updated 2 days ago", updated_when: "2 days ago", pending: null, new_install: false, last_run: "Yesterday, 21:14", warm_up: index === 0 } : null,
     launch: {
       args: null,
       switches: null,
@@ -123,7 +128,7 @@ const TEAM: Record<string, string> = { en: "VIPortLive team", "zh-TW": "VIPortLi
 const system: Snapshot["system"] =
   platform === "macos"
     ? { gpus: [{ name: "Apple M3 (Unified Memory)", vendor: "Apple", vram_gb: 12 }], ram_gb: 16, cpu: "Apple M3", cpu_cores: 8, translated: false }
-    : { gpus: [{ name: "NVIDIA GeForce RTX 4060", vendor: "NVIDIA", vram_gb: 8 }], ram_gb: 16, cpu: "AMD Ryzen 7 5800X 8-Core Processor", cpu_cores: 16, translated: false }
+    : { gpus: [{ name: "NVIDIA GeForce RTX 4060", vendor: "NVIDIA", vram_gb: 8 }], ram_gb: 16, cpu: "AMD Ryzen 7 5800X 8-Core Processor", cpu_cores: 16, translated: false, commit_limit_gb: 34, commit_used_gb: 14 }
 
 function snapshot(): Snapshot {
   const locale = state.language ?? systemLocale(state.systemLanguages)
@@ -144,6 +149,9 @@ function snapshot(): Snapshot {
       launch_args: "",
       extra_env: "",
       graphics: state.graphics,
+      nvidia: { busy: false, status: null, ready: false, got_mb: 0, total_mb: 0, dir: "C:\\Users\\you\\AppData\\Local\\Neptune\\streamline" },
+      fsr_dll: null,
+      fsr_ok: true,
       gpu_filter: state.gpu,
       show_nuked: state.showNuked ?? false,
       list_sort: state.listSort ?? 0,
@@ -223,6 +231,11 @@ async function act(a: Action): Promise<unknown> {
         launcher_url: "https://github.com/dazacode/vilauncher/issues/new",
         build_url: a.repo.split("/").length === 2 ? `https://github.com/${a.repo}/issues/new` : null,
       }
+    case "diagnostic_summary":
+      return "VILauncher diagnostic summary\nLauncher: VILauncher (mock)\nProject: "
+        + `${a.repo}\nProject folder: ${a.repo.replace("/", "_")}\nCommit: not recorded\n`
+        + "Switches:\n  none set\nGraphics:\n  not found\nMemory: not found\n"
+        + "OS build: not recorded\nLog: no log yet\n"
     case "install_tools":
       state.toolsReady = true
       break
@@ -267,6 +280,19 @@ async function act(a: Action): Promise<unknown> {
         changed()
       }, 1600)
       break
+    case "clear_shader_cache":
+      state.job = { repo: a.repo, stage: "Clearing the shader cache" }
+      state.log = [
+        "== Clearing the shader cache",
+        "Fix and verify: The player asked to clear the shader cache. Deletes what is inside the project's cache folder and checks that it is empty; the next Play fills it again.",
+        "Cleared 182.4 MB from C:\\Users\\player\\AppData\\Local\\VILauncher\\cache\\victory and checked it is empty; the next Play fills it again.",
+        "Fixed and checked: Cleared 182.4 MB from the cache folder and checked it is empty.",
+      ]
+      setTimeout(() => {
+        state.job = null
+        changed()
+      }, 1200)
+      break
     case "saves_list":
       return {
         has_current: true,
@@ -280,6 +306,11 @@ async function act(a: Action): Promise<unknown> {
       }
     case "set_default_graphics":
       state.graphics = a.graphics
+      break
+    case "set_project_branch":
+      if (a.value && /^[A-Za-z0-9._/-]+$/.test(a.value) && !a.value.startsWith("-") && !a.value.includes("..")) state.branches.set(a.repo, a.value.trim())
+      else if (!a.value) state.branches.delete(a.repo)
+      else throw new Error("That is not a branch name.")
       break
     case "set_project_keep_game_settings":
       if (a.value) state.keepGame.add(a.repo)
@@ -349,6 +380,8 @@ async function act(a: Action): Promise<unknown> {
     }
     case "clear_cache":
     case "clear_previous":
+    case "get_nvidia_files":
+    case "set_fsr_dll":
       break
   }
   changed()

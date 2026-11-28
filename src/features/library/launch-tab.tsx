@@ -20,9 +20,27 @@ export function LaunchTab({ project: p }: { project: Project }) {
   const l = p.launch
   const [args, setArgs] = useDraft(l.args ?? (p.standalone ? "" : global.launch_args), (v) => void run({ type: "set_project_args", repo: p.repo, value: v }))
   const [switches, setSwitches] = useDraft(l.switches ?? global.extra_env, (v) => void run({ type: "set_project_switches", repo: p.repo, value: v }))
+  const [branch, setBranch] = useDraft(p.branch_chosen ? (p.branch ?? "") : "", (v) => void run({ type: "set_project_branch", repo: p.repo, value: v.trim() || null }))
   const options = l.script_options
   return (
     <div className="max-w-[760px] space-y-8">
+      {p.kind === "git" && (
+        <Group title={t("library.launch.branch")} description={t("library.launch.branchHint")}>
+          <Row stacked label={p.branch_chosen ? t("library.launch.branchChosen") : t("library.launch.branchFeed")}>
+            <Input
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              // i18n-ignore: a branch name, as it is written
+              placeholder={p.branch ?? "main"}
+              className="font-mono text-secondary"
+              aria-label={t("library.launch.branchLabel")}
+            />
+            {p.branch_chosen && (
+              <Button size="sm" variant="ghost" onClick={() => void run({ type: "set_project_branch", repo: p.repo, value: null })}>{t("library.launch.useDefault")}</Button>
+            )}
+          </Row>
+        </Group>
+      )}
       <Group title={t("library.launch.args")} description={p.standalone ? t("library.launch.argsStandalone") : t("library.launch.argsHint")}>
         <Row stacked label={l.args == null && !p.standalone ? t("library.launch.usingDefaultArgs") : t("library.launch.projectArgs")}>
           <Input

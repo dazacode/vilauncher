@@ -80,7 +80,7 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-[264px] shrink-0 flex-col border-r border-line bg-sidebar">
-      <div className="drag flex h-12 shrink-0 items-center px-4">
+      <div data-tauri-drag-region="deep" className="drag flex h-12 shrink-0 items-center px-4">
         <Brand />
       </div>
       <nav className="space-y-1 px-2 pt-1" aria-label={t("shell.nav.label")}>

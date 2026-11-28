@@ -46,6 +46,25 @@ export default {
     title: "Default graphics",
     description: "Every project uses these unless you change its own in its Graphics tab.",
   },
+  upscaling: {
+    title: "Upscaling (NVIDIA and AMD)",
+    description: "DLSS and frame generation run on NVIDIA's own files, which the launcher fetches only when you press the button. FSR runs on an AMD upscaler DLL of your own.",
+  },
+  nvidia: {
+    title: "NVIDIA's files (DLSS, frame generation)",
+    ready: "Ready: checked and kept in the Neptune folder.",
+    missing: "Not here yet. Press Get NVIDIA's files (about 276 MB from NVIDIA's GitHub).",
+    get: "Get NVIDIA's files",
+  },
+  fsr: {
+    title: "FSR upscaler DLL",
+    none: "Not set. Choose the amd_fidelityfx_upscaler_dx12.dll from your own AMD or FSR download.",
+    gone: "The file is gone: choose it again.",
+    choose: "Choose…",
+    clear: "Clear",
+    pickTitle: "Choose the FSR upscaler DLL",
+    filter: "DLL files",
+  },
   shaders: {
     title: "Shaders and launch",
     description: "VIctory can translate the game's shaders before you play, so the game doesn't stop to do it on the way. Each project keeps its own cache.",

@@ -109,6 +109,12 @@ pub(crate) enum Action {
     },
     /// Disk use per project and in total, for the Storage section of Settings.
     StorageScan,
+    /// "Get NVIDIA's files": downloads and checks NVIDIA's Streamline files for DLSS (only on the player's press).
+    GetNvidiaFiles,
+    /// Sets (or clears, with none) the FSR upscaler DLL the title's FidelityFX path uses.
+    SetFsrDll {
+        path: Option<String>,
+    },
     /// Deletes a project's shader cache. Its saves and sources stay.
     ClearCache {
         repo: String,
@@ -152,9 +158,19 @@ pub(crate) enum Action {
         repo: String,
         value: Option<String>,
     },
+    /// The branch a git project is built from; `None` goes back to the feed's branch.
+    SetProjectBranch {
+        repo: String,
+        value: Option<String>,
+    },
     SetProjectSwitches {
         repo: String,
         value: Option<String>,
+    },
+    /// The player pressed Apply on a piece of advice: sets its one switch on the project.
+    ApplyAdvice {
+        repo: String,
+        id: String,
     },
     /// Turns an add-on on or off for a project. Turning on needs `confirmed`.
     AddonSet {
@@ -555,6 +571,24 @@ impl App {
                 self.clear_folder(&p, "cache")?;
                 Value::Null
             }
+            Action::GetNvidiaFiles => {
+                crate::streamline::start(&self.streamline, &ctx, crate::streamline::default_dir());
+                Value::Null
+            }
+            Action::SetFsrDll { path } => {
+                let path = path.map(|p| p.trim().to_string()).filter(|p| !p.is_empty());
+                if let Some(path) = &path {
+                    let file = std::path::Path::new(path);
+                    if !file.is_file() {
+                        return Err(msg!("The upscaler DLL {path} is not a file.").into());
+                    }
+                    if !file.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("dll")) {
+                        return Err(msg_str!("The upscaler must be a .dll file.").into());
+                    }
+                }
+                self.saved.fsr_dll = path;
+                Value::Null
+            }
             Action::ClearPrevious { repo } => {
                 let p = self.project(&repo)?;
                 self.clear_folder(&p, "previous")?;
@@ -638,6 +672,21 @@ impl App {
                 self.tidy_launch(&repo);
                 Value::Null
             }
+            Action::SetProjectBranch { repo, value } => {
+                let value = value.map(|v| v.trim().to_owned()).filter(|v| !v.is_empty());
+                if let Some(branch) = &value {
+                    if !crate::launcher::valid_branch(branch) {
+                        return Err(msg_str!("That is not a branch name.").into());
+                    }
+                }
+                self.saved
+                    .branches
+                    .retain(|(saved, _)| crate::launcher::project_key(saved) != crate::launcher::project_key(&repo));
+                if let Some(branch) = value {
+                    self.saved.branches.push((repo, branch));
+                }
+                Value::Null
+            }
             Action::SetProjectKeepGameSettings { repo, value } => {
                 self.launch_mut(&repo).keep_game_settings = value;
                 self.tidy_launch(&repo);
@@ -646,6 +695,10 @@ impl App {
             Action::SetProjectArgs { repo, value } => {
                 self.launch_mut(&repo).args = value;
                 self.tidy_launch(&repo);
+                Value::Null
+            }
+            Action::ApplyAdvice { repo, id } => {
+                self.apply_advice(&repo, &id)?;
                 Value::Null
             }
             Action::SetProjectSwitches { repo, value } => {
@@ -1076,6 +1129,35 @@ impl App {
         Ok(())
     }
 
+    /// What the launcher knows about this PC, for advice (unknown when it has not looked yet).
+    pub(crate) fn hardware(&self) -> crate::known_problems::Hardware {
+        self.system
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|system| crate::known_problems::Hardware::from_system(system, cfg!(windows)))
+            .unwrap_or_default()
+    }
+
+    /// Sets one advice switch on the project. Only that switch changes; the advice must still
+    /// apply to this PC and the project, and no job may be running.
+    fn apply_advice(&mut self, repo: &str, id: &str) -> Result<(), String> {
+        refuse_while_job(self.job_running().0)?;
+        self.project(repo)?;
+        let manifest = crate::known_problems::shipped()?;
+        let effective = self.effective_switches(repo);
+        let entry = crate::known_problems::advice_for(&manifest, repo, &self.hardware(), &effective)
+            .into_iter()
+            .find(|entry| entry.id == id)
+            .ok_or_else(|| msg!("That setting does not apply to this PC any more."))?;
+        let Some(advice) = &entry.advice else {
+            return Err(msg!("That setting does not apply to this PC any more."));
+        };
+        let text = with_advice_switch(&effective, &advice.switch)?;
+        self.launch_mut(repo).switches = Some(text);
+        Ok(())
+    }
+
     /// The switches a project launches with: its own, else the shared ones.
     fn effective_switches(&self, repo: &str) -> String {
         self.saved
@@ -1293,6 +1375,53 @@ fn saves_list(project: &Project) -> Value {
         "other_builds": other_builds.iter().map(|(n, p)| option(n.clone(), msg_str!("Copies this build's active save."), "copy", Some(p), Some(p))).collect::<Vec<_>>(),
         "favorites": favorites.iter().map(|(n, p)| option(n.clone(), msg_str!("Starts from a copy of this checkpoint."), "copy", Some(p), None)).collect::<Vec<_>>(),
     })
+}
+
+/// Refuses an Apply while a job runs (the window shows the same rule).
+fn refuse_while_job(running: bool) -> Result<(), String> {
+    if running {
+        Err(msg!("Wait for the current job to finish."))
+    } else {
+        Ok(())
+    }
+}
+
+/// The project's switch text with the one advice switch set (its line replaced, or added).
+/// Every other line is kept as it is.
+fn with_advice_switch(current: &str, switch: &str) -> Result<String, String> {
+    let (name, value) = switch
+        .split_once('=')
+        .ok_or_else(|| msg!("The advice switch is not NAME=value."))?;
+    let mut pairs = std::collections::BTreeMap::new();
+    pairs.insert(name.to_string(), value.to_string());
+    Ok(addons::with_switches(current, &pairs, true))
+}
+
+#[cfg(test)]
+mod advice_tests {
+    use super::{refuse_while_job, with_advice_switch};
+
+    #[test]
+    fn apply_writes_only_the_one_switch() {
+        let current = "VICTORY_A=0\nVICTORY_B=1";
+        assert_eq!(
+            with_advice_switch(current, "VICTORY_INPLACE=1").unwrap(),
+            "VICTORY_A=0\nVICTORY_B=1\nVICTORY_INPLACE=1"
+        );
+        // A switch already set is replaced; its line moves to the end (order of switches does not matter).
+        assert_eq!(
+            with_advice_switch(current, "VICTORY_A=1").unwrap(),
+            "VICTORY_B=1\nVICTORY_A=1"
+        );
+        assert_eq!(with_advice_switch("", "VICTORY_X=2").unwrap(), "VICTORY_X=2");
+        assert!(with_advice_switch(current, "VICTORY_A").is_err());
+    }
+
+    #[test]
+    fn apply_is_refused_while_a_job_runs() {
+        assert!(refuse_while_job(true).is_err());
+        assert!(refuse_while_job(false).is_ok());
+    }
 }
 
 #[cfg(test)]

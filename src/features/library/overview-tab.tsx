@@ -57,6 +57,7 @@ export function OverviewTab({ project: p }: { project: Project }) {
           <List title={t("library.overview.works")} items={p.highlights} mark={<Check className="size-4 text-fg-3" strokeWidth={2.25} />} />
         )}
         {!screenshot && p.blockers.length > 0 && <List title={t("library.overview.issues")} items={p.blockers} mark={<span className="size-1.5 rounded-full bg-fg-4" />} />}
+        {!screenshot && p.advice.length > 0 && <AdviceList project={p} disabled={!!busy} />}
       </div>
       <div className="grid content-start gap-8 lg:grid-cols-2 xl:grid-cols-1">
         <YourPc project={p} />
@@ -111,6 +112,32 @@ function List({ title, items, mark }: { title: string; items: string[]; mark: Re
 }
 
 /** The mark before a check, with its meaning for screen readers. */
+/** Possible settings for this PC. Nothing is set until the player presses Apply. */
+function AdviceList({ project: p, disabled }: { project: Project; disabled: boolean }) {
+  const t = useT()
+  return (
+    <section>
+      <h3 className="text-lead font-semibold text-fg">{t("library.advice.title")}</h3>
+      <ul className="mt-3 max-w-[68ch] space-y-3" data-selectable>
+        {p.advice.map((a) => (
+          <li key={a.id} className="flex flex-wrap items-start gap-3 rounded-lg border border-line bg-fill-1 px-4 py-3">
+            <div className="min-w-0 flex-1 space-y-1">
+              <p className="text-body font-medium text-fg">{a.summary}</p>
+              <p className="text-caption text-fg-3">
+                {a.recommended ? t("library.advice.recommended") : t("library.advice.possible")} · <span className="font-mono">{a.switch}</span>
+              </p>
+              <p className="text-caption text-fg-3">{t("library.advice.source", { source: a.source })}</p>
+            </div>
+            <Button size="sm" variant="ghost" disabled={disabled} onClick={() => void run({ type: "apply_advice", repo: p.repo, id: a.id })}>
+              {t("library.advice.apply")}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function Mark({ level }: { level: Level }) {
   const t = useT()
   switch (level) {
@@ -164,7 +191,7 @@ function YourPc({ project: p }: { project: Project }) {
       ) : (
         <div className="divide-y divide-line overflow-hidden rounded-lg border border-line bg-fill-1">
           <p className="px-4 py-3 text-body text-fg">{a.headline}</p>
-          {[a.gpu, a.ram, a.vram, cpu].map((c) => (
+          {[a.gpu, a.ram, a.vram, a.commit, cpu].map((c) => (
             <CheckRow key={c.label} check={c} />
           ))}
           {offerFilter && (

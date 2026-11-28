@@ -27,6 +27,10 @@ pub(crate) struct SystemInfo {
     /// Windows only: the memory promised to programs right now, in GB.
     #[serde(default)]
     pub commit_used_gb: Option<f64>,
+    /// Windows only: the build number (e.g. 22631). Read by known_problems.rs for advice
+    /// conditions; not sent to the window.
+    #[serde(skip)]
+    pub os_build: Option<u32>,
 }
 
 /// The room a build's author's peak commit needs under the commit limit, in GB. A judgement
@@ -200,6 +204,7 @@ fn detect_inner() -> SystemInfo {
         translated: false,
         commit_limit_gb: None,
         commit_used_gb: None,
+        os_build: None,
     }
 }
 
@@ -308,6 +313,9 @@ fn parse_report(json: &str) -> Option<SystemInfo> {
         translated: false,
         commit_limit_gb: None,
         commit_used_gb: None,
+        os_build: number(&v["build"])
+            .map(|n| n.round() as u32)
+            .filter(|n| *n > 0),
     })
 }
 
@@ -342,7 +350,8 @@ $ram = [double](Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
 $installed = [double]((Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum).Sum)
 $cpuName = [string](Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name)
 $cores = [int]((Get-CimInstance Win32_Processor | Measure-Object -Property NumberOfLogicalProcessors -Sum).Sum)
-[pscustomobject]@{ gpus = $gpus; adapters = $adapters; ram = $ram; installed = $installed; cpu = $cpuName; cpu_cores = $cores } | ConvertTo-Json -Compress -Depth 4
+$build = [string](Get-CimInstance Win32_OperatingSystem).BuildNumber
+[pscustomobject]@{ gpus = $gpus; adapters = $adapters; ram = $ram; installed = $installed; cpu = $cpuName; cpu_cores = $cores; build = $build } | ConvertTo-Json -Compress -Depth 4
 "#;
 
     const TIMEOUT: Duration = Duration::from_secs(8);
@@ -588,6 +597,7 @@ mod macos {
             translated,
             commit_limit_gb: None,
             commit_used_gb: None,
+            os_build: None,
         }
     }
 
@@ -778,6 +788,7 @@ mod tests {
             translated: false,
             commit_limit_gb: None,
             commit_used_gb: None,
+            os_build: None,
         };
         assert_eq!(
             serde_json::to_string(&info).unwrap(),

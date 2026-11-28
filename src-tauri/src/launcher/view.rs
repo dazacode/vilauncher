@@ -82,6 +82,41 @@ fn controller_keys_view(saved: &super::Saved) -> ControllerKeysView {
     }
 }
 
+impl super::App {
+    /// The advice that applies to a project on this PC now (known_problems.rs).
+    fn advice_for(&self, repo: &str, switches: &str) -> Vec<AdviceView> {
+        let Ok(manifest) = crate::known_problems::shipped() else {
+            return Vec::new();
+        };
+        let hardware = self.hardware();
+        crate::known_problems::advice_for(&manifest, repo, &hardware, switches)
+            .into_iter()
+            .filter_map(|entry| {
+                let advice = entry.advice.as_ref()?;
+                Some(AdviceView {
+                    id: entry.id.clone(),
+                    switch: advice.switch.clone(),
+                    summary: crate::i18n::localize(&entry.summary),
+                    source: advice.source.clone(),
+                    recommended: crate::known_problems::presentation(advice.evidence)
+                        == crate::known_problems::Presentation::Recommended,
+                })
+            })
+            .collect()
+    }
+}
+
+/// One piece of advice for the window. `recommended` is true only for two-machine A/B
+/// evidence; the window words everything else as a possible setting.
+#[derive(Serialize)]
+pub(crate) struct AdviceView {
+    id: String,
+    switch: String,
+    summary: String,
+    source: String,
+    recommended: bool,
+}
+
 #[derive(Serialize)]
 pub(crate) struct ProjectView {
     name: String,
@@ -100,6 +135,12 @@ pub(crate) struct ProjectView {
     highlights: Vec<String>,
     /// What still stops it, from the tracker.
     blockers: Vec<String>,
+    /// The branch a git project is built from (the player's choice, else the feed's).
+    branch: Option<String>,
+    /// Whether the player chose `branch` (otherwise it is the feed's).
+    branch_chosen: bool,
+    /// Possible settings for this PC (known_problems.rs). Shown with Apply; never set by themselves.
+    advice: Vec<AdviceView>,
     /// The memory the author says it uses, read from the words above.
     reported: reported::Reported,
     /// Whether the PC's commit limit is short of the author's peak commit plus the margin
@@ -172,6 +213,11 @@ struct SettingsView {
     launch_args: String,
     extra_env: String,
     graphics: GraphicsSettings,
+    /// NVIDIA's Streamline files for DLSS and frame generation (Get NVIDIA's files).
+    nvidia: NvidiaView,
+    /// The FSR upscaler DLL the player chose, and whether that file is still there.
+    fsr_dll: Option<String>,
+    fsr_ok: bool,
     gpu_filter: usize,
     show_nuked: bool,
     list_sort: usize,
@@ -186,6 +232,21 @@ struct SettingsView {
     acknowledged: Vec<String>,
     /// The player's language choice; none: the system's.
     language: Option<String>,
+}
+
+#[derive(Serialize)]
+struct NvidiaView {
+    /// A download is running.
+    busy: bool,
+    /// What the last fetch said (translated), or none.
+    status: Option<String>,
+    /// NVIDIA's files for DLSS and frame generation are there and checked.
+    ready: bool,
+    /// Download progress in MB, while busy.
+    got_mb: u64,
+    total_mb: u64,
+    /// The folder the files are kept in.
+    dir: String,
 }
 
 #[derive(Serialize)]
@@ -328,6 +389,9 @@ impl App {
             selected: self.saved.selected.clone(),
             settings: SettingsView {
                 game_dir: self.saved.game_dir.clone(),
+                nvidia: self.nvidia_view(),
+                fsr_dll: self.saved.fsr_dll.clone(),
+                fsr_ok: self.saved.fsr_dll.as_ref().is_none_or(|path| std::path::Path::new(path).is_file()),
                 workspace: workspace().display().to_string(),
                 install_dir_custom: !self.saved.install_dir.is_empty(),
                 warm_before_play: self.saved.warm_before_play,
@@ -412,6 +476,19 @@ impl App {
         }
         .map(|job| job.lock().unwrap().log.join("\n"))
         .unwrap_or_default()
+    }
+
+    fn nvidia_view(&self) -> NvidiaView {
+        let fetch = self.streamline.lock().unwrap().clone();
+        let dir = crate::streamline::default_dir();
+        NvidiaView {
+            busy: fetch.busy,
+            status: localize_opt(fetch.status.as_deref()),
+            ready: crate::streamline::missing(&dir, &crate::streamline::needed(true, true)).is_none(),
+            got_mb: fetch.got >> 20,
+            total_mb: fetch.total >> 20,
+            dir: dir.display().to_string(),
+        }
     }
 
     fn updater_view(&self) -> UpdaterView {
@@ -519,6 +596,9 @@ impl App {
             summary: p.summary.clone(),
             highlights: p.highlights.clone(),
             blockers: p.blockers.clone(),
+            branch: p.branch.clone(),
+            branch_chosen: self.chosen_branch(&p.repo).is_some(),
+            advice: self.advice_for(&p.repo, &effective),
             reported,
             commit_short,
             custom: p.custom,

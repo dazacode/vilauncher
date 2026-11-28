@@ -85,6 +85,11 @@ impl Project {
         self.local_exe.is_none() && self.archive_exe.is_none()
     }
 
+    /// A source tree imported from a ZIP: built in its folder, with no git remote.
+    fn is_source_archive(&self) -> bool {
+        self.repo.starts_with("archive://") && self.is_git()
+    }
+
     fn archive_program(&self) -> Option<PathBuf> {
         self.archive_exe
             .as_ref()
@@ -126,6 +131,8 @@ pub(crate) struct Saved {
     bright_shadows: bool,
     /// Whether the defaults above were set once.
     defaults_set: bool,
+    /// The FSR upscaler DLL the player chose (Settings › Graphics), for the title's FidelityFX path.
+    fsr_dll: Option<String>,
     /// Play in borderless fullscreen (off: a normal window). Off by default.
     fullscreen: bool,
     /// Default output resolution for projects without their own graphics settings.
@@ -134,6 +141,9 @@ pub(crate) struct Saved {
     install_dir: String,
     /// Updates put off with "Later": (repo, the new version's commit).
     later: Vec<(String, String)>,
+    /// The branch a git project is built from when the player chose one (repo, branch).
+    /// Without one, the project's own branch from the feed is used.
+    branches: Vec<(String, String)>,
     selected: Option<String>,
     custom: Vec<Project>,
     /// Installed projects as the list last had them, kept after VIPortLive drops or takes them down.
@@ -415,6 +425,34 @@ fn a_repo_with_no_rust_source_says_so() {
 
 #[cfg(test)]
 #[test]
+fn a_chosen_branch_must_be_a_plain_git_branch_name() {
+    for good in ["dev", "main", "feat/auto-vram", "release-1.2", "v2026.11.27"] {
+        assert!(valid_branch(good), "{good}");
+    }
+    for bad in ["", "-x", "a..b", "a//b", "/a", "a/", "a.lock", "a b", "a;rm", "a$b", "x.", "é"] {
+        assert!(!valid_branch(bad), "{bad}");
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn a_program_without_victory_symbols_is_not_a_victory_fork() {
+    // RAZDA4A_XEN.exe exports D3D12SDKVersion and D3D12SDKPath and has a `run` command; a
+    // program without them (or one that is not a program at all) is run as it always was.
+    let root = std::env::temp_dir().join(format!("vl-fork-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let plain = root.join("game.exe");
+    std::fs::write(&plain, b"MZ\x90\x00 no symbols").unwrap();
+    assert!(!is_victory_fork(&plain));
+    let symbols = root.join("fork.exe");
+    std::fs::write(&symbols, b"MZ\x90\x00D3D12SDKVersion\0D3D12SDKPath\0").unwrap();
+    assert!(!is_victory_fork(&symbols));
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(test)]
+#[test]
 fn project_launch_overrides_are_independent_and_can_be_empty() {
     let mut saved = Saved {
         launch_args: "--strict".into(),
@@ -496,6 +534,8 @@ pub(crate) struct Job {
 #[derive(Clone)]
 struct Launch {
     game_dir: PathBuf,
+    /// The player's FSR upscaler DLL, if one is set (see [`set_streamline_switches`]).
+    fsr_dll: Option<PathBuf>,
     series_s: bool,
     scale: f32,
     output: OutputResolution,
@@ -513,6 +553,8 @@ struct Launch {
     graphics: GraphicsSettings,
     /// The first video card's maker, for the driver page.
     gpu_vendor: Option<&'static str>,
+    /// What the PC is, for the advice conditions (known_problems.rs).
+    hardware: crate::known_problems::Hardware,
 }
 
 /// How long the game files are trusted before they are looked at again.
@@ -558,6 +600,84 @@ mod tests {
     use super::split_args;
 
     #[test]
+    fn f1_menu_lines_are_the_switches_that_apply_at_the_next_play() {
+        let text = "VICTORY_DLSS=1\nVICTORY_DLSS_MODE=quality\nnot a switch\nvictory_lower=1\nVICTORY_FRAMEGEN_X=2\n";
+        assert_eq!(
+            super::f1_menu_switches(text),
+            vec![
+                ("VICTORY_DLSS".to_string(), "1".to_string()),
+                ("VICTORY_DLSS_MODE".to_string(), "quality".to_string()),
+                ("VICTORY_FRAMEGEN_X".to_string(), "2".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn rtx_generation_reads_the_card_name_as_neptune_does() {
+        use super::rtx_generation;
+        assert_eq!(rtx_generation("NVIDIA GeForce RTX 4060"), 40);
+        assert_eq!(rtx_generation("NVIDIA GeForce RTX 5090"), 50);
+        assert_eq!(rtx_generation("NVIDIA GeForce RTX 3050 Ti"), 30);
+        assert_eq!(rtx_generation("NVIDIA GeForce GTX 1080"), 0);
+        assert_eq!(rtx_generation("RTX 4060x"), 0);
+        assert_eq!(rtx_generation("AMD Radeon RX 7900 XT"), 0);
+    }
+
+    #[test]
+    fn streamline_switches_are_set_only_where_neptune_would_set_them() {
+        use super::streamline_switches;
+        let rtx40 = [(Some("nvidia"), "NVIDIA GeForce RTX 4060".to_string())];
+        let menu = |text: &str| super::f1_menu_switches(text);
+        let dir = std::env::temp_dir().join(format!("vl-streamline-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // DLSS asked, NVIDIA's files not there: off, and the note names the missing file.
+        let dlss = menu("VICTORY_DLSS=1\nVICTORY_DLSS_MODE=quality\n");
+        let (env, notes) = streamline_switches(&dlss, "", &rtx40, true, true, &dir);
+        assert!(env.is_empty());
+        assert!(notes.iter().any(|n| n.contains("sl.interposer.dll is not in")), "{notes:?}");
+
+        // With the files: DLSS on, with the menu's mode.
+        let files = crate::streamline::needed(true, true);
+        for file in &files {
+            std::fs::write(dir.join(file), b"").unwrap();
+        }
+        crate::streamline::record_for_tests(&dir, &files);
+        let (env, _) = streamline_switches(&dlss, "", &rtx40, true, true, &dir);
+        assert!(env.contains(&("VICTORY_DLSS".to_string(), "1".to_string())));
+        assert!(env.contains(&("VICTORY_DLSS_MODE".to_string(), "quality".to_string())));
+        assert!(env.iter().any(|(name, _)| name == "VICTORY_STREAMLINE_DIR"));
+        assert!(!env.iter().any(|(name, _)| name == "VICTORY_FRAMEGEN"));
+
+        // Frame generation needs draw threads; without them it is off.
+        let frames = menu("VICTORY_FRAMEGEN=1\nVICTORY_FRAMEGEN_X=3\n");
+        let (env, notes) = streamline_switches(&frames, "", &rtx40, true, true, &dir);
+        assert!(env.is_empty());
+        assert!(notes.iter().any(|n| n.contains("Extra draw threads")), "{notes:?}");
+
+        // With draw threads, an RTX 40 card gets 2x (3x needs RTX 50).
+        let (env, notes) = streamline_switches(&frames, "VICTORY_THIN=1", &rtx40, true, true, &dir);
+        assert!(env.contains(&("VICTORY_FRAMEGEN".to_string(), "1".to_string())));
+        assert!(env.contains(&("VICTORY_FRAMEGEN_X".to_string(), "2".to_string())));
+        assert!(notes.iter().any(|n| n.contains("more than 2x needs an RTX 50")), "{notes:?}");
+
+        // No NVIDIA card, or the player's own Launch options name the switches: nothing is set.
+        let amd = [(Some("amd"), "AMD Radeon RX 7900 XT".to_string())];
+        let (env, notes) = streamline_switches(&dlss, "", &amd, true, true, &dir);
+        assert!(env.is_empty());
+        assert!(notes.iter().any(|n| n.contains("no NVIDIA RTX card")), "{notes:?}");
+        let (env, _) = streamline_switches(&dlss, "VICTORY_DLSS=0", &rtx40, true, true, &dir);
+        assert!(env.is_empty());
+
+        // The menu's DLSS off and frame generation off: nothing to do, no note.
+        let off = menu("VICTORY_DLSS=0\nVICTORY_FRAMEGEN=0\n");
+        let (env, notes) = streamline_switches(&off, "", &rtx40, true, true, &dir);
+        assert!(env.is_empty() && notes.is_empty());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
     fn launch_arguments_split_at_spaces_and_keep_quotes_together() {
         assert_eq!(split_args(""), Vec::<String>::new());
         assert_eq!(split_args("  --strict   "), ["--strict"]);
@@ -580,6 +700,8 @@ type FindingSlot = Arc<Mutex<Option<Option<Result<String, String>>>>>;
 pub(crate) struct App {
     pub(crate) saved: Saved,
     pub(crate) updater: updater::Updater,
+    /// "Get NVIDIA's files": the background download and its last status.
+    pub(crate) streamline: crate::streamline::Shared,
     projects: ProjectsSlot,
     pub(crate) job: Arc<Mutex<Job>>,
     builds: ProjectBuilds,
@@ -705,6 +827,21 @@ pub(crate) enum Kind {
     ClearCache,
     /// Swap the installed build with the previous one (previous.rs).
     Rollback,
+}
+
+/// Whether `name` is a branch a player may build: letters, digits and `._/-`, in git's
+/// rules for branch names (no `..`, no empty parts, no leading `-`), checked before git sees it.
+pub(crate) fn valid_branch(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 200
+        && !name.starts_with(['-', '/'])
+        && !name.ends_with(['/', '.'])
+        && !name.ends_with(".lock")
+        && !name.contains("..")
+        && !name.contains("//")
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._/-".contains(&byte))
 }
 
 fn project_key(repo: &str) -> String {
@@ -954,7 +1091,11 @@ fn repo_state(p: &Project) -> RepoState {
             .ok()
             .map(|s| s.trim().to_string()),
         // A taken-down project is not fetched from its repo again: its copy stays as it is.
-        remote: if p.listing.nuked.is_some() { None } else { remote_head(p) },
+        remote: if p.is_source_archive() || p.listing.nuked.is_some() {
+            None
+        } else {
+            remote_head(p)
+        },
         activity: build_activity::BuildActivity::read(&target_dir(&p.repo)),
     }
 }
@@ -1449,21 +1590,40 @@ impl App {
                 std::fs::create_dir_all(workspace().join("repos"))
                     .map_err(|error| error.to_string())?;
                 let folder = repo_dir(&repo);
-                let executable = build_zip::extract(&input, &folder)?;
-                let target = target_dir(&repo);
-                if let Err(error) = std::fs::create_dir_all(&target)
-                    .and_then(|_| std::fs::write(built_file(&repo), "zip"))
-                    .and_then(|_| build_activity::BuildActivity::record_build(&target, false))
-                {
-                    job.lock()
-                        .unwrap()
-                        .log
-                        .push(format!("Could not record the import date: {error}"));
+                // A program is ready to play. A source tree is not built yet: Install builds it,
+                // as it builds a linked repo, so nothing is recorded as built here.
+                let executable = match build_zip::extract(&input, &folder)? {
+                    build_zip::Extracted::Program(exe) => Some(exe),
+                    build_zip::Extracted::Source => {
+                        let is_victory = cargo_workspace(&folder)
+                            .is_ok_and(|workspace| workspace.join("apps/victory/Cargo.toml").is_file());
+                        if !is_victory {
+                            let _ = std::fs::remove_dir_all(&folder);
+                            return Err(msg_str!("The ZIP contains no program.").into());
+                        }
+                        job.lock().unwrap().log.push(
+                            "Source imported. Press Install to build it (the first build takes several minutes)."
+                                .into(),
+                        );
+                        None
+                    }
+                };
+                if executable.is_some() {
+                    let target = target_dir(&repo);
+                    if let Err(error) = std::fs::create_dir_all(&target)
+                        .and_then(|_| std::fs::write(built_file(&repo), "zip"))
+                        .and_then(|_| build_activity::BuildActivity::record_build(&target, false))
+                    {
+                        job.lock()
+                            .unwrap()
+                            .log
+                            .push(format!("Could not record the import date: {error}"));
+                    }
                 }
                 Ok(Project {
                     name,
                     repo,
-                    archive_exe: Some(executable),
+                    archive_exe: executable,
                     custom: true,
                     branch: None,
                     gpu: Vec::new(),
@@ -1503,6 +1663,7 @@ impl App {
         let mut app = App {
             saved,
             updater: updater::Updater::default(),
+            streamline: Arc::new(Mutex::new(crate::streamline::Fetch::default())),
             projects: Arc::new(Mutex::new(None)),
             job: Arc::new(Mutex::new(Job::default())),
             builds: ProjectBuilds::default(),
@@ -1615,9 +1776,20 @@ impl App {
             Some(Ok(list)) => list,
             _ => &[],
         };
+        let guard = self.projects.lock().unwrap();
+        let list: &[Project] = match &*guard {
+            Some(Ok(list)) => list,
+            _ => &[],
+        };
         let mut v: Vec<Project> = self.saved.custom.clone();
         v.extend(list.iter().cloned());
         v.extend(self.kept_missing(list));
+        // A branch the player chose replaces the feed's, for install, update and the version check.
+        for p in v.iter_mut().filter(|p| p.is_git()) {
+            if let Some(chosen) = self.chosen_branch(&p.repo) {
+                p.branch = Some(chosen.to_owned());
+            }
+        }
         v
     }
 
@@ -1634,6 +1806,15 @@ impl App {
             .filter(|k| !list.iter().any(|p| project_key(&p.repo) == project_key(&k.repo)))
             .cloned()
             .collect()
+    }
+
+    /// The branch the player chose for `repo`, if any.
+    fn chosen_branch(&self, repo: &str) -> Option<&str> {
+        self.saved
+            .branches
+            .iter()
+            .find(|(saved, _)| project_key(saved) == project_key(repo))
+            .map(|(_, branch)| branch.as_str())
     }
 
     /// Looks again at `p`'s install and the newest version online.
@@ -1804,6 +1985,8 @@ impl App {
                 .unwrap_or_default(),
             graphics,
             gpu_vendor,
+            hardware: self.hardware(),
+            fsr_dll: self.saved.fsr_dll.as_ref().map(PathBuf::from),
         };
         let (ctx, repos) = (ctx.clone(), self.repos.clone());
         std::thread::spawn(move || {
@@ -1927,7 +2110,12 @@ fn install(
     let replaced = updating.then(|| installed_exe(&p.repo));
     let dir = repo_dir(&p.repo);
     let url = p.clone_url();
-    if dir.join(".git").is_dir() {
+    if p.is_source_archive() {
+        // The source tree is already in its folder (imported from a ZIP): nothing to download.
+        if !dir.is_dir() {
+            return Err("the imported source folder is missing; import the ZIP again".into());
+        }
+    } else if dir.join(".git").is_dir() {
         stage(job, ctx, msg_str!("Downloading the new version"));
         let refspec = p.branch.clone().unwrap_or_else(|| "HEAD".into());
         run(
@@ -2017,6 +2205,7 @@ fn install(
             slow: false,
             free_bytes: None,
             gpu: l.gpu_vendor,
+            hardware: Some(&l.hardware),
         };
         for finding in diagnose::preflight(&check) {
             if finding.heavy {
@@ -2036,22 +2225,26 @@ fn install(
             ctx.request_repaint();
         }
     }
-    let mut c = tools::git();
-    c.args(["rev-parse", "HEAD"]).current_dir(&dir);
-    hide_window(&mut c);
-    if let Ok(out) = c.output() {
-        if out.status.success() {
-            let record = std::fs::write(
-                built_file(&p.repo),
-                String::from_utf8_lossy(&out.stdout).trim(),
-            )
+    // The commit built; a source tree has none, so it is marked as built from its ZIP.
+    let stamp = if p.is_source_archive() {
+        Some("source".to_owned())
+    } else {
+        let mut c = tools::git();
+        c.args(["rev-parse", "HEAD"]).current_dir(&dir);
+        hide_window(&mut c);
+        c.output()
+            .ok()
+            .filter(|out| out.status.success())
+            .map(|out| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+    };
+    if let Some(stamp) = stamp {
+        let record = std::fs::write(built_file(&p.repo), stamp)
             .and_then(|_| build_activity::BuildActivity::record_build(&target, updating));
-            if let Err(error) = record {
-                job.lock()
-                    .unwrap()
-                    .log
-                    .push(format!("Could not record the update: {error}"));
-            }
+        if let Err(error) = record {
+            job.lock()
+                .unwrap()
+                .log
+                .push(format!("Could not record the update: {error}"));
         }
     }
     Ok(())
@@ -2288,6 +2481,8 @@ fn test_launch(dir: PathBuf) -> Launch {
             output: OutputResolution::Default,
         },
         gpu_vendor: Some("nvidia"),
+        hardware: Default::default(),
+        fsr_dll: None,
     }
 }
 
@@ -2456,6 +2651,10 @@ fn victory_env(c: &mut Command, p: &Project, l: &Launch) {
                 for (key, value) in build_zip::launch_defaults(directory) {
                     c.env(key, value);
                 }
+                // A fork's own launch .bat (RAZDA4A XEN.bat) carries its tuned settings.
+                for (key, value) in build_zip::batch_defaults(directory) {
+                    c.env(key, value);
+                }
             }
         }
     }
@@ -2490,6 +2689,270 @@ fn victory_env(c: &mut Command, p: &Project, l: &Launch) {
     }
 }
 
+/// The F1 menu's file. The game writes it when a choice applies at the next Play; Neptune's own
+/// launcher reads it the same way (`%LOCALAPPDATA%\ProjectNeptune\menu.txt`).
+fn f1_menu_file() -> Option<PathBuf> {
+    std::env::var_os("LOCALAPPDATA")
+        .map(|dir| PathBuf::from(dir).join("ProjectNeptune").join("menu.txt"))
+}
+
+fn f1_menu_text() -> Option<String> {
+    std::fs::read_to_string(f1_menu_file()?).ok()
+}
+
+/// The `VICTORY_NAME=value` lines of the F1 menu's file, in order.
+fn f1_menu_switches(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|line| {
+            let (name, value) = line.trim().split_once('=')?;
+            let valid = name.starts_with("VICTORY_")
+                && name
+                    .bytes()
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_');
+            valid.then(|| (name.to_string(), value.trim().to_string()))
+        })
+        .collect()
+}
+
+/// The RTX generation of a card's name (`NVIDIA GeForce RTX 4060` is 40); 0 when it names none.
+fn rtx_generation(name: &str) -> u32 {
+    let lower = name.to_ascii_lowercase();
+    let Some(at) = lower.find("rtx") else {
+        return 0;
+    };
+    if lower[..at].chars().last().is_some_and(|c| c.is_ascii_alphanumeric()) {
+        return 0;
+    }
+    let rest = lower[at + 3..].trim_start();
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if rest[digits.len()..].chars().next().is_some_and(|c| c.is_ascii_alphanumeric()) {
+        return 0;
+    }
+    let b = digits.as_bytes();
+    match b {
+        [g @ b'2'..=b'9', b'0', b'5'..=b'9', b'0'] => u32::from(g - b'0') * 10,
+        _ => 0,
+    }
+}
+
+fn extra_sets(extra: &str, name: &str, value: &str) -> bool {
+    extra.lines().any(|line| {
+        line.split_once('=')
+            .is_some_and(|(k, v)| k.trim() == name && v.trim() == value)
+    })
+}
+
+/// The DLSS and frame-generation switches for one run, set the way Neptune's own launcher sets them:
+/// the F1 menu's saved choice, only on NVIDIA RTX cards, with NVIDIA's files in `dir`. The player's own
+/// Launch options that name these switches win (nothing is set then). Returns the switches and, for the
+/// run's log, why any were left off.
+fn streamline_switches(
+    menu: &[(String, String)],
+    extra: &str,
+    gpus: &[(Option<&str>, String)],
+    windows: bool,
+    series_s: bool,
+    dir: &Path,
+) -> (Vec<(String, String)>, Vec<String>) {
+    let mut notes = Vec::new();
+    let names_own = ["VICTORY_STREAMLINE_DIR", "VICTORY_DLSS", "VICTORY_FRAMEGEN"]
+        .iter()
+        .any(|name| extra.lines().any(|line| line.split_once('=').is_some_and(|(k, _)| k.trim() == *name)));
+    if names_own {
+        return (Vec::new(), notes);
+    }
+    let value = |name: &str| menu.iter().rev().find(|(k, _)| k == name).map(|(_, v)| v.as_str());
+    let dlss = value("VICTORY_DLSS") == Some("1");
+    let mut frames: u32 = if value("VICTORY_FRAMEGEN") == Some("1") {
+        value("VICTORY_FRAMEGEN_X")
+            .and_then(|x| x.trim().parse::<u32>().ok())
+            .filter(|x| *x >= 2)
+            .map_or(1, |x| (x - 1).min(5))
+    } else {
+        0
+    };
+    if !dlss && frames == 0 {
+        return (Vec::new(), notes);
+    }
+    let gen = gpus
+        .iter()
+        .filter(|(vendor, _)| *vendor == Some("nvidia"))
+        .map(|(_, name)| rtx_generation(name))
+        .max()
+        .unwrap_or(0);
+    let mut why: Option<String> = None;
+    if !windows {
+        why = Some("NVIDIA's files are checked on Windows only".into());
+    } else if gen < 20 {
+        why = Some("no NVIDIA RTX card found".into());
+    } else {
+        if frames > 0 && gen < 40 {
+            notes.push("frame generation needs an RTX 40 or 50 card: off".into());
+            frames = 0;
+        }
+        if frames > 1 && gen < 50 {
+            notes.push("more than 2x needs an RTX 50 card: 2x".into());
+            frames = 1;
+        }
+        let draw_threads = extra_sets(extra, "VICTORY_THIN", "1") || extra_sets(extra, "VICTORY_ASYNC_SUBMIT", "1");
+        if frames > 0 && !draw_threads {
+            notes.push("frame generation needs Extra draw threads (VICTORY_THIN=1 in Launch options): off".into());
+            frames = 0;
+        }
+        if frames > 0 && !dlss && !series_s {
+            notes.push("frame generation on Series X needs DLSS upscaling as well: off".into());
+            frames = 0;
+        }
+        if frames == 0 && !dlss {
+            why = Some("nothing left to turn on".into());
+        }
+    }
+    if why.is_none() {
+        why = crate::streamline::missing(dir, &crate::streamline::needed(frames > 0, dlss));
+    }
+    if let Some(why) = why {
+        notes.push(format!("DLSS and frame generation off: {why}"));
+        return (Vec::new(), notes);
+    }
+    let mut env = vec![("VICTORY_STREAMLINE_DIR".to_string(), dir.display().to_string())];
+    if frames > 0 {
+        env.push(("VICTORY_FRAMEGEN".into(), "1".into()));
+        env.push(("VICTORY_FRAMEGEN_FRAMES".into(), frames.to_string()));
+        env.push(("VICTORY_FRAMEGEN_X".into(), (frames + 1).to_string()));
+    }
+    if dlss {
+        env.push(("VICTORY_DLSS".into(), "1".into()));
+        if let Some(mode) = value("VICTORY_DLSS_MODE") {
+            env.push(("VICTORY_DLSS_MODE".into(), mode.to_string()));
+        }
+    }
+    let frame_gen = if frames > 0 { format!("{}x", frames + 1) } else { "off".into() };
+    notes.push(format!(
+        "using NVIDIA's Streamline: DLSS upscaling {}, frame generation {frame_gen}, NVIDIA's files in {}",
+        if dlss { "on" } else { "off" },
+        dir.display()
+    ));
+    (env, notes)
+}
+
+/// Sets this run's Streamline switches on `c` from the F1 menu's file `menu` (see [`streamline_switches`]),
+/// logs why any are off, and returns the names it set so the next start can clear them.
+fn set_streamline_switches(c: &mut Command, job: &Arc<Mutex<Job>>, l: &Launch, menu: &str) -> Vec<String> {
+    let dir = crate::streamline::default_dir();
+    let (mut env, notes) = streamline_switches(
+        &f1_menu_switches(menu),
+        &l.extra,
+        &l.hardware.gpus,
+        l.hardware.windows,
+        l.series_s,
+        &dir,
+    );
+    // The FSR upscaler DLL (Settings › Graphics): only when DLSS upscaling is off, as in Neptune's launcher,
+    // and not when the player's own Launch options name it. The runtime does not say when its DLL is
+    // missing, so the launcher does.
+    let dlss_on = env.iter().any(|(name, value)| name == "VICTORY_DLSS" && value == "1")
+        || extra_sets(&l.extra, "VICTORY_DLSS", "1");
+    let names_fsr = l
+        .extra
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .any(|(k, _)| k.trim() == "VICTORY_FSR_DLL");
+    let mut notes = notes;
+    if let Some(path) = l.fsr_dll.as_ref() {
+        if names_fsr {
+            // The player's own line wins.
+        } else if dlss_on {
+            notes.push("the FSR upscaler DLL is not used while DLSS upscaling is on".into());
+        } else if path.is_file() {
+            env.push(("VICTORY_FSR_DLL".into(), path.display().to_string()));
+        } else {
+            notes.push(format!(
+                "the upscaler DLL {} is not there: the title's FidelityFX upscaler has no file this run",
+                path.display()
+            ));
+        }
+    }
+    let mut j = job.lock().unwrap();
+    for note in notes {
+        j.log.push(note);
+    }
+    drop(j);
+    env.into_iter()
+        .map(|(name, value)| {
+            c.env(&name, value);
+            name
+        })
+        .collect()
+}
+
+/// Runs the game. When the F1 menu saves a choice that applies at the next Play, the game is
+/// closed (it saves first) and started again, so the player does not have to restart it.
+/// At most a few restarts in one Play. Each start gets the menu's current Streamline switches.
+fn run_until_f1_restart(
+    job: &Arc<Mutex<Job>>,
+    ctx: &Ctx,
+    c: &mut Command,
+    l: &Launch,
+    spawned: impl Fn(u32),
+) -> Result<(), String> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    const RESTARTS_AT_MOST: u32 = 3;
+    let history = job.lock().unwrap().play_stats.clone();
+    let mut restarts = 0;
+    let mut set_here: Vec<String> = Vec::new();
+    loop {
+        let menu = f1_menu_text();
+        let before = menu.clone();
+        for name in set_here.drain(..) {
+            c.env_remove(name);
+        }
+        set_here = set_streamline_switches(c, job, l, menu.as_deref().unwrap_or(""));
+        let finished = Arc::new(AtomicBool::new(false));
+        let changed = Arc::new(AtomicBool::new(false));
+        let watcher = {
+            let (job, finished, changed) = (job.clone(), finished.clone(), changed.clone());
+            std::thread::spawn(move || {
+                while !finished.load(Ordering::Relaxed) {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    let pid = job.lock().unwrap().pid;
+                    if let Some(pid) = pid {
+                        if f1_menu_text() != before {
+                            // Give the game time to finish writing the file, and check it still differs.
+                            std::thread::sleep(std::time::Duration::from_millis(1500));
+                            if finished.load(Ordering::Relaxed) || f1_menu_text() == before {
+                                continue;
+                            }
+                            changed.store(true, Ordering::Relaxed);
+                            crate::platform::stop_program(pid);
+                            break;
+                        }
+                    }
+                }
+            })
+        };
+        let result = run_with(job, ctx, c, |pid| spawned(pid));
+        // The process has exited: no pid is left for the watcher to end.
+        job.lock().unwrap().pid = None;
+        finished.store(true, Ordering::Relaxed);
+        let _ = watcher.join();
+        let stopped = job.lock().unwrap().stopped;
+        if !changed.load(Ordering::Relaxed) {
+            return result;
+        }
+        // The launcher closed the game for the F1 menu: that is not a crash, so nothing is reported for it.
+        if stopped || restarts >= RESTARTS_AT_MOST {
+            return Ok(());
+        }
+        restarts += 1;
+        job.lock().unwrap().play_stats = history.clone();
+        stage(
+            job,
+            ctx,
+            msg_str!("Restarting the game to apply the F1 menu's choice"),
+        );
+    }
+}
+
 fn victory_help(exe: &Path, subcommand: &str) -> Option<String> {
     let mut command = Command::new(exe);
     command.args([subcommand, "--help"]);
@@ -2499,6 +2962,12 @@ fn victory_help(exe: &Path, subcommand: &str) -> Option<String> {
         .status
         .success()
         .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Whether a program is a VIctory fork under any name: it exports the Agility SDK symbols
+/// and its `run` command answers `--help`. Only then is it started with `run`.
+fn is_victory_fork(exe: &Path) -> bool {
+    crate::diagnose::exe_names_agility(exe) && victory_help(exe, "run").is_some()
 }
 
 /// Some forks open their pipeline bookkeeping files even before the first game run.
@@ -2863,6 +3332,7 @@ fn clear_shader_cache_job(
         fix: Some(diagnose::FIX_CLEAR_SHADER_CACHE),
         heavy: false,
         data: None,
+        advice: None,
     };
     apply_finding(job, ctx, p, l, &exe, &finding).map(|_| ())
 }
@@ -3210,6 +3680,7 @@ fn run_fixes(
         slow: all,
         free_bytes: all.then(|| free_bytes(&ws)).flatten(),
         gpu: l.gpu_vendor,
+        hardware: Some(&l.hardware),
     };
     let findings = diagnose::preflight(&check);
     if findings.is_empty() {
@@ -3440,7 +3911,10 @@ fn play(
     l: &mut Launch,
     choice: &saves::LaunchSave,
 ) -> Result<(), String> {
-    if p.runs_standalone() {
+    // A Victory fork shipped under another name (RAZDA4A_XEN.exe) is played the Victory way,
+    // not run bare: it exports the Agility symbols and has a `run` command.
+    let fork = p.archive_program().is_some_and(|exe| is_victory_fork(&exe));
+    if p.runs_standalone() && !fork {
         let raw = if let Some(exe) = p.archive_program() {
             exe
         } else {
@@ -3531,11 +4005,11 @@ fn play(
             .iter()
             .take_while(|arg| arg.as_str() != "--")
             .any(|arg| arg == "--console" || arg.starts_with("--console="));
-        if !explicit_console && (l.series_s || l.output != OutputResolution::Default) {
-            command.args([
-                "--console",
-                if l.series_s { "series-s" } else { "series-x" },
-            ]);
+        // A fork's own launch .bat runs it as Series S; the player's output choice still wins.
+        let fork_series_s = fork && l.output == OutputResolution::Default;
+        let series_s = l.series_s || fork_series_s;
+        if !explicit_console && (series_s || l.output != OutputResolution::Default) {
+            command.args(["--console", if series_s { "series-s" } else { "series-x" }]);
         }
         // The player's own: more `run` flags, and after `--` the game's.
         command.args(&l.args);
@@ -3557,7 +4031,7 @@ fn play(
             .join(slug(&p.repo))
             .join("last-run.txt"),
     );
-    let result = run_with(job, ctx, &mut c, |pid| {
+    let result = run_until_f1_restart(job, ctx, &mut c, l, |pid| {
         record_play_spawn(job, p, pid);
         if p.local_exe.is_none() {
             if let Err(error) = build_activity::BuildActivity::record_run(&target_dir(&p.repo)) {
@@ -3628,6 +4102,10 @@ fn run_with(
 fn record_play_spawn(job: &Arc<Mutex<Job>>, p: &Project, pid: u32) {
     let mut job = job.lock().unwrap();
     job.pid = Some(pid);
+    // A Stop pressed while the program was starting found no pid to end: end it now.
+    if job.stopped {
+        crate::platform::stop_program(pid);
+    }
     job.session = job
         .play_stats
         .take()
