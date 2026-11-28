@@ -20,6 +20,8 @@ use std::time::Instant;
 
 mod actions;
 mod presets;
+#[cfg(all(test, windows))]
+mod parallel_install_tests;
 mod reported;
 mod view;
 
