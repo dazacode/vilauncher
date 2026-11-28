@@ -5,8 +5,8 @@ export default {
   unlocked: "已解鎖新主題，可以在「設定」的「外觀」中找到。",
   notifications: "通知",
   nav: {
-    games: "遊戲",
-    workshop: "工作坊",
+    builds: "建置版本",
+    mods: "模組",
     label: "頁面",
     library: "專案庫",
     settings: "設定",

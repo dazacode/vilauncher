@@ -4,7 +4,7 @@ import { setLocale, useT } from "@/i18n"
 import { act as send, getBackend } from "./api"
 import type { Action, PlayChoice, Project, Snapshot } from "./types"
 
-export type View = "library" | "workshop" | "settings"
+export type View = "library" | "mods" | "settings"
 export type ProjectTab = "overview" | "graphics" | "launch" | "notes" | "activity"
 
 export type Dialog =

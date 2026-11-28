@@ -182,7 +182,7 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![snapshot, act, log])
+        .invoke_handler(tauri::generate_handler![snapshot, act, log, window_look])
         .run(tauri::generate_context!())
         .expect("VILauncher could not start");
 }
@@ -272,24 +272,50 @@ fn other_launcher_running() -> Result<bool, String> {
     platform::other_launcher_running(std::process::id())
 }
 
-/// The system's own glass behind the window: Mica on Windows 11 (Acrylic on
-/// Windows 10), the sidebar material on macOS. The UI keeps its own dark
-/// ground where none is available.
+/// The system's own glass behind the window at start, dark until the window
+/// says which theme is in use (window_look).
 fn glass(window: &tauri::WebviewWindow) {
+    apply_glass(window, true, true, [12, 10, 18]);
+}
+
+/// The window's glass and appearance as the player's theme asks: light or dark,
+/// and glass on or off (a Flat theme). The window calls it whenever the theme
+/// changes (src/lib/theme.ts).
+#[tauri::command]
+fn window_look(window: tauri::WebviewWindow, dark: bool, glass: bool, tint: [u8; 3]) {
+    let _ = window.set_theme(Some(if dark {
+        tauri::Theme::Dark
+    } else {
+        tauri::Theme::Light
+    }));
+    let target = window.clone();
+    let _ = window.run_on_main_thread(move || apply_glass(&target, dark, glass, tint));
+}
+
+/// Mica on Windows 11 in the theme's appearance (Acrylic tinted with the
+/// theme's background on Windows 10), the window material on macOS (the HUD
+/// material when dark, the sidebar material when light). Nothing when Flat,
+/// and nothing on Linux, which has no system glass: the UI keeps its own ground.
+fn apply_glass(window: &tauri::WebviewWindow, dark: bool, glass: bool, tint: [u8; 3]) {
     #[cfg(windows)]
     {
-        if window_vibrancy::apply_mica(window, Some(true)).is_err() {
-            let _ = window_vibrancy::apply_acrylic(window, Some((12, 10, 18, 200)));
+        let _ = window_vibrancy::clear_mica(window);
+        let _ = window_vibrancy::clear_acrylic(window);
+        if glass && window_vibrancy::apply_mica(window, Some(dark)).is_err() {
+            let _ = window_vibrancy::apply_acrylic(window, Some((tint[0], tint[1], tint[2], 200)));
         }
     }
     #[cfg(target_os = "macos")]
     {
-        let _ = window_vibrancy::apply_vibrancy(
-            window,
-            window_vibrancy::NSVisualEffectMaterial::HudWindow,
-            None,
-            Some(12.0),
-        );
+        let _ = window_vibrancy::clear_vibrancy(window);
+        if glass {
+            let material = if dark {
+                window_vibrancy::NSVisualEffectMaterial::HudWindow
+            } else {
+                window_vibrancy::NSVisualEffectMaterial::Sidebar
+            };
+            let _ = window_vibrancy::apply_vibrancy(window, material, None, Some(12.0));
+        }
     }
-    let _ = window;
+    let _ = (window, dark, glass, tint);
 }

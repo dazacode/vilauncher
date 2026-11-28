@@ -1,5 +1,5 @@
-import { BadgeCheck, Copy, ExternalLink, FolderOpen, RefreshCw, RotateCcw, ShieldCheck, Trash2, Undo2, Wrench, X } from "lucide-react"
-import { useEffect, useState } from "react"
+import { BadgeCheck, ChevronDown, Copy, ExternalLink, FolderOpen, RefreshCw, RotateCcw, ShieldCheck, Trash2, Undo2, Wrench, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 import { Aurora } from "@/components/art/aurora"
 import { ProjectAvatar } from "@/components/art/project-avatar"
@@ -10,7 +10,7 @@ import { Tooltip } from "@/components/ui/tooltip"
 import { Trans, useT } from "@/i18n"
 import { copyText, openUrl, pickFolder } from "@/lib/api"
 import { useBackdrop } from "@/lib/backdrops"
-import { fps, gpuText, shortCommit } from "@/lib/format"
+import { fps, gpuText, hideHome, shortCommit } from "@/lib/format"
 import { allProjects, run, useAlias, useSelected, useStore } from "@/lib/store"
 import type { Project, Snapshot } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -50,37 +50,100 @@ export function LibraryView() {
 
 const NONE: string[] = []
 
+
 /**
- * The page frame: a banner of art (the player's own pictures when they set some) with the
- * project's column over its left side, then whatever goes below it, on the plain ground the
- * art fades into. The whole page scrolls under the nav.
+ * The page frame: the art fills the page and stays put, with the project's column over its left
+ * side. Scrolling moves the column up with the details sheet below it, so both stay readable,
+ * while the art dims behind them. A "Details" hint at the bottom says there is more.
  */
 function Stage({ seed, below, children }: { seed: string; below?: React.ReactNode; children: React.ReactNode }) {
+  const t = useT()
   const pictures = useStore((s) => (s.screenshot ? NONE : (s.snap?.backgrounds ?? NONE)))
   const playing = useStore((s) => !!s.snap?.job.running && s.snap.job.stage_kind === "playing")
   // Once the page scrolls, the nav and window controls get a ground of their own.
   const [scrolled, setScrolled] = useState(false)
+  const column = useRef<HTMLDivElement>(null)
+  // The sheet settles like a drawer: let go partway and it glides open (or shut, going back up).
+  const settle = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const last = useRef({ top: 0, down: true })
+  useEffect(() => () => clearTimeout(settle.current), [])
+  // Set on the page straight from the scroll, not through React: 0 at rest, 1 a page down.
+  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const box = e.currentTarget
+    box.style.setProperty("--cover", String(Math.min(1, box.scrollTop / Math.max(1, box.clientHeight))))
+    // The hero shrinks and fades as the page scrolls: the logo, summary and downloads line first, then the
+    // whole column. Once it is mostly gone it takes no clicks or focus, so nothing unseen can be pressed.
+    const squish = Math.min(1, box.scrollTop / Math.max(1, box.clientHeight * 0.8))
+    box.style.setProperty("--squish", String(squish))
+    if (column.current) column.current.inert = squish > 0.45
+    const top = box.scrollTop
+    if (top !== last.current.top) last.current = { top, down: top > last.current.top }
+    clearTimeout(settle.current)
+    settle.current = setTimeout(() => {
+      const sheet = document.getElementById("library-details")
+      if (!sheet) return
+      const open = sheet.offsetTop - 80
+      const now = box.scrollTop
+      if (now <= 0 || now >= open - 1) return
+      // A small pull opens it; going back up, a small push closes it.
+      const opening = last.current.down ? now > open * 0.12 : now > open * 0.88
+      const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      box.scrollTo({ top: opening ? open : 0, behavior: still ? "auto" : "smooth" })
+    }, 140)
+    setScrolled(box.scrollTop > 24)
+  }
   return (
-    <div className="h-full overflow-x-hidden overflow-y-auto bg-[#0b0910]" onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 24)}>
+    <div
+      className="h-full overflow-x-hidden overflow-y-auto bg-page [--cover:0] [--squish:0] [container-type:size] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      onScroll={onScroll}
+    >
       <div
         aria-hidden
         className={cn(
-          "pointer-events-none sticky top-0 z-20 -mb-[80px] h-[80px] border-b border-white/[0.06] bg-[#0b0910]/85 backdrop-blur-xl transition-opacity duration-200",
+          "pointer-events-none sticky top-0 z-20 -mb-[80px] h-[80px] border-b border-line bg-ground/80 backdrop-blur-xl transition-opacity duration-200",
           scrolled ? "opacity-100" : "opacity-0",
         )}
       />
-      <section className="relative isolate flex min-h-[clamp(560px,74vh,720px)] flex-col justify-end overflow-hidden">
-        {/* The art is framed for the whole window (src/lib/backdrops.ts), so it keeps that frame and the banner shows its top. */}
-        <div className="absolute inset-x-0 top-0 -z-10 h-[max(100%,100vh)] overflow-hidden bg-[#1a1230] [container-type:size]">
+      {/* The art, pinned to the page: framed for the whole window (src/lib/backdrops.ts). */}
+      <div aria-hidden className="sticky top-0 -mb-[100cqh] h-[100cqh] overflow-hidden">
+        <div className="absolute inset-0 origin-center bg-[#1a1230] [container-type:size] [transform:translateY(calc(var(--cover)*-48px))_scale(calc(1+var(--cover)*0.08))]">
           {pictures.length ? <Aurora seed={seed} still={playing} pictures={pictures} art={null} /> : <GtaArt />}
         </div>
-        {/* Into the page's ground, so the tabs read as the same page. */}
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-[42%] bg-[linear-gradient(0deg,#0b0910_0%,rgb(11_9_16/0.82)_28%,rgb(11_9_16/0.35)_64%,transparent_100%)]" />
-        <div className="w-[min(600px,calc(100%-96px))] px-[56px] pt-[96px] pb-[36px] box-content">{children}</div>
+        <div className="absolute inset-0 bg-ground opacity-[calc(var(--cover)*0.6)]" />
+      </div>
+      <section className="relative flex min-h-[max(620px,100cqh)] flex-col justify-end">
+        <div
+          ref={column}
+          className="box-content w-[min(600px,calc(100%-96px))] origin-bottom-left px-[56px] pt-[96px] opacity-[calc(1-var(--squish)*1.6)] [transform:scale(calc(1-var(--squish)*0.25))]"
+          style={{ paddingBottom: below ? "calc(96px - var(--squish) * 64px)" : 48 }}
+        >
+          {children}
+        </div>
+        {below && (
+          <button
+            type="button"
+            onClick={showDetails}
+            className="absolute bottom-[22px] left-1/2 flex -translate-x-1/2 cursor-pointer flex-col items-center gap-[2px] rounded-md px-3 py-1 text-[11px] leading-4 font-semibold tracking-[0.16em] text-white/55 uppercase opacity-[calc(1-var(--cover)*5)] transition-colors [text-shadow:0_1px_8px_rgb(20_10_35/0.6)] hover:text-white"
+          >
+            {t("library.hero.details")}
+            <ChevronDown aria-hidden className="size-4 animate-[hint-nudge_2.4s_ease-in-out_infinite] motion-reduce:animate-none" />
+          </button>
+        )}
       </section>
-      {below && <div id="library-details" className="scroll-mt-[80px] px-4">{below}</div>}
+      {below && (
+        <div
+          id="library-details"
+          className="relative z-10 mx-[calc(max(0,1-var(--cover)*1.1)*14px)] min-h-[calc(100cqh-80px)] scroll-mt-[80px] rounded-t-[calc(max(0,1-var(--cover)*1.1)*24px)] border-t border-line bg-page px-4 pt-[18px] shadow-[0_-24px_60px_rgb(0_0_0/0.5)] backdrop-blur-2xl"
+        >
+          {below}
+        </div>
+      )}
     </div>
   )
+}
+
+function showDetails() {
+  document.getElementById("library-details")?.scrollIntoView({ behavior: "smooth", block: "start" })
 }
 
 function GtaArt() {
@@ -99,38 +162,39 @@ function GtaArt() {
 
 /** The GTA VI logo, for the game every build on the list plays. */
 function GtaTitle() {
-  // i18n-ignore: the game's name
-  return <img src="/gta6/logo.svg" alt="Grand Theft Auto VI" className="h-[112px] w-[147px] drop-shadow-[0_6px_18px_rgb(30_10_50/0.45)]" draggable={false} />
+  return (
+    <div className="opacity-[calc(1-var(--squish,0)*2.2)]">
+      {/* i18n-ignore: the game's name */}
+      <img src="/gta6/logo.svg" alt="Grand Theft Auto VI" className="h-[76px] w-[100px] drop-shadow-[0_6px_18px_rgb(30_10_50/0.45)]" draggable={false} />
+    </div>
+  )
 }
 
-/** Where the build comes from, who made it, its first sentence and what it measured. */
+/** The build's name, who made it, and its first sentence: what the player reads first. */
 function Identity({ project: p }: { project: Project }) {
   const t = useT()
   const alias = useAlias()(p)
   const screenshot = useStore((s) => s.screenshot)
-  const source = p.kind === "zip" ? t("library.hero.imported") : p.custom ? t("library.hero.addedByLink") : "VIPortLive"
-  const version = p.built ? t("library.identity.build", { commit: shortCommit(p.built)! }) : p.installed ? t("library.identity.installed") : t("library.identity.notBuilt")
   const lead = screenshot ? null : leadSentence(p.summary)
   return (
-    <div className="mt-[26px]">
-      <p className="truncate text-[12px] leading-[15px] font-semibold tracking-[0.16em] text-white/65 uppercase [text-shadow:0_1px_6px_rgb(20_10_35/0.5)]">
-        {source} · {version}
-      </p>
-      <div className="mt-[10px] flex items-center gap-[14px]">
+    <div className="mt-[24px]">
+      <div className="flex items-center gap-[14px]">
         <ProjectAvatar project={p} owner={alias.owner} size={48} className="shadow-[0_8px_20px_rgb(0_0_0/0.45)]" />
         <h1 className="min-w-0 truncate font-display text-[40px] leading-[46px] font-bold tracking-[-0.03em] text-white [text-shadow:0_2px_20px_rgb(20_10_35/0.55)]">{alias.name}</h1>
         {p.verified && (
           <Tooltip label={t("library.hero.verifiedBy")}>
-            <BadgeCheck aria-label={t("library.hero.verified")} tabIndex={0} className="size-6 shrink-0 text-accent-fg outline-none" />
+            <BadgeCheck aria-label={t("library.hero.verified")} tabIndex={0} className="size-6 shrink-0 text-accent-art outline-none" />
           </Tooltip>
         )}
       </div>
       {lead && (
-        <p className="mt-[14px] max-w-[460px] text-[15px] leading-[22px] text-pretty text-white/80 [text-shadow:0_1px_10px_rgb(20_10_35/0.7)]" data-selectable>
+        <p
+          className="mt-[14px] max-w-[460px] text-[15px] leading-[22px] text-pretty text-white/80 opacity-[calc(1-var(--squish,0)*2.2)] [text-shadow:0_1px_10px_rgb(20_10_35/0.7)]"
+          data-selectable
+        >
           {lead}
         </p>
       )}
-      <Stats project={p} />
     </div>
   )
 }
@@ -148,12 +212,12 @@ function Stats({ project: p }: { project: Project }) {
   if (p.gpu.length) stats.push({ value: gpuText(p.gpu), label: t("library.hero.madeFor") })
   if (!stats.length) return null
   return (
-    <dl className="mt-[18px] flex flex-wrap items-stretch gap-y-3 [text-shadow:0_1px_10px_rgb(20_10_35/0.6)]">
+    <dl className="mt-[28px] flex flex-wrap items-stretch gap-y-3 [text-shadow:0_1px_10px_rgb(20_10_35/0.6)]">
       {stats.map((s, i) => {
         const body = (
           <div className={cn("flex flex-col-reverse", i > 0 && "border-l border-white/20 pl-[22px]", i < stats.length - 1 && "pr-[22px]", s.tip && "cursor-help rounded-xs")} tabIndex={s.tip ? 0 : undefined}>
             <dt className="mt-[2px] text-[12.5px] leading-4 text-white/60">{s.label}</dt>
-            <dd className="font-display text-[22px] leading-[26px] font-semibold tracking-[-0.01em] text-white tabular-nums">{s.value}</dd>
+            <dd className="font-display text-[20px] leading-[24px] font-semibold tracking-[-0.01em] text-white tabular-nums">{s.value}</dd>
           </div>
         )
         return s.tip ? <Tooltip key={s.label} label={s.tip}>{body}</Tooltip> : <div key={s.label} className="contents">{body}</div>
@@ -190,7 +254,7 @@ function ProjectControls({ project: p }: { project: Project }) {
     document.getElementById("library-details")?.scrollIntoView({ behavior: "smooth", block: "start" })
   }
   const link = (label: React.ReactNode, onClick: () => void) => (
-    <button type="button" onClick={onClick} className="cursor-pointer text-accent-fg underline-offset-2 hover:underline">
+    <button type="button" onClick={onClick} className="cursor-pointer text-accent-art underline-offset-2 hover:underline">
       {label}
     </button>
   )
@@ -262,7 +326,7 @@ function ProjectControls({ project: p }: { project: Project }) {
   return (
     <>
       <Identity project={p} />
-      <div className="mt-[26px] flex items-center gap-[12px]">
+      <div className="mt-[24px] flex items-center gap-[12px]">
         <button
           type="button"
           disabled={!onClick}
@@ -280,22 +344,31 @@ function ProjectControls({ project: p }: { project: Project }) {
         <span role="status" className="min-w-0">{status}</span>
       </p>
 
-      <DownloadsLine />
+      <Stats project={p} />
+      <DownloadsLine project={p} />
       {warning.dialog}
     </>
   )
 }
 
-/** Where builds download to, with Change and the way in for a copy the player already has. */
-function DownloadsLine() {
+/**
+ * The quiet last line: where the build comes from (and its commit once built), where builds
+ * download to, Change, and the way in for a copy the player already has.
+ */
+function DownloadsLine({ project: p }: { project: Project }) {
   const t = useT()
+  const source = p.kind === "zip" ? t("library.hero.imported") : p.custom ? t("library.hero.addedByLink") : "VIPortLive"
+  const commit = p.built ? shortCommit(p.built) : null
   const snap = useStore((s) => s.snap)!
   const open = useStore((s) => s.open)
   const screenshot = useStore((s) => s.screenshot)
-  const path = screenshot ? "C:\\Games\\VILauncher" : snap.settings.workspace
+  // The player's account name never shows: the home folder reads "/user/...".
+  const path = screenshot ? "C:\\Games\\VILauncher" : hideHome(snap.settings.workspace)
   const busy = snap.job.running
   return (
-    <p className="mt-[14px] flex items-center gap-x-[16px] text-[13px] leading-[18px] whitespace-nowrap text-white/70 [text-shadow:0_1px_6px_rgb(20_10_35/0.6)]">
+    <p className="mt-[22px] flex flex-wrap items-center gap-x-[16px] gap-y-1 text-[13px] leading-[18px] whitespace-nowrap text-white/60 opacity-[calc(1-var(--squish,0)*2.2)] [text-shadow:0_1px_6px_rgb(20_10_35/0.6)]">
+      <span>{commit ? `${source} · ${t("library.identity.build", { commit })}` : source}</span>
+      <span aria-hidden className="-mx-[6px] text-white/30">·</span>
       <span>{t("library.downloads.to")}</span>
       <Tooltip label={<span className="font-mono break-all">{path}</span>}>
         <span tabIndex={0} className="-ml-[10px] inline-block max-w-[150px] cursor-default truncate rounded-[2px] align-bottom" aria-label={t("library.downloads.folder", { path })}>
@@ -310,11 +383,11 @@ function DownloadsLine() {
           const dir = await pickFolder(t("library.downloads.pickTitle"))
           if (dir) void run({ type: "choose_install_dir", path: dir })
         }}
-        className="cursor-pointer rounded-[2px] text-accent-fg underline-offset-2 hover:underline disabled:cursor-default disabled:opacity-50 disabled:hover:no-underline"
+        className="cursor-pointer rounded-[2px] text-accent-art underline-offset-2 hover:underline disabled:cursor-default disabled:opacity-50 disabled:hover:no-underline"
       >
         {t("library.downloads.change")}
       </button>
-      <button type="button" onClick={() => open({ kind: "import" })} className="cursor-pointer rounded-[2px] text-accent-fg underline-offset-2 hover:underline">
+      <button type="button" onClick={() => open({ kind: "import" })} className="cursor-pointer rounded-[2px] text-accent-art underline-offset-2 hover:underline">
         {t("library.downloads.have")}
       </button>
     </p>
@@ -442,14 +515,18 @@ function ControlsSkeleton() {
   const t = useT()
   return (
     <div aria-busy="true" aria-label={t("library.loading")}>
-      <Bone className="mt-[26px] h-[12px] w-[180px]" />
-      <div className="mt-[10px] flex items-center gap-[14px]">
+      <div className="mt-[24px] flex items-center gap-[14px]">
         <Bone className="size-12 rounded-[12px]" />
         <Bone className="h-9 w-[240px] rounded-md" />
       </div>
       <Bone className="mt-[14px] h-[14px] w-[480px] max-w-full" />
       <Bone className="mt-[8px] h-[14px] w-[320px]" />
-      <div className="mt-[18px] flex gap-[22px]">
+      <div className="mt-[24px] flex gap-[12px]">
+        <Bone className="h-[54px] w-[220px] rounded-lg" />
+        <Bone className="size-[54px] rounded-lg" />
+      </div>
+      <Bone className="mt-[16px] h-[14px] w-[280px]" />
+      <div className="mt-[28px] flex gap-[22px]">
         {[64, 52, 56].map((w) => (
           <div key={w} className="space-y-2">
             <Bone className="h-5" style={{ width: w }} />
@@ -457,12 +534,7 @@ function ControlsSkeleton() {
           </div>
         ))}
       </div>
-      <div className="mt-[26px] flex gap-[12px]">
-        <Bone className="h-[54px] w-[220px] rounded-lg" />
-        <Bone className="size-[54px] rounded-lg" />
-      </div>
-      <Bone className="mt-[16px] h-[14px] w-[280px]" />
-      <Bone className="mt-[14px] h-[14px] w-[250px]" />
+      <Bone className="mt-[22px] h-[14px] w-[360px]" />
     </div>
   )
 }

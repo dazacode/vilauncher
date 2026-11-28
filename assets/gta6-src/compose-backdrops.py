@@ -2,7 +2,11 @@
 Builds the library backgrounds in public/gta6/art from Rockstar's official
 "Artwork & Wallpapers" pack (rockstargames.com/VI/media, GTAVI_Artwork_Wallpapers.zip).
 
-  python3 compose-backdrops.py <folder with the *_landscape.jpg files> ../../public/gta6/art
+  python3 compose-backdrops.py <folder with the *_landscape.jpg files> ../../public/gta6/art [slug ...]
+
+Name slugs to build only those. Every landscape piece in the pack is used, the "With Logos" versions too; the two
+portrait posters (the Leonida map and the cover art poster) are left out. compose-screenshots.py reuses the helpers
+below for the screenshot pack.
 
 Each picture is scaled to 1440 px high, given 14% more sky above it and a soft, blurred extension on the left (a quarter of its width),
 so the page can slide the subject right of the title column and below the nav. src/lib/backdrops.ts holds each picture's aspect and where its
@@ -20,6 +24,24 @@ PICKS = {
     "jason-lucia-01": "Jason_and_Lucia_01",
     "beach": "Jason_and_Lucia_Beach",
     "mount-kalaga": "Mount_Kalaga_National_Park_Postcard",
+    "jason-lucia-02": "Jason_and_Lucia_02",
+    "lock-and-load": "Jason_Lucia_Lock_And_Load",
+    "motel": "Jason_and_Lucia_Motel",
+    "cover-art": "Official_Cover_Art",
+    "album-cover": "The_Album_Cover_Art",
+    "raul-bautista": "Raul_Bautista",
+    "real-dimez": "Real_Dimez",
+    "vice-city": "Vice_City_Postcard",
+    "leonida-keys": "Leonida_Keys_Postcard",
+    "port-gellhorn": "Port_Gellhorn_Postcard",
+    "ambrosia": "Ambrosia_Postcard",
+    "grassrivers": "Grassrivers_Postcard",
+    "robbery-logos": "Jason_and_Lucia_Robbery_With_Logo",
+    "beach-logos": "Jason_and_Lucia_Beach_With_Logos",
+    "rooftop-logos": "Jason_Lucia_Rooftop_With_Logos",
+    "jason-lucia-01-logos": "Jason_and_Lucia_01_With_Logos",
+    "jason-lucia-02-logos": "Jason_and_Lucia_02_With_Logos",
+    "lock-and-load-logos": "Jason_Lucia_Lock_And_Load_With_Logos",
 }
 H = 1440
 EXT = 0.25
@@ -28,9 +50,25 @@ TOP = 0.14
 
 
 def postcard(im):
-    """The photo inside the tilted postcard, straightened."""
+    """The photo inside the tilted postcard, straightened. Every postcard in the pack shares this frame."""
     im = im.rotate(-3.35, resample=Image.BICUBIC, center=(1921, 1085))
     return im.crop((721, 305, 3121, 1865))
+
+
+def open_piece(src, name):
+    """The pack's landscape cut of name."""
+    return Image.open(os.path.join(src, name + "_landscape.jpg")).convert("RGB")
+
+
+def build(im, out, slug):
+    """Scales im to the page's height, adds the sky and the soft left, and saves it with its thumbnail."""
+    im = im.resize((round(im.width * H / im.height), H), Image.LANCZOS)
+    thumb = im.resize((320, round(320 * im.height / im.width)), Image.LANCZOS)
+    im = extend_top(im)
+    im = extend_left(im)
+    im.save(os.path.join(out, slug + ".jpg"), quality=80, optimize=True, progressive=True)
+    thumb.save(os.path.join(out, "thumbs", slug + ".jpg"), quality=80, optimize=True)
+    return im
 
 
 def hgrad(w, h, a, b):
@@ -72,16 +110,14 @@ def extend_left(im):
     return Image.composite(soft, wide, m)
 
 
-src, out = sys.argv[1:3]
-os.makedirs(os.path.join(out, "thumbs"), exist_ok=True)
-for slug, name in PICKS.items():
-    im = Image.open(os.path.join(src, name + "_landscape.jpg")).convert("RGB")
-    if slug == "mount-kalaga":
-        im = postcard(im)
-    im = im.resize((round(im.width * H / im.height), H), Image.LANCZOS)
-    thumb = im.resize((320, round(320 * im.height / im.width)), Image.LANCZOS)
-    im = extend_top(im)
-    im = extend_left(im)
-    im.save(os.path.join(out, slug + ".jpg"), quality=80, optimize=True, progressive=True)
-    thumb.save(os.path.join(out, "thumbs", slug + ".jpg"), quality=80, optimize=True)
-    print(slug, im.size, round(im.width / im.height, 4))
+if __name__ == "__main__":
+    src, out, *only = sys.argv[1:]
+    os.makedirs(os.path.join(out, "thumbs"), exist_ok=True)
+    for slug, name in PICKS.items():
+        if only and slug not in only:
+            continue
+        im = open_piece(src, name)
+        if name.endswith("_Postcard"):
+            im = postcard(im)
+        im = build(im, out, slug)
+        print(slug, im.size, round(im.width / im.height, 4))

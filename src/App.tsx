@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { Dialogs } from "@/features/dialogs/dialogs"
 import { useT } from "@/i18n"
 import { LibrarySkeleton, LibraryView } from "@/features/library/library-view"
-import { WorkshopView } from "@/features/library/workshop-view"
+import { ModsView } from "@/features/library/mods-view"
 import { SettingsView } from "@/features/settings/settings-view"
 import { act, getBackend, platformName } from "@/lib/api"
 import { scheduleRefresh, useStore } from "@/lib/store"
@@ -31,7 +31,7 @@ export function App() {
     <TooltipProvider>
       <div className="flex h-full">
         <Sidebar />
-        <main className="relative min-w-0 flex-1 overflow-hidden bg-[#0b0910]">
+        <main className="relative min-w-0 flex-1 overflow-hidden bg-page">
           {/* The top of the window drags it; the controls and the page nav sit over the art. WebView2
               (Windows) moves the window from the `drag` class; WebKitGTK and WKWebView ignore it, so
               Tauri drags from data-tauri-drag-region there. macOS draws its own traffic lights (top
@@ -40,14 +40,14 @@ export function App() {
             {!mac && <WindowControls />}
           </div>
           <div data-tauri-drag-region="deep" className="drag absolute inset-x-0 top-[28px] z-30 flex h-[52px] items-center justify-end pr-[53px]">
-            <TopNav />
+            <TopNav onArt={view === "library"} />
           </div>
           {view === "library" ? (
             snap ? <LibraryView /> : <LibrarySkeleton />
           ) : (
             // Other pages scroll below the nav, not under it.
             <div className="h-full border-t-0 pt-[80px]">
-              <div className="h-full border-t border-white/[0.06]">{!snap ? null : view === "workshop" ? <WorkshopView /> : <SettingsView />}</div>
+              <div className="h-full border-t border-line">{!snap ? null : view === "mods" ? <ModsView /> : <SettingsView />}</div>
             </div>
           )}
         </main>

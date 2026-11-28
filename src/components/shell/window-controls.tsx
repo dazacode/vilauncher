@@ -21,7 +21,7 @@ export function WindowControls({ className }: { className?: string }) {
     })
     return () => off?.()
   }, [])
-  const button = "no-drag grid h-full w-[42px] cursor-pointer place-items-center text-[#d4d2d8] transition-colors duration-100 hover:bg-white/[0.1] hover:text-white"
+  const button = "no-drag grid h-full w-[42px] cursor-pointer place-items-center text-fg-2 transition-colors duration-100 hover:bg-fill-3 hover:text-fg"
   const glyph = { viewBox: "0 0 10 10", className: "size-[10px]", fill: "none", stroke: "currentColor", strokeWidth: 1, "aria-hidden": true } as const
   return (
     <div className={cn("flex h-[28px] items-stretch", className)}>

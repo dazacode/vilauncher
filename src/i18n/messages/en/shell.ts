@@ -5,8 +5,8 @@ export default {
   /** The toasts' region, for screen readers. */
   notifications: "Notifications",
   nav: {
-    games: "Games",
-    workshop: "Workshop",
+    builds: "Builds",
+    mods: "Mods",
     label: "Pages",
     library: "Library",
     settings: "Settings",

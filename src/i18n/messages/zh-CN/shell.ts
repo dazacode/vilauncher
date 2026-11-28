@@ -5,8 +5,8 @@ export default {
   unlocked: "已解锁新主题，可以在“设置”的“外观”中找到。",
   notifications: "通知",
   nav: {
-    games: "游戏",
-    workshop: "工坊",
+    builds: "构建版本",
+    mods: "模组",
     label: "页面",
     library: "项目库",
     settings: "设置",

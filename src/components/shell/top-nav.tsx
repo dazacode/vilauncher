@@ -3,13 +3,13 @@ import { useStore, type View } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
 const ITEMS = [
-  { view: "library", key: "shell.nav.games" },
-  { view: "workshop", key: "shell.nav.workshop" },
+  { view: "library", key: "shell.nav.builds" },
+  { view: "mods", key: "shell.nav.mods" },
   { view: "settings", key: "shell.nav.settings" },
 ] as const satisfies readonly { view: View; key: string }[]
 
-/** GAMES · WORKSHOP · SETTINGS, top right over every page; the current one is underlined in VIPortLive pink. */
-export function TopNav() {
+/** BUILDS · MODS · SETTINGS, top right over every page; the current one is underlined in VIPortLive pink. */
+export function TopNav({ onArt }: { onArt: boolean }) {
   const t = useT()
   const view = useStore((s) => s.view)
   const setView = useStore((s) => s.setView)
@@ -25,7 +25,9 @@ export function TopNav() {
             aria-current={current ? "page" : undefined}
             className={cn(
               "no-drag relative -mr-[0.1em] cursor-pointer rounded-[2px] font-display text-[16px] leading-[28px] font-bold tracking-[0.1em] uppercase transition-colors duration-150 [text-shadow:0_1px_10px_rgb(20_10_40/0.45)]",
-              current ? "text-white" : "text-white/70 hover:text-white",
+              // Over the art the words stay white; on the other pages they follow the theme.
+              onArt ? (current ? "text-white" : "text-white/70 hover:text-white") : current ? "text-fg" : "text-fg-2 hover:text-fg",
+              !onArt && "[text-shadow:none]",
             )}
           >
             {t(item.key)}

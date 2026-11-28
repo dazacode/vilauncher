@@ -37,11 +37,15 @@
   --color-accent-hover: #ea4598;
   --color-accent-soft: rgb(255 95 170 / 0.16);
   --color-accent-fg: #ff8cc4;
+  /* The accent for words over the library's art, which is always dark: kept light in every look. */
+  --color-accent-art: #ff8cc4;
   --color-ok: #3ccf8e;
   --color-warn: #f4b13e;
   --color-bad: #ff6369;
   --color-raised: #1d1b23;
-  --color-sidebar: rgb(10 9 14 / 0.55);
+  /* The page behind every view and the sidebar. A custom theme makes them see-through by its glass (src/lib/theme.ts). */
+  --color-page: #0b0910;
+  --color-sidebar: #000000;
   --color-glass: rgb(28 26 34 / 0.94);
   --color-glass-solid: rgb(24 22 30 / 0.82);
   --color-glass-thin: rgb(255 255 255 / 0.06);
@@ -92,6 +96,7 @@
     height: 100%;
   }
   html {
+    /* The theme sets this too (src/lib/theme.ts), so form controls and scroll bars follow it. */
     color-scheme: dark;
     background: transparent;
   }
@@ -130,7 +135,8 @@
 
 /*
  * The other looks. Each overrides the same tokens as the default above; anything not listed keeps
- * the dark values. Light and calm are flat: no ambient glow, no gradient backgrounds.
+ * the dark values. Light and paws are flat: no ambient glow, no gradient backgrounds. The player's own
+ * themes set these tokens on <html> from a few choices (src/lib/theme.ts).
  */
 :root[data-theme="light"] {
   --color-ground: #f5f4f7;
@@ -148,34 +154,18 @@
   --color-accent-hover: #c52d7a;
   --color-accent-soft: rgb(179 35 106 / 0.12);
   --color-accent-fg: #a01d5e;
+  --color-accent-art: #f39cc6;
   --color-accent-selection: rgb(179 35 106 / 0.22);
   --color-focus: rgb(179 35 106 / 0.7);
   --color-ok: #15803d;
   --color-warn: #b45309;
   --color-bad: #b91c1c;
   --color-raised: #ffffff;
+  --color-page: #f5f4f7;
   --color-sidebar: rgb(255 255 255 / 0.92);
   --color-glass: rgb(255 255 255 / 0.97);
   --color-glass-solid: rgb(255 255 255 / 0.96);
   --color-glass-thin: rgb(0 0 0 / 0.03);
-}
-
-:root[data-theme="calm"] {
-  --color-ground: #101417;
-  --color-fg: #e7ebee;
-  --color-fg-2: rgb(231 235 238 / 0.72);
-  --color-fg-3: rgb(231 235 238 / 0.56);
-  --color-fg-4: rgb(231 235 238 / 0.36);
-  --color-accent: #5b9aa5;
-  --color-accent-hover: #6aaab5;
-  --color-accent-soft: rgb(91 154 165 / 0.16);
-  --color-accent-fg: #8fc3cc;
-  --color-accent-selection: rgb(91 154 165 / 0.3);
-  --color-focus: rgb(143 195 204 / 0.75);
-  --color-raised: #181e23;
-  --color-sidebar: rgb(12 16 19 / 0.6);
-  --color-glass: rgb(20 25 29 / 0.96);
-  --color-glass-solid: rgb(24 30 35 / 0.96);
 }
 
 :root[data-theme="paws"] {
@@ -194,17 +184,19 @@
   --color-accent-hover: #f1a574;
   --color-accent-soft: rgb(233 146 90 / 0.16);
   --color-accent-fg: #ffc08f;
+  --color-accent-art: #ffc08f;
   --color-accent-selection: rgb(233 146 90 / 0.3);
   --color-focus: rgb(255 192 143 / 0.75);
   --color-raised: #261d18;
+  --color-page: #1c1512;
   --color-sidebar: rgb(20 15 12 / 0.6);
   --color-glass: rgb(32 24 20 / 0.96);
   --color-glass-solid: rgb(38 29 24 / 0.96);
   --color-glass-thin: rgb(255 230 210 / 0.06);
 }
 
-/* On Windows the window is transparent so Mica shows; Mica is dark, so the light look needs its own solid ground. */
-:root[data-theme="light"] main {
+/* A Flat theme: no system glass behind the window (it is turned off too), so a solid ground. */
+:root[data-flat] body {
   background: var(--color-ground);
 }
 
@@ -214,6 +206,17 @@
   }
   to {
     background-position: -200% 0;
+  }
+}
+
+/* The library's "Details" hint: a slow nudge toward the sheet below. */
+@keyframes hint-nudge {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(4px);
   }
 }
 

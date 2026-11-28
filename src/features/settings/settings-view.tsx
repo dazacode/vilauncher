@@ -1,7 +1,6 @@
-import { Fragment, useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { ExternalLink, FolderOpen, RefreshCw, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Segmented } from "@/components/ui/segmented"
 import { Group, Row } from "@/components/ui/group"
 import { Input, Textarea } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
@@ -10,11 +9,11 @@ import { GraphicsGroups } from "@/features/library/graphics-tab"
 import { ControllerKeysGroup } from "@/features/settings/controller-keys"
 import { LanguageSelect } from "@/features/shared/language-select"
 import { BackdropPicker } from "./backdrop-picker"
+import { ThemeRows } from "./theme-picker"
 import { ResponsibilityDialog } from "@/features/shared/responsibility"
 import { formatBytes, formatList, Trans, useT } from "@/i18n"
 import { openUrl, pickFile, pickFolder } from "@/lib/api"
 import { useDraft } from "@/lib/hooks"
-import { pawsUnlocked, setTheme, THEMES, type Theme, themeLabel, useTheme } from "@/lib/theme"
 import { run, useStore } from "@/lib/store"
 import type { StorageView } from "@/lib/types"
 
@@ -24,11 +23,6 @@ export function SettingsView() {
   const screenshot = useStore((s) => s.screenshot)
   const setScreenshot = useStore((s) => s.setScreenshot)
   const s = snap.settings
-  const theme = useTheme()
-  const looks = [
-    ...THEMES.map((look) => ({ value: look.id as string, label: themeLabel(look.id) })),
-    ...(pawsUnlocked() || theme === "paws" ? [{ value: "paws", label: themeLabel("paws") }] : []),
-  ]
   const [askAgents, setAskAgents] = useState(false)
   // Turning agents on needs the warning once; the switch only moves after Continue.
   const turnOnAgents = () =>
@@ -48,9 +42,7 @@ export function SettingsView() {
         </header>
 
         <Group title={t("settings.appearance.title")} description={t("settings.appearance.description")}>
-          <Row label={t("settings.appearance.look")} hint={t("settings.appearance.lookHint")}>
-            <Segmented label={t("settings.appearance.look")} size="sm" value={theme} options={looks} onChange={(v) => setTheme(v as Theme)} />
-          </Row>
+          <ThemeRows />
           <LanguageRow />
           <BackdropPicker />
         </Group>
@@ -246,7 +238,8 @@ function LanguageRow() {
   )
 }
 
-/** What each project takes on disk, and the safe parts to clear. Saves are never offered. */
+/** What VILauncher takes on disk, largest first, and the parts that are safe to clear.
+ *  Projects with nothing on disk are left out. Saves are counted but never offered. */
 function DiskSpace() {
   const t = useT()
   const busy = useStore((s) => s.snap!.job.running || s.snap!.active_builds > 0)
@@ -279,65 +272,68 @@ function DiskSpace() {
     await scan()
   }
 
+  const rows = (view?.projects ?? [])
+    .map((p) => ({ ...p, total: p.sources + p.builds + p.previous + p.cache + p.saves }))
+    .filter((p) => p.total > 0)
+    .sort((a, b) => b.total - a.total)
+  const freeable = rows.reduce((sum, p) => sum + p.previous + p.cache, 0)
+
   return (
     <Group title={t("settings.disk.title")} description={t("settings.disk.description")}>
       <Row
-        label={view ? t("settings.disk.inUse", { size: formatBytes(view.total_bytes) }) : t("settings.disk.measuring")}
+        label={view ? t("settings.disk.total", { size: formatBytes(view.total_bytes) }) : t("settings.disk.measuring")}
         hint={
-          view &&
-          (view.free_bytes != null
-            ? t("settings.disk.outsideFree", { size: formatBytes(view.other_bytes), free: formatBytes(view.free_bytes) })
-            : t("settings.disk.outside", { size: formatBytes(view.other_bytes) }))
+          view && (
+            <>
+              {view.free_bytes != null && t("settings.disk.free", { free: formatBytes(view.free_bytes) })}{" "}
+              {freeable > 0 ? t("settings.disk.freeable", { size: formatBytes(freeable) }) : t("settings.disk.nothingToFree")}
+            </>
+          )
         }
       >
         <Button size="sm" variant="ghost" disabled={scanning} onClick={() => void scan()}>
           {scanning ? <Spinner /> : <RefreshCw />} {t("common.refresh")}
         </Button>
       </Row>
-      {view && (
-        <div className="overflow-x-auto px-4 py-3">
-          <table className="w-full min-w-[560px] text-secondary">
-            <thead>
-              <tr className="text-left text-fg-3">
-                <th className="pb-2 font-normal">{t("settings.disk.project")}</th>
-                <th className="pb-2 text-right font-normal">{t("settings.disk.sources")}</th>
-                <th className="pb-2 text-right font-normal">{t("settings.disk.builds")}</th>
-                <th className="pb-2 text-right font-normal">{t("settings.disk.previous")}</th>
-                <th className="pb-2 text-right font-normal">{t("settings.disk.cache")}</th>
-                <th className="pb-2 text-right font-normal">{t("settings.disk.saves")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {view.projects.map((row) => {
-                const cacheKey = `cache:${row.slug}`
-                const previousKey = `previous:${row.slug}`
-                return (
-                  <Fragment key={row.slug}>
-                    <tr className="text-fg-2">
-                      <td className="py-1.5 text-body text-fg">{row.label}</td>
-                      <td className="py-1.5 text-right tabular-nums">{formatBytes(row.sources)}</td>
-                      <td className="py-1.5 text-right tabular-nums">{formatBytes(row.builds)}</td>
-                      <td className="py-1.5 text-right tabular-nums">{formatBytes(row.previous)}</td>
-                      <td className="py-1.5 text-right tabular-nums">{formatBytes(row.cache)}</td>
-                      <td className="py-1.5 text-right tabular-nums">{formatBytes(row.saves)}</td>
-                    </tr>
-                    <tr>
-                      <td colSpan={6} className="pb-3">
-                        <div className="flex flex-wrap justify-end gap-2">
-                          <Button size="sm" variant="ghost" disabled={busy || scanning || row.previous === 0} onClick={() => void clear("previous", row.repo, previousKey)}>
-                            {armed === previousKey ? t("common.confirm") : t("settings.disk.clearPrevious")}
-                          </Button>
-                          <Button size="sm" variant="ghost" disabled={busy || scanning || row.cache === 0} onClick={() => void clear("cache", row.repo, cacheKey)}>
-                            {armed === cacheKey ? t("common.confirm") : t("settings.disk.clearCache")}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  </Fragment>
-                )
-              })}
-            </tbody>
-          </table>
+      {view && rows.length === 0 && <p className="px-4 py-3 text-secondary text-fg-3">{t("settings.disk.empty")}</p>}
+      {rows.map((row) => {
+        const cacheKey = `cache:${row.slug}`
+        const previousKey = `previous:${row.slug}`
+        const parts = [
+          row.builds > 0 && t("settings.disk.build", { size: formatBytes(row.builds) }),
+          row.sources > 0 && t("settings.disk.sources", { size: formatBytes(row.sources) }),
+          row.previous > 0 && t("settings.disk.previous", { size: formatBytes(row.previous) }),
+          row.cache > 0 && t("settings.disk.cache", { size: formatBytes(row.cache) }),
+          row.saves > 0 && t("settings.disk.saves", { size: formatBytes(row.saves) }),
+        ].filter(Boolean)
+        return (
+          <div key={row.slug} className="px-4 py-3">
+            <div className="flex items-baseline justify-between gap-4">
+              <span className="min-w-0 truncate text-body text-fg">{row.label}</span>
+              <span className="shrink-0 text-body font-medium tabular-nums text-fg">{formatBytes(row.total)}</span>
+            </div>
+            <p className="mt-0.5 text-secondary text-fg-3">{parts.join(" · ")}</p>
+            {(row.previous > 0 || row.cache > 0) && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {row.previous > 0 && (
+                  <Button size="sm" variant="ghost" disabled={busy || scanning} onClick={() => void clear("previous", row.repo, previousKey)}>
+                    {armed === previousKey ? t("common.confirm") : t("settings.disk.clearPrevious", { size: formatBytes(row.previous) })}
+                  </Button>
+                )}
+                {row.cache > 0 && (
+                  <Button size="sm" variant="ghost" disabled={busy || scanning} onClick={() => void clear("cache", row.repo, cacheKey)}>
+                    {armed === cacheKey ? t("common.confirm") : t("settings.disk.clearCache", { size: formatBytes(row.cache) })}
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+      {view && view.other_bytes > 0 && (
+        <div className="flex items-baseline justify-between gap-4 px-4 py-3">
+          <span className="text-body text-fg-2">{t("settings.disk.elsewhere")}</span>
+          <span className="shrink-0 text-body tabular-nums text-fg-2">{formatBytes(view.other_bytes)}</span>
         </div>
       )}
     </Group>

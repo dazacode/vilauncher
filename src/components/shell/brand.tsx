@@ -29,7 +29,7 @@ export function Brand({ size = "md" }: { size?: "md" | "lg" }) {
         draggable={false}
       />
       <span className="flex items-baseline leading-none">
-        <span className={cn("font-display font-extrabold tracking-[-0.02em] text-white", lg ? "text-[24px]" : "text-[17px]")}>VI</span>
+        <span className={cn("font-display font-extrabold tracking-[-0.02em] text-fg", lg ? "text-[24px]" : "text-[17px]")}>VI</span>
         {/* i18n-ignore: the name "VILauncher", in two styles */}
         <span className={cn("ml-px font-script text-accent-fg", lg ? "text-[29px]" : "text-[21px]")}>Launcher</span>
       </span>

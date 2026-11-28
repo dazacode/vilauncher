@@ -79,19 +79,16 @@ export function Sidebar() {
   }
 
   return (
-    <aside className={cn("relative flex h-full shrink-0 flex-col overflow-hidden bg-black transition-[width] duration-200 ease-out", collapsed ? "w-[64px]" : "w-[300px]")}>
+    <aside className={cn("relative flex h-full shrink-0 flex-col overflow-hidden bg-sidebar transition-[width] duration-200 ease-out", collapsed ? "w-[64px]" : "w-[300px]")}>
       <div data-tauri-drag-region="deep" className={cn("drag flex h-[76px] shrink-0 items-end", collapsed ? "pl-[18px]" : "pl-[28px]")}>
         {collapsed ? <img src="/logo.svg" alt="VILauncher" className="size-[28px] rounded-[7px]" draggable={false} /> : <Brand size="lg" />}
       </div>
 
       {!collapsed && (
-        <div className="shrink-0 px-[28px] pt-[36px]">
-          <div className="flex items-center justify-between gap-2">
-            <h1 className="font-display text-[19px] leading-[22px] font-bold tracking-[-0.01em] text-white">{t("shell.list.title")}</h1>
-            {snap ? <FilterMenu snap={snap} /> : <Bone className="size-8 shrink-0 rounded-md" />}
-          </div>
-          <label className="relative mt-[16px] block">
-            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-white/40" />
+        // Search and its filter as one row, the same height: no title between the brand and the list.
+        <div className="flex shrink-0 items-center gap-2 px-[28px] pt-[28px]">
+          <label className="relative block min-w-0 flex-1">
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-fg-4" />
             <input
               ref={searchRef}
               value={screenshot ? "" : search}
@@ -101,9 +98,10 @@ export function Sidebar() {
               aria-label={t("shell.search")}
               aria-controls="sidebar-projects"
               spellCheck={false}
-              className="h-9 w-full rounded-md border border-white/[0.08] bg-white/[0.05] pr-3 pl-9 text-secondary text-white placeholder:text-white/40 transition-colors hover:border-white/[0.14] focus-visible:border-accent/60 focus-visible:ring-2 focus-visible:ring-accent/25 focus-visible:outline-none"
+              className="h-9 w-full rounded-md border border-line bg-fill-1 pr-3 pl-9 text-secondary text-fg placeholder:text-fg-4 transition-colors hover:border-line-2 focus-visible:border-accent/60 focus-visible:ring-2 focus-visible:ring-accent/25 focus-visible:outline-none"
             />
           </label>
+          {snap ? <FilterMenu snap={snap} /> : <Bone className="size-9 shrink-0 rounded-md" />}
         </div>
       )}
       {collapsed && <div className="h-[24px] shrink-0" />}
@@ -118,8 +116,8 @@ export function Sidebar() {
       >
         {loading && !collapsed && <div className="px-[20px]"><SidebarSkeleton /></div>}
         {snap?.list.status === "error" && !collapsed && (
-          <div className="mx-[28px] mt-4 rounded-lg border border-white/10 bg-white/[0.04] p-3">
-            <p className="text-secondary text-white/70">{screenshot ? t("shell.list.loadFailed") : snap.list.error}</p>
+          <div className="mx-[28px] mt-4 rounded-lg border border-line bg-fill-1 p-3">
+            <p className="text-secondary text-fg-2">{screenshot ? t("shell.list.loadFailed") : snap.list.error}</p>
             <Button size="sm" className="mt-2" onClick={() => void run({ type: "refresh_projects" })}>{t("common.retry")}</Button>
           </div>
         )}
@@ -135,7 +133,7 @@ export function Sidebar() {
           ))}
         {snap?.list.status === "ready" && order.length === 0 && !collapsed && (
           <div className="px-[28px] pt-6">
-            <p className="text-secondary text-white/65">{query ? t("shell.list.noMatch", { query: search.trim() }) : t("shell.list.noneForCard")}</p>
+            <p className="text-secondary text-fg-2">{query ? t("shell.list.noMatch", { query: search.trim() }) : t("shell.list.noneForCard")}</p>
             {query ? (
               <Button variant="ghost" size="sm" className="mt-2 -ml-3" onClick={() => setSearch("")}>{t("shell.list.clearSearch")}</Button>
             ) : filter !== 0 ? (
@@ -145,7 +143,7 @@ export function Sidebar() {
         )}
       </div>
 
-      <div className={cn("shrink-0 border-t border-white/[0.07] pt-[14px] pb-[22px]", collapsed ? "px-[16px]" : "px-[24px]")}>
+      <div className={cn("shrink-0 border-t border-line pt-[14px] pb-[22px]", collapsed ? "px-[16px]" : "px-[24px]")}>
         {!collapsed && (
           <div className="mb-[14px] space-y-2 empty:hidden">
             <LauncherUpdate />
@@ -159,13 +157,13 @@ export function Sidebar() {
               aria-label={collapsed ? t("shell.list.unfold") : t("shell.list.fold")}
               aria-expanded={!collapsed}
               onClick={() => setCollapsed(!collapsed)}
-              className="grid size-[32px] shrink-0 cursor-pointer place-items-center rounded-md text-white/75 transition-colors hover:bg-white/[0.08] hover:text-white"
+              className="grid size-[32px] shrink-0 cursor-pointer place-items-center rounded-md text-fg-2 transition-colors hover:bg-fill-2 hover:text-fg"
             >
               {collapsed ? <PanelLeftOpen className="size-[24px]" strokeWidth={1.5} /> : <PanelLeftClose className="size-[24px]" strokeWidth={1.5} />}
             </button>
           </Tooltip>
           {!collapsed && !screenshot && (
-            <Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start gap-2 px-2 text-white/70 hover:text-white" onClick={() => open({ kind: "import" })}>
+            <Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start gap-2 px-2 text-fg-2 hover:text-fg" onClick={() => open({ kind: "import" })}>
               <Plus className="size-4!" /> {t("shell.list.import")}
             </Button>
           )}
@@ -179,10 +177,10 @@ function Section({ title, collapsed, children }: { title: string; collapsed: boo
   const id = useId()
   return (
     <section aria-labelledby={id} className={cn(collapsed ? "pt-3 first:pt-0" : "pt-[22px] first:pt-[14px]")}>
-      <h2 id={id} className={cn("pb-[8px] pl-[28px] text-[11px] leading-[16px] font-semibold tracking-[0.12em] text-white/45 uppercase", collapsed && "sr-only")}>
+      <h2 id={id} className={cn("pb-[8px] pl-[28px] text-[11px] leading-[16px] font-semibold tracking-[0.12em] text-fg-4 uppercase", collapsed && "sr-only")}>
         {title}
       </h2>
-      {collapsed && <div aria-hidden className="mx-auto mb-2 h-px w-6 bg-white/10" />}
+      {collapsed && <div aria-hidden className="mx-auto mb-2 h-px w-6 bg-fill-3" />}
       <ul role="list">{children}</ul>
     </section>
   )
@@ -196,7 +194,7 @@ function Row({ project: p, snap, collapsed, tabbable, onFocus }: { project: Proj
   const job = p.build_job ?? (snap.job.repo === p.repo ? snap.job : null)
   const working = !!job?.running
   let line: React.ReactNode
-  let tone = "text-white/50"
+  let tone = "text-fg-3"
   let warning: string | null = null
   let badge: { label: string; tone: "warn" | "bad" } | null = null
   // The second line: what it is doing, or what it measured and how it fits this PC.
@@ -240,10 +238,10 @@ function Row({ project: p, snap, collapsed, tabbable, onFocus }: { project: Proj
       className={cn(
         "group relative flex h-[60px] w-full cursor-pointer items-center text-left outline-none",
         collapsed ? "justify-center" : "gap-[14px] px-[28px]",
-        "focus-visible:bg-white/[0.06] focus-visible:shadow-[inset_0_0_0_2px_var(--color-focus)]",
+        "focus-visible:bg-fill-2 focus-visible:shadow-[inset_0_0_0_2px_var(--color-focus)]",
       )}
     >
-      <span className={cn("absolute inset-y-[3px] rounded-lg transition-colors duration-150", collapsed ? "inset-x-[10px]" : "inset-x-[14px]", selected ? "bg-white/[0.07]" : "group-hover:bg-white/[0.04]")} />
+      <span className={cn("absolute inset-y-[3px] rounded-lg transition-colors duration-150", collapsed ? "inset-x-[10px]" : "inset-x-[14px]", selected ? "bg-fill-2" : "group-hover:bg-fill-1")} />
       <span className="relative">
         <ProjectAvatar project={p} owner={alias.owner} size={36} />
         {collapsed && working && <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-accent ring-2 ring-black" />}
@@ -252,19 +250,19 @@ function Row({ project: p, snap, collapsed, tabbable, onFocus }: { project: Proj
         <>
           <span className="relative min-w-0 flex-1">
             <span className="flex items-center gap-1">
-              <Name text={alias.name} className={selected ? "font-semibold text-white" : "text-white/85 group-hover:text-white"} />
+              <Name text={alias.name} className={selected ? "font-semibold text-fg" : "text-fg/85 group-hover:text-fg"} />
               {p.verified && <BadgeCheck aria-label={t("shell.row.verified")} className="size-3.5 shrink-0 text-accent-fg" />}
               {warning && (
                 <Tooltip label={warning} side="right">
                   <AlertTriangle aria-label={warning} className="size-3.5 shrink-0 text-warn" />
                 </Tooltip>
               )}
-              {p.activity?.pending && !working && <span className="ml-1 size-1.5 shrink-0 rounded-full bg-white/60" aria-label={p.activity.pending} />}
+              {p.activity?.pending && !working && <span className="ml-1 size-1.5 shrink-0 rounded-full bg-fg-3" aria-label={p.activity.pending} />}
             </span>
             <span className={cn("mt-[3px] flex items-center gap-1 truncate text-[12px] leading-[16px]", tone)}>{line}</span>
           </span>
           {p.personal_fps != null && (
-            <span className="relative shrink-0 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[11px] tabular-nums text-white/70" title={t("library.hero.personalFps")}>
+            <span className="relative shrink-0 rounded-md bg-fill-2 px-1.5 py-0.5 text-[11px] tabular-nums text-fg-2" title={t("library.hero.personalFps")}>
               {p.personal_fps.toFixed(1)} fps
             </span>
           )}
@@ -341,8 +339,8 @@ function FilterMenu({ snap }: { snap: Snapshot }) {
           aria-label={changed ? t("shell.filter.buttonOn", { count: changed }) : t("shell.filter.button")}
           title={t("shell.filter.button")}
           className={cn(
-            "relative grid size-8 shrink-0 cursor-pointer place-items-center rounded-md border border-white/[0.08] bg-white/[0.05] text-white/70 transition-colors hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25",
-            open && "border-white/[0.14] bg-white/[0.1] text-white",
+            "relative grid size-9 shrink-0 cursor-pointer place-items-center rounded-md border border-line bg-fill-1 text-fg-2 transition-colors hover:border-line-2 hover:bg-fill-2 hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/25",
+            open && "border-line-2 bg-fill-3 text-fg",
           )}
         >
           <SlidersHorizontal className="size-4" />

@@ -3,8 +3,6 @@ export default {
   /** The line over the project's name (library-view.tsx). */
   identity: {
     build: "build {commit}",
-    installed: "installed",
-    notBuilt: "not built yet",
   },
   /** The status line under the main button (library-view.tsx). */
   status: {
@@ -25,24 +23,11 @@ export default {
     change: "Change",
     have: "Already have it?",
   },
-  /** The Workshop page, not wired to a source yet (workshop-view.tsx). */
-  workshop: {
+  /** The Mods page, not wired to a source yet (mods-view.tsx). */
+  mods: {
     soon: "Coming soon",
-    title: "Workshop",
-    body: "Community patches, tools and visual packs for your builds will show here, ready to install in one click. These are examples of what is coming.",
-    example: "Example",
-    items: {
-      shaders: "Vice City shaders",
-      handling: "Leonida handling pack",
-      overlay: "RAGE9 debug overlay",
-      timecycle: "Sunset timecycle",
-    },
-    tags: {
-      shaders: "Shaders",
-      handling: "Handling",
-      tools: "Tools",
-      visuals: "Visuals",
-    },
+    title: "Mods",
+    body: "Mods for your builds will be here, ready to install in one click.",
   },
   /** The list didn't load (library-view.tsx). */
   listError: {
@@ -52,6 +37,7 @@ export default {
   },
   loading: "Loading the library",
   hero: {
+    details: "Details",
     verifiedBy: "Verified by VIPortLive",
     playtime: "Playtime",
     personalFps: "Personal FPS",

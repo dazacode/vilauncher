@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react"
 import { useEffect, useMemo, useState } from "react"
 import { fileSrc } from "@/lib/api"
-import { useTheme } from "@/lib/theme"
+import { useLook } from "@/lib/theme"
 
 /**
  * The art behind a project, first match wins: the player's own pictures
@@ -154,7 +154,9 @@ function Pictures({ paths, moving }: { paths: string[]; moving: boolean }) {
 
 /** The ambient glow of the dark look. The light, calm and paws looks stay flat, with no gradients. */
 export function Aurora(props: AuroraProps) {
-  const theme = useTheme()
-  if (theme !== "dark") return <div className="absolute inset-0 bg-ground" />
+  const look = useLook()
+  // The glow is the dark look's, and a dark theme of the player's own with some glass; the rest stay flat.
+  const glow = look.builtIn === "dark" || (!look.builtIn && look.spec.base === "dark" && look.spec.glass > 0)
+  if (!glow) return <div className="absolute inset-0 bg-ground" />
   return <AuroraArt {...props} />
 }

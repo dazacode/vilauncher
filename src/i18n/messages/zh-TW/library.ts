@@ -4,8 +4,6 @@ import type { Translation } from "../../types"
 export default {
   identity: {
     build: "建置 {commit}",
-    installed: "已安裝",
-    notBuilt: "尚未建置",
   },
   status: {
     notInstalled: "未安裝",
@@ -24,23 +22,10 @@ export default {
     change: "變更",
     have: "已經有了嗎？",
   },
-  workshop: {
+  mods: {
     soon: "即將推出",
-    title: "工作坊",
-    body: "社群為建置版本製作的修補檔、工具和視覺包會顯示在這裡，一鍵即可安裝。以下是即將推出內容的範例。",
-    example: "範例",
-    items: {
-      shaders: "Vice City 著色器",
-      handling: "Leonida 操控包",
-      overlay: "RAGE9 偵錯覆蓋層",
-      timecycle: "日落時間循環",
-    },
-    tags: {
-      shaders: "著色器",
-      handling: "操控",
-      tools: "工具",
-      visuals: "視覺",
-    },
+    title: "模組",
+    body: "適用於你的建置版本的模組會顯示在這裡，一鍵即可安裝。",
   },
   listError: {
     source: "viportlive.com · 專案清單",
@@ -49,6 +34,7 @@ export default {
   },
   loading: "正在載入專案庫",
   hero: {
+    details: "詳細資料",
     verifiedBy: "已通過 VIPortLive 驗證",
     playtime: "遊玩時間",
     personalFps: "個人平均幀率",

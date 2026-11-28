@@ -64,3 +64,11 @@ export function shortStage(kind: StageKind, stage: string) {
       return stage
   }
 }
+
+/**
+ * A path to show in the window without the player's account name: the home folder becomes
+ * "/user/..." (macOS /Users/<name>, Linux /home/<name>) or "C:\\Users\\..." on Windows.
+ */
+export function hideHome(path: string): string {
+  return path.replace(/^\/(?:Users|home)\/[^/]+/, "/user/...").replace(/^([A-Za-z]:\\Users\\)[^\\]+/i, "$1...")
+}

@@ -16,6 +16,16 @@ export function platformName(): "windows" | "macos" | "other" {
 /** True inside the Tauri window; false in a plain browser (development, with a mock launcher). */
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 
+/**
+ * The window's own glass and appearance, as the theme asks (main.rs window_look): light or dark,
+ * glass on or off, and the tint Acrylic takes on Windows 10. Nothing in a browser.
+ */
+export async function setWindowLook(dark: boolean, glass: boolean, tint: [number, number, number]) {
+  if (!inTauri) return
+  const { invoke } = await import("@tauri-apps/api/core")
+  await invoke("window_look", { dark, glass, tint }).catch(() => undefined)
+}
+
 interface Backend {
   snapshot(): Promise<Snapshot>
   act(action: Action): Promise<unknown>
