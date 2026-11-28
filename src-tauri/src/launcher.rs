@@ -2853,7 +2853,6 @@ fn fix_known_problems(
     run_fixes(job, ctx, p, l, true)
 }
 
-/// Starts the installed build of `p`, warming its shaders first when the player asked for that.
 fn nvidia_overlay_source(root: &Path) -> bool {
     [
         "Get-NVIDIA-DLSS.cmd",
@@ -3013,6 +3012,7 @@ fn native_nvidia_play_keeps_f1_defaults_and_passes_profile_overrides() {
     std::fs::remove_dir(root).unwrap();
 }
 
+/// Starts the installed build of `p`, warming its shaders first when the player asked for that.
 fn play(
     job: &Arc<Mutex<Job>>,
     ctx: &Ctx,
