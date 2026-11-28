@@ -39,7 +39,7 @@ export function SettingsView() {
   const u = snap.updater
   return (
     <div className="h-full overflow-y-auto">
-      <div className="drag h-12" />
+      <div data-tauri-drag-region="deep" className="drag h-12" />
       <div className="mx-auto max-w-[760px] space-y-10 px-10 pb-16">
         <header>
           <h1 className="font-display text-page font-bold tracking-[-0.02em] text-fg">{t("settings.title")}</h1>
