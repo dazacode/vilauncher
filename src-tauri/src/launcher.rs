@@ -355,6 +355,21 @@ fn default_graphics_round_trip_and_respect_project_overrides() {
 
 #[cfg(test)]
 #[test]
+fn the_game_program_must_start_like_a_windows_program() {
+    let root = std::env::temp_dir().join(format!("vl-game-magic-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    assert!(game_program_problem(&root).is_none(), "a missing file is not this check's");
+    std::fs::write(root.join(EXE_NAME), b"PKzip archive").unwrap();
+    let problem = game_program_problem(&root).expect("a zip under the game's name");
+    assert!(problem.contains("not a Windows program"));
+    std::fs::write(root.join(EXE_NAME), b"MZ\x90\x00").unwrap();
+    assert!(game_program_problem(&root).is_none());
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(test)]
+#[test]
 fn a_repo_with_no_rust_source_says_so() {
     // A repo that ships only ready-made programs has no Cargo.toml to build.
     let root = std::env::temp_dir().join(format!("vl-no-cargo-{}", std::process::id()));
@@ -2343,6 +2358,25 @@ fn warm(job: &Arc<Mutex<Job>>, ctx: &Ctx, p: &Project, l: &Launch) -> Result<(),
 }
 
 /// Every required game file is in `dir`.
+/// The game's program must be a Windows program, which starts with "MZ". A damaged copy, or
+/// another file under the game's name, does not; the game's loader then fails with
+/// "malformed image". Returns the message for the player when it does not. A missing file
+/// is left to the file check.
+fn game_program_problem(dir: &Path) -> Option<String> {
+    let path = dir.join(EXE_NAME);
+    let mut magic = [0u8; 2];
+    let read = std::fs::File::open(&path)
+        .and_then(|mut file| std::io::Read::read_exact(&mut file, &mut magic));
+    match read {
+        Ok(()) if &magic == b"MZ" => None,
+        Ok(()) => Some(format!(
+            "The game's program {} is not a Windows program, so the game cannot load it. Copy the game files again from your own copy, then press Play.",
+            path.display()
+        )),
+        Err(_) => None,
+    }
+}
+
 fn game_files_ok(dir: &Path) -> bool {
     REQUIRED.iter().all(|name| dir.join(name).is_file())
 }
@@ -2923,6 +2957,9 @@ fn play(
                 .log
                 .push(format!("Warm-up failed: {e}. Starting the game anyway."));
         }
+    }
+    if let Some(problem) = game_program_problem(&l.game_dir) {
+        return Err(problem);
     }
     stage(job, ctx, msg_str!("Playing"));
     let mut c = Command::new(&exe);

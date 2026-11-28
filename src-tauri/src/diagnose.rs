@@ -971,6 +971,16 @@ pub(crate) fn from_log(lines: &[String]) -> Vec<Finding> {
             data: None,
         });
     }
+    // The game's loader cannot read its program: the file is damaged or is not the game.
+    if has(&["malformed image"]) {
+        found.push(Finding {
+            title: "The game's program could not be loaded (malformed image).".to_string(),
+            detail: "The game's loader found a file it could not read as a program. Copy the game files again from your own copy into the game folder, then press Play. A file of another kind under the game's name also causes this.".to_string(),
+            fix: None,
+            heavy: false,
+            data: None,
+        });
+    }
     // The game's own crash reporter prints this when its code stops on an exception before
     // or while the title starts. The usual cause is an experimental switch.
     if has(&["VIctory: unhandled exception"]) {
@@ -1500,6 +1510,18 @@ mod tests {
         assert_eq!(hint.fix, None);
         assert!(hint.detail.contains("Launch options"));
         assert!(!from_log(&["all good".to_string()]).iter().any(|f| f.title.contains("unhandled exception")));
+    }
+
+    #[test]
+    fn a_malformed_image_points_at_the_game_files() {
+        let lines = vec!["error: malformed image: Unknown file magic".to_string()];
+        let found = from_log(&lines);
+        let hint = found
+            .iter()
+            .find(|f| f.title.contains("malformed image"))
+            .expect("a malformed image finding");
+        assert_eq!(hint.fix, None);
+        assert!(hint.detail.contains("Copy the game files again"));
     }
 
     #[test]
