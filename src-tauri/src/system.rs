@@ -173,6 +173,7 @@ fn detect_inner() -> SystemInfo {
         ram_gb,
         cpu,
         cpu_cores,
+        translated: false,
     }
 }
 
