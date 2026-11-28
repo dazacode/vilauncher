@@ -226,8 +226,9 @@ pub fn manual_install_page(what: &str) -> &'static str {
     }
 }
 
-/// Whether a winget error is its "no newer version" result (0x8A15002B). That means the
-/// package is already installed, so the tool is there and the look-again decides.
+/// Whether a winget error is its "no newer version" result, APPINSTALLER_CLI_ERROR_UPDATE_NOT_APPLICABLE
+/// (0x8A15002B, "No applicable update found"). That means the package is already installed, so the
+/// tool is there and the look-again decides.
 pub fn winget_already_installed(error: &str) -> bool {
     error.to_ascii_lowercase().contains("0x8a15002b")
 }
