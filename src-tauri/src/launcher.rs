@@ -20,6 +20,8 @@ use std::time::Instant;
 
 mod actions;
 mod presets;
+#[cfg(all(test, windows))]
+mod parallel_install_tests;
 mod reported;
 mod view;
 
@@ -436,6 +438,7 @@ pub(crate) struct Job {
     running: bool,
     play_stats: Option<crate::play_stats::History>,
     session: Option<crate::play_stats::Session>,
+    generation: u64,
     /// The project the job works on.
     repo: Option<String>,
     stage: String,
@@ -550,6 +553,8 @@ pub(crate) struct App {
     pub(crate) updater: updater::Updater,
     projects: ProjectsSlot,
     pub(crate) job: Arc<Mutex<Job>>,
+    builds: ProjectBuilds,
+    next_generation: u64,
     files: Vec<(&'static str, bool)>,
     files_for: String,
     /// A new install folder waiting for "move the projects there?" (from, to).
@@ -577,6 +582,66 @@ pub(crate) struct App {
     pub(crate) system: Arc<Mutex<Option<crate::system::SystemInfo>>>,
     /// The system's languages in order of preference, as the window reported them.
     pub(crate) system_languages: Vec<String>,
+}
+
+#[derive(Default)]
+struct ProjectBuilds(std::collections::BTreeMap<String, Arc<Mutex<Job>>>);
+
+impl ProjectBuilds {
+    fn key(repo: &str) -> String {
+        // Use the install folder identity, including Windows' case insensitivity.
+        slug(repo).to_ascii_lowercase()
+    }
+
+    fn get(&self, repo: &str) -> Option<&Arc<Mutex<Job>>> {
+        self.0.get(&Self::key(repo))
+    }
+
+    fn start(&mut self, repo: &str, generation: u64) -> Option<Arc<Mutex<Job>>> {
+        if self
+            .get(repo)
+            .is_some_and(|job| job.lock().unwrap().running)
+        {
+            return None;
+        }
+        let job = Arc::new(Mutex::new(Job {
+            running: true,
+            generation,
+            repo: Some(repo.to_owned()),
+            ..Job::default()
+        }));
+        self.0.insert(Self::key(repo), job.clone());
+        Some(job)
+    }
+
+    fn running(&self) -> usize {
+        self.0
+            .values()
+            .filter(|job| job.lock().unwrap().running)
+            .count()
+    }
+}
+
+#[test]
+fn parallel_builds_reserve_each_install_folder_and_keep_separate_logs() {
+    let mut builds = ProjectBuilds::default();
+    let first = builds.start("owner/example", 1).unwrap();
+    let second = builds.start("owner/other", 2).unwrap();
+    assert!(builds.start("Owner/EXAMPLE", 3).is_none());
+    first.lock().unwrap().log.push("first".into());
+    second.lock().unwrap().log.push("second".into());
+    assert_eq!(builds.running(), 2);
+    assert_eq!(
+        builds.get("owner/example").unwrap().lock().unwrap().log,
+        ["first"]
+    );
+    assert_eq!(
+        builds.get("owner/other").unwrap().lock().unwrap().log,
+        ["second"]
+    );
+    first.lock().unwrap().running = false;
+    assert_eq!(builds.running(), 1);
+    assert!(builds.start("owner/example", 3).is_some());
 }
 
 /// How often installed projects are checked for updates: every 15 minutes.
@@ -1283,6 +1348,9 @@ pub(crate) fn hide_window(_: &mut Command) {}
 
 impl App {
     fn import_build_zip(&mut self, ctx: &Ctx, input: PathBuf) {
+        if self.builds.running() > 0 {
+            return;
+        }
         let name = input
             .file_stem()
             .and_then(|name| name.to_str())
@@ -1369,6 +1437,8 @@ impl App {
             updater: updater::Updater::default(),
             projects: Arc::new(Mutex::new(None)),
             job: Arc::new(Mutex::new(Job::default())),
+            builds: ProjectBuilds::default(),
+            next_generation: 0,
             files: Vec::new(),
             files_for: String::new(),
             pending_move: None,
@@ -1505,6 +1575,13 @@ impl App {
             return None;
         }
         // Not while this project is being installed or updated.
+        if self
+            .builds
+            .get(&p.repo)
+            .is_some_and(|job| job.lock().unwrap().running)
+        {
+            return None;
+        }
         {
             let j = self.job.lock().unwrap();
             if j.running && j.repo.as_deref() == Some(p.repo.as_str()) {
@@ -1532,7 +1609,14 @@ impl App {
     /// Development only: whether the current job runs, and its stage.
     pub(crate) fn job_running(&self) -> (bool, String) {
         let job = self.job.lock().unwrap();
-        (job.running, job.stage.clone())
+        (job.running || self.builds.running() > 0, job.stage.clone())
+    }
+
+    fn project_job(&self, repo: &str) -> Option<&Arc<Mutex<Job>>> {
+        if let Some(build) = self.builds.get(repo) {
+            return Some(build);
+        }
+        (self.job.lock().unwrap().repo.as_deref() == Some(repo)).then_some(&self.job)
     }
 
     /// Development only: whether the project list has arrived.
@@ -1545,27 +1629,41 @@ impl App {
     }
 
     fn start(&mut self, ctx: &Ctx, p: Project, kind: Kind) {
-        let job = self.job.clone();
-        {
-            let mut j = job.lock().unwrap();
-            if j.running {
+        if self.job.lock().unwrap().running {
+            return;
+        }
+        self.next_generation += 1;
+        let job = if kind == Kind::Install {
+            let Some(job) = self.builds.start(&p.repo, self.next_generation) else {
+                return;
+            };
+            job
+        } else {
+            if self.builds.running() > 0 {
                 return;
             }
-            let last: Vec<String> = if j.log.is_empty() {
-                // After a restart, the last run's output is read from where the crash saved it.
-                std::fs::read_to_string(
-                    workspace()
-                        .join("data")
-                        .join(slug(&p.repo))
-                        .join("last-run.txt"),
-                )
-                .map(|text| text.lines().map(str::to_owned).collect())
-                .unwrap_or_default()
-            } else {
-                j.log.iter().rev().take(800).rev().cloned().collect()
-            };
+            self.builds.0.remove(&ProjectBuilds::key(&p.repo));
+            self.job.clone()
+        };
+        {
+            let mut j = job.lock().unwrap();
+            let last: Vec<String> =
+                if j.log.is_empty() || j.repo.as_deref() != Some(p.repo.as_str()) {
+                    // After a restart, the last run's output is read from where the crash saved it.
+                    std::fs::read_to_string(
+                        workspace()
+                            .join("data")
+                            .join(slug(&p.repo))
+                            .join("last-run.txt"),
+                    )
+                    .map(|text| text.lines().map(str::to_owned).collect())
+                    .unwrap_or_default()
+                } else {
+                    j.log.iter().rev().take(800).rev().cloned().collect()
+                };
             *j = Job {
                 running: true,
+                generation: self.next_generation,
                 stage: msg_str!("Starting").into(),
                 repo: Some(p.repo.clone()),
                 play_stats: matches!(kind, Kind::Play(_)).then(|| self.saved.play_stats.clone()),
@@ -1625,7 +1723,6 @@ impl App {
             };
             {
                 let mut j = job.lock().unwrap();
-                j.running = false;
                 j.pid = None;
                 j.stoppable = false;
                 match r {
@@ -1686,6 +1783,7 @@ impl App {
                     state.activity = build_activity::BuildActivity::read(&target_dir(&p.repo));
                 }
             }
+            job.lock().unwrap().running = false;
             ctx.request_repaint();
         });
     }
@@ -3356,6 +3454,9 @@ fn run_with_output(
 impl App {
     /// Installs what is missing with winget, then looks again.
     fn start_tools(&mut self, ctx: &Ctx) {
+        if self.builds.running() > 0 {
+            return;
+        }
         let job = self.job.clone();
         {
             let mut j = job.lock().unwrap();
@@ -3422,6 +3523,9 @@ impl App {
 
     /// Moves every installed project from `old` to `new`, then uses `new`.
     fn start_move(&mut self, ctx: &Ctx, old: PathBuf, new: PathBuf) {
+        if self.builds.running() > 0 {
+            return;
+        }
         let job = self.job.clone();
         {
             let mut j = job.lock().unwrap();

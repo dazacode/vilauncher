@@ -79,8 +79,12 @@ fn act(
 }
 
 #[tauri::command]
-fn log(from: usize, state: tauri::State<'_, Shared>) -> launcher::LogView {
-    state.app.lock().unwrap().log_from(from)
+fn log(from: usize, repo: Option<String>, state: tauri::State<'_, Shared>) -> launcher::LogView {
+    state
+        .app
+        .lock()
+        .unwrap()
+        .project_log_from(repo.as_deref(), from)
 }
 
 /// An AppImage puts its own libraries first in LD_LIBRARY_PATH. The programs the launcher

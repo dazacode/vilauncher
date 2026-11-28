@@ -7,7 +7,7 @@ export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in
 interface Backend {
   snapshot(): Promise<Snapshot>
   act(action: Action): Promise<unknown>
-  log(from: number): Promise<LogView>
+  log(from: number, repo?: string): Promise<LogView>
   onChange(listener: () => void): Promise<() => void>
 }
 
@@ -20,9 +20,9 @@ const tauriBackend: Backend = {
     const { invoke } = await import("@tauri-apps/api/core")
     return invoke("act", { action })
   },
-  async log(from) {
+  async log(from, repo) {
     const { invoke } = await import("@tauri-apps/api/core")
-    return invoke<LogView>("log", { from })
+    return invoke<LogView>("log", { from, repo })
   },
   async onChange(listener) {
     const { listen } = await import("@tauri-apps/api/event")

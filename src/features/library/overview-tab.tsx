@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 export function OverviewTab({ project: p }: { project: Project }) {
   const t = useT()
   const screenshot = useStore((s) => s.screenshot)
-  const busy = useStore((s) => s.snap?.job.running)
+  const busy = useStore((s) => s.snap?.job.running) || !!p.build_job?.running
   const alias = useAlias()(p)
   const built = shortCommit(p.built)
   return (

@@ -35,7 +35,7 @@ export function SettingsView() {
   const [gameDir, setGameDir] = useDraft(s.game_dir, (v) => void run({ type: "set_game_dir", path: v }), 600)
   const [args, setArgs] = useDraft(s.launch_args, (v) => void run({ type: "set_settings", patch: { launch_args: v } }))
   const [env, setEnv] = useDraft(s.extra_env, (v) => void run({ type: "set_settings", patch: { extra_env: v } }))
-  const busy = snap.job.running
+  const busy = snap.job.running || snap.active_builds > 0
   const u = snap.updater
   return (
     <div className="h-full overflow-y-auto">
@@ -218,7 +218,7 @@ function LanguageRow() {
 /** What each project takes on disk, and the safe parts to clear. Saves are never offered. */
 function DiskSpace() {
   const t = useT()
-  const busy = useStore((s) => s.snap!.job.running)
+  const busy = useStore((s) => s.snap!.job.running || s.snap!.active_builds > 0)
   const [view, setView] = useState<StorageView | null>(null)
   const [scanning, setScanning] = useState(false)
   // The button waiting for its second click, as "cache:<slug>" or "previous:<slug>".

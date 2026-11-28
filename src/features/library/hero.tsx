@@ -108,7 +108,7 @@ function MoreMenu({ project: p }: { project: Project }) {
   const snap = useStore((s) => s.snap)!
   const open = useStore((s) => s.open)
   const screenshot = useStore((s) => s.screenshot)
-  const busy = snap.job.running
+  const busy = snap.job.running || snap.active_builds > 0
   const warning = useUpdateWarning(p.repo)
   return (
     <Menu>
@@ -141,7 +141,7 @@ function MoreMenu({ project: p }: { project: Project }) {
           </MenuItem>
         )}
         {p.installed && p.kind === "git" && (
-          <MenuItem disabled={busy} onSelect={warning.ask}>
+          <MenuItem disabled={snap.job.running || !!p.build_job?.running} onSelect={warning.ask}>
             <RotateCcw /> {t("library.menu.reinstall")}
           </MenuItem>
         )}
