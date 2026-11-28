@@ -351,6 +351,19 @@ fn default_graphics_round_trip_and_respect_project_overrides() {
 
 #[cfg(test)]
 #[test]
+fn a_repo_with_no_rust_source_says_so() {
+    // A repo that ships only ready-made programs has no Cargo.toml to build.
+    let root = std::env::temp_dir().join(format!("vl-no-cargo-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("program.exe"), b"MZ").unwrap();
+    let error = cargo_workspace(&root).unwrap_err();
+    assert!(error.contains("no Rust source"), "{error}");
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(test)]
+#[test]
 fn project_launch_overrides_are_independent_and_can_be_empty() {
     let mut saved = Saved {
         launch_args: "--strict".into(),
@@ -660,7 +673,10 @@ fn cargo_workspace(repo: &Path) -> Result<PathBuf, String> {
     };
     match candidates.as_slice() {
         [workspace] => Ok(workspace.clone()),
-        [] => Err(format!("No Cargo.toml found at {} or one folder down.", repo.display())),
+        [] => Err(format!(
+            "No Cargo.toml found at {} or one folder down. The launcher builds Rust source only. This repo has no Rust source, so it cannot be built here: it may ship ready-made programs instead. Ask its maker for the source.",
+            repo.display()
+        )),
         _ => Err(format!("Multiple nested Cargo projects found in {}. Put a workspace manifest at the repository root.", repo.display())),
     }
 }
