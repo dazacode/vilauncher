@@ -82,7 +82,37 @@ fn log(from: usize, state: tauri::State<'_, Shared>) -> launcher::LogView {
     state.app.lock().unwrap().log_from(from)
 }
 
+/// An AppImage puts its own libraries first in LD_LIBRARY_PATH. The programs the launcher
+/// starts (git, cargo, the compiler) then load those copies, which do not match the
+/// system's. The window's own libraries are already loaded, so the folders can go.
+#[cfg(target_os = "linux")]
+fn keep_child_programs_out_of_the_appimage() {
+    let Some(appdir) = std::env::var_os("APPDIR") else {
+        return;
+    };
+    let appdir = appdir.to_string_lossy().into_owned();
+    if let Some(path) = std::env::var_os("LD_LIBRARY_PATH") {
+        let cleaned = without_folder(&path.to_string_lossy(), &appdir);
+        if cleaned.is_empty() {
+            std::env::remove_var("LD_LIBRARY_PATH");
+        } else {
+            std::env::set_var("LD_LIBRARY_PATH", cleaned);
+        }
+    }
+}
+
+/// `path` (a ':'-separated list) without the entries inside `folder`.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn without_folder(path: &str, folder: &str) -> String {
+    path.split(':')
+        .filter(|entry| !entry.is_empty() && !entry.starts_with(folder))
+        .collect::<Vec<_>>()
+        .join(":")
+}
+
 fn main() {
+    #[cfg(target_os = "linux")]
+    keep_child_programs_out_of_the_appimage();
     // Fix and verify without a window, for the agent tool (scripts\vilauncher-agent.mjs fix):
     // `--fix <repo>` prints the job's log and a STAGE line. Debug and release builds alike.
     // It refuses (exit 1) unless AI agent access is on, and while another launcher window runs.
@@ -250,4 +280,16 @@ fn glass(window: &tauri::WebviewWindow) {
         );
     }
     let _ = window;
+}
+
+#[cfg(test)]
+mod appimage_path_tests {
+    use super::without_folder;
+
+    #[test]
+    fn appimage_folders_are_taken_out_and_the_rest_kept() {
+        let path = "/tmp/.mount_X/usr/lib:/usr/local/lib::/tmp/.mount_X/usr/lib64:/opt/x";
+        assert_eq!(without_folder(path, "/tmp/.mount_X"), "/usr/local/lib:/opt/x");
+        assert_eq!(without_folder("/tmp/.mount_X/usr/lib", "/tmp/.mount_X"), "");
+    }
 }
