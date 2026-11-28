@@ -452,6 +452,7 @@ struct Launch {
     /// `VICTORY_*` lines: the player's switches and the graphics fixes.
     extra: String,
     use_script_defaults: bool,
+    foxhound_preset: bool,
     fullscreen: bool,
     warm_first: bool,
     pipelines: bool,
@@ -1553,6 +1554,9 @@ impl App {
             use_script_defaults: settings.is_some_and(|settings| {
                 settings.switches.is_some() && settings.script_options.is_some()
             }),
+            foxhound_preset: settings.is_some_and(|settings| {
+                settings.confirmed_repo_script.as_deref() == Some("play-foxhound")
+            }),
             fullscreen: graphics.fullscreen,
             warm_first: self.saved.warm_before_play,
             pipelines: self.saved.warm_pipelines,
@@ -1982,6 +1986,7 @@ fn test_launch(dir: PathBuf) -> Launch {
         output: OutputResolution::Default,
         extra: String::new(),
         use_script_defaults: false,
+        foxhound_preset: false,
         fullscreen: false,
         warm_first: false,
         pipelines: false,
@@ -2849,6 +2854,166 @@ fn fix_known_problems(
 }
 
 /// Starts the installed build of `p`, warming its shaders first when the player asked for that.
+fn nvidia_overlay_source(root: &Path) -> bool {
+    [
+        "Get-NVIDIA-DLSS.cmd",
+        "scripts/play-foxhound.ps1",
+        "apps/victory/src/play.rs",
+    ]
+    .iter()
+    .all(|file| root.join(file).is_file())
+}
+
+fn native_nvidia_args(l: &Launch, help: &str) -> Option<Vec<String>> {
+    let supports = |flag: &str| help.split_whitespace().any(|word| word == flag);
+    if ![
+        "--series-s",
+        "--res",
+        "--dlss",
+        "--set",
+        "--no-framegen-ready",
+    ]
+    .into_iter()
+    .all(supports)
+    {
+        return None;
+    }
+    let mut args = l.args.iter();
+    while let Some(arg) = args.next() {
+        let (flag, inline) = arg
+            .split_once('=')
+            .map_or((arg.as_str(), false), |(flag, _)| (flag, true));
+        if !supports(flag) {
+            return None;
+        }
+        match flag {
+            "--series-s" | "--no-framegen-ready" | "--preload" if !inline => (),
+            "--res" | "--dlss" | "--framegen" | "--fg-type" | "--fps" | "--set" => {
+                if !inline && args.next().is_none_or(|value| value.starts_with("--")) {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+    }
+    let has = |flag| l.args.iter().any(|arg| arg.split('=').next() == Some(flag));
+    let series_s = l.series_s || has("--series-s");
+    let mut native = Vec::new();
+    if l.series_s && !has("--series-s") {
+        native.push("--series-s".into());
+    }
+    if !has("--res") {
+        match l.output {
+            OutputResolution::P1080 => native.extend(["--res".into(), "1080to1440".into()]),
+            OutputResolution::P2160 => native.extend(["--res".into(), "4k".into()]),
+            OutputResolution::P936 => return None,
+            OutputResolution::P720 if !series_s => return None,
+            _ => (),
+        }
+    }
+    native.extend(l.args.iter().cloned());
+    Some(native)
+}
+
+fn native_nvidia_command(
+    exe: &Path,
+    root: &Path,
+    p: &Project,
+    l: &Launch,
+    args: &[String],
+) -> Command {
+    let baseline = l
+        .foxhound_preset
+        .then(|| {
+            std::fs::read_to_string(root.join("scripts/play-foxhound.ps1"))
+                .ok()
+                .and_then(|script| script_preset::parse(&script).ok())
+                .map(|(switches, _)| switches)
+                .unwrap_or_default()
+        })
+        .unwrap_or_default();
+    let defaults: std::collections::BTreeMap<_, _> = baseline
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .collect();
+    let mut command = Command::new(exe);
+    command
+        .current_dir(root)
+        .stdin(Stdio::null())
+        .arg("play")
+        .arg(l.game_dir.join(EXE_NAME));
+    let mut switches = std::collections::BTreeMap::new();
+    switches.insert("VICTORY_FULLSCREEN", if l.fullscreen { "1" } else { "0" });
+    for (key, value) in l.extra.lines().filter_map(|line| line.split_once('=')) {
+        let (key, value) = (key.trim(), value.trim());
+        if key.starts_with("VICTORY_")
+            && !matches!(
+                key,
+                "VICTORY_GAME_DIR" | "VICTORY_CACHE_DIR" | "VICTORY_DATA_DIR"
+            )
+            && !key.starts_with("VICTORY_MENU_")
+        {
+            if defaults.get(key).copied() == Some(value) {
+                switches.remove(key);
+            } else {
+                switches.insert(key, value);
+            }
+        }
+    }
+    let ws = workspace();
+    command
+        .env("VICTORY_GAME_DIR", &l.game_dir)
+        .env("VICTORY_DATA_DIR", ws.join("data").join(slug(&p.repo)))
+        .env("VICTORY_CACHE_DIR", ws.join("cache").join(slug(&p.repo)));
+    let streamline = root.join("nvidia-sdk/Streamline/bin/x64");
+    if std::env::var_os("VICTORY_STREAMLINE_DIR").is_none()
+        && streamline.join("sl.interposer.dll").is_file()
+    {
+        command.env("VICTORY_STREAMLINE_DIR", streamline);
+    }
+    for (key, value) in switches {
+        command.arg("--set").arg(format!("{key}={value}"));
+    }
+    command.args(args);
+    command
+}
+
+#[test]
+fn native_nvidia_play_keeps_f1_defaults_and_passes_profile_overrides() {
+    let root = std::env::temp_dir().join(format!("vilauncher-nvidia-play-{}", std::process::id()));
+    std::fs::create_dir_all(root.join("scripts")).unwrap();
+    let script = root.join("scripts/play-foxhound.ps1");
+    std::fs::write(&script, "$settings = @{\nVICTORY_DLSS = 'quality'\n}").unwrap();
+    let mut launch = test_launch(root.clone());
+    launch.foxhound_preset = true;
+    launch.extra = "VICTORY_DLSS=quality\nVICTORY_AMBIENT=0.6".into();
+    let help = "--series-s --res --dlss --set --no-framegen-ready";
+    let args = native_nvidia_args(&launch, help).unwrap();
+    let command = native_nvidia_command(
+        &root.join("victory.exe"),
+        &root,
+        &test_project(),
+        &launch,
+        &args,
+    );
+    let command_args: Vec<_> = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy())
+        .collect();
+    assert_eq!(command_args[0], "play");
+    assert!(command_args.iter().any(|arg| arg == "--series-s"));
+    assert!(command_args.iter().any(|arg| arg == "VICTORY_AMBIENT=0.6"));
+    assert!(!command_args
+        .iter()
+        .any(|arg| arg.starts_with("VICTORY_DLSS=")));
+    launch.args = vec!["--strict".into()];
+    assert!(native_nvidia_args(&launch, help).is_none());
+    assert!(native_nvidia_args(&launch, "").is_none());
+    std::fs::remove_file(script).unwrap();
+    std::fs::remove_dir(root.join("scripts")).unwrap();
+    std::fs::remove_dir(root).unwrap();
+}
+
 fn play(
     job: &Arc<Mutex<Job>>,
     ctx: &Ctx,
@@ -2919,22 +3084,44 @@ fn play(
         }
     }
     stage(job, ctx, msg_str!("Playing"));
-    let mut c = Command::new(&exe);
-    c.arg("run").arg(l.game_dir.join(EXE_NAME)).arg("--execute");
-    let explicit_console = l
-        .args
-        .iter()
-        .take_while(|arg| arg.as_str() != "--")
-        .any(|arg| arg == "--console" || arg.starts_with("--console="));
-    if !explicit_console && (l.series_s || l.output != OutputResolution::Default) {
-        c.args([
-            "--console",
-            if l.series_s { "series-s" } else { "series-x" },
-        ]);
-    }
-    // The player's own: more `run` flags, and after `--` the game's.
-    c.args(&l.args);
-    victory_env(&mut c, p, l);
+    let root = repo_dir(&p.repo);
+    let root = cargo_workspace(&root).unwrap_or(root);
+    let native = if p.local_exe.is_none() && p.archive_exe.is_none() && nvidia_overlay_source(&root)
+    {
+        victory_help(&exe, "play")
+            .and_then(|help| native_nvidia_args(l, &help))
+            .map(|args| native_nvidia_command(&exe, &root, p, l, &args))
+    } else {
+        None
+    };
+    let mut c = if let Some(command) = native {
+        job.lock()
+            .unwrap()
+            .log
+            .push("Using native NVIDIA Play for saved F1 settings.".into());
+        command
+    } else {
+        let mut command = Command::new(&exe);
+        command
+            .arg("run")
+            .arg(l.game_dir.join(EXE_NAME))
+            .arg("--execute");
+        let explicit_console = l
+            .args
+            .iter()
+            .take_while(|arg| arg.as_str() != "--")
+            .any(|arg| arg == "--console" || arg.starts_with("--console="));
+        if !explicit_console && (l.series_s || l.output != OutputResolution::Default) {
+            command.args([
+                "--console",
+                if l.series_s { "series-s" } else { "series-x" },
+            ]);
+        }
+        // The player's own: more `run` flags, and after `--` the game's.
+        command.args(&l.args);
+        victory_env(&mut command, p, l);
+        command
+    };
     let project_data = workspace().join("data").join(slug(&p.repo));
     let data = saves::prepare(&project_data, choice)
         .map_err(|error| format!("Could not prepare saves: {error}"))?;
