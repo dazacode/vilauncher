@@ -343,6 +343,12 @@ impl App {
             }
             Action::Install { repo } => {
                 let p = self.project(&repo)?;
+                // A taken-down project is not installed or updated again; its installed copy still plays.
+                if p.listing.nuked.is_some() {
+                    return Err(msg!(
+                        "This project was taken down, so it cannot be installed or updated. An installed copy can still be played."
+                    ));
+                }
                 // An update resets the project's code, which would drop an add-on's patches
                 // while its switches stayed on. Turn the add-ons off first.
                 let on = self

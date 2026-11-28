@@ -65,7 +65,7 @@ chmod +x VILauncher_*_amd64.AppImage
 
 ## Features
 
-- **Library.** Projects from VIPortLive, your own Git repos, and prebuilt ZIPs. Each shows its reported frame rate, the graphics cards it was made for, and whether it is verified. Projects VIPortLive has taken down are hidden by default; you can show them, and they open VIPortLive's page.
+- **Library.** Projects from VIPortLive, your own Git repos, and prebuilt ZIPs. Each shows its reported frame rate, the graphics cards it was made for, and whether it is verified. Projects VIPortLive has taken down are hidden by default; you can show them, and they open VIPortLive's page. A copy you already installed stays listed and can still be played; its repo is not checked for updates.
 - **Fit warnings.** The launcher reads your graphics card, memory and processor, and compares them with what each build's author reported. A build that doesn't fit shows a warning; this is usage the author saw, not a minimum. You can set your own RAM and video memory under *Advanced: by PC spec*. There is no "recommended" list: these projects are too new for their reports to rank them.
 - **Filter and sort.** Sort by name, frame rate, stars or recent commits; filter by tier and graphics card.
 - **Tool setup.** Finds Git, Rust and the C++ build tools, and installs missing ones with winget (Windows asks for permission).

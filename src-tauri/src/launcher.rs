@@ -177,7 +177,7 @@ pub(crate) struct Saved {
 }
 
 /// The legal notice's version: raised when its text changes in a way that needs a new yes.
-pub(crate) const NOTICE_VERSION: u32 = 1;
+pub(crate) const NOTICE_VERSION: u32 = 2;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct LaunchPreset {
