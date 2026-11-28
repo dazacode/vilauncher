@@ -123,12 +123,36 @@ pub fn localize_opt(text: Option<&str>) -> Option<String> {
 /// The catalog files, per language. Each area of the code keeps its own file
 /// so that changes in one area don't touch the others.
 const CATALOG_FILES: &[(Locale, &str, &str)] = &[
-    (Locale::ZhTw, "zh-TW/core.json", include_str!("../locales/zh-TW/core.json")),
-    (Locale::ZhTw, "zh-TW/launcher.json", include_str!("../locales/zh-TW/launcher.json")),
-    (Locale::ZhTw, "zh-TW/services.json", include_str!("../locales/zh-TW/services.json")),
-    (Locale::ZhCn, "zh-CN/core.json", include_str!("../locales/zh-CN/core.json")),
-    (Locale::ZhCn, "zh-CN/launcher.json", include_str!("../locales/zh-CN/launcher.json")),
-    (Locale::ZhCn, "zh-CN/services.json", include_str!("../locales/zh-CN/services.json")),
+    (
+        Locale::ZhTw,
+        "zh-TW/core.json",
+        include_str!("../locales/zh-TW/core.json"),
+    ),
+    (
+        Locale::ZhTw,
+        "zh-TW/launcher.json",
+        include_str!("../locales/zh-TW/launcher.json"),
+    ),
+    (
+        Locale::ZhTw,
+        "zh-TW/services.json",
+        include_str!("../locales/zh-TW/services.json"),
+    ),
+    (
+        Locale::ZhCn,
+        "zh-CN/core.json",
+        include_str!("../locales/zh-CN/core.json"),
+    ),
+    (
+        Locale::ZhCn,
+        "zh-CN/launcher.json",
+        include_str!("../locales/zh-CN/launcher.json"),
+    ),
+    (
+        Locale::ZhCn,
+        "zh-CN/services.json",
+        include_str!("../locales/zh-CN/services.json"),
+    ),
 ];
 
 fn catalog(locale: Locale) -> Option<&'static Catalog> {
@@ -361,18 +385,17 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     fn catalog_of(entries: &[(&str, &str)]) -> Catalog {
-        Catalog::new(
-            entries
-                .iter()
-                .map(|(a, b)| (a.to_string(), b.to_string())),
-        )
+        Catalog::new(entries.iter().map(|(a, b)| (a.to_string(), b.to_string())))
     }
 
     #[test]
     fn languages_follow_the_choice_then_the_system() {
         assert_eq!(resolve(Some("zh-TW"), &["en-US".into()]), Locale::ZhTw);
         assert_eq!(resolve(Some("zh-cn"), &[]), Locale::ZhCn);
-        assert_eq!(resolve(None, &["fr-FR".into(), "zh-Hant-HK".into()]), Locale::ZhTw);
+        assert_eq!(
+            resolve(None, &["fr-FR".into(), "zh-Hant-HK".into()]),
+            Locale::ZhTw
+        );
         assert_eq!(resolve(None, &["zh-SG".into()]), Locale::ZhCn);
         assert_eq!(resolve(None, &["zh".into()]), Locale::ZhCn);
         assert_eq!(resolve(None, &["zh_TW".into()]), Locale::ZhTw);
@@ -394,18 +417,27 @@ mod tests {
         assert_eq!(c.localize("Unknown text", 0), "Unknown text");
         // A placeholder takes as little as it can: the path stops at the first ": ".
         assert_eq!(
-            c.localize("Could not open C:\\a\\c.txt: os error 5: Access is denied.", 0),
+            c.localize(
+                "Could not open C:\\a\\c.txt: os error 5: Access is denied.",
+                0
+            ),
             "無法開啟 C:\\a\\c.txt：os error 5: Access is denied."
         );
         assert_eq!(c.localize("Install failed: Stopped", 0), "安裝失敗：已停止");
         assert_eq!(c.localize("Updated 3 days ago", 0), "3 天前更新");
         assert_eq!(c.localize("{literal} x", 0), "{字面} x");
-        assert_eq!(c.localize("Stopped\nInstall failed: x", 0), "已停止\n安裝失敗：x");
+        assert_eq!(
+            c.localize("Stopped\nInstall failed: x", 0),
+            "已停止\n安裝失敗：x"
+        );
     }
 
     #[test]
     fn placeholders_are_spelled_one_way() {
-        assert_eq!(normalize("a {size:.1} b {} {} {name:?} {{x}}").unwrap(), "a {size} b {0} {1} {name} {{x}}");
+        assert_eq!(
+            normalize("a {size:.1} b {} {} {name:?} {{x}}").unwrap(),
+            "a {size} b {0} {1} {name} {{x}}"
+        );
         assert!(pieces("open {brace").is_none());
     }
 
@@ -513,7 +545,8 @@ mod tests {
         }
         // The shipped known problems' summaries reach the window inside a message
         // ("Known problem reported for this project: {summary}"), so each is a message too.
-        let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("known-problems/known-problems.json");
+        let manifest =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("known-problems/known-problems.json");
         let text = std::fs::read_to_string(&manifest).unwrap();
         let json: serde_json::Value = serde_json::from_str(&text).unwrap();
         for entry in json["entries"].as_array().into_iter().flatten() {
@@ -542,11 +575,17 @@ mod tests {
         let mut problems = Vec::new();
         for (message, file) in &messages {
             let p = pieces(message).unwrap();
-            if p.windows(2).any(|w| matches!(w, [Piece::Slot(_), Piece::Slot(_)])) {
-                problems.push(format!("{file}: two placeholders side by side in {message:?}"));
+            if p.windows(2)
+                .any(|w| matches!(w, [Piece::Slot(_), Piece::Slot(_)]))
+            {
+                problems.push(format!(
+                    "{file}: two placeholders side by side in {message:?}"
+                ));
             }
             if matches!(p.as_slice(), [Piece::Slot(_)]) {
-                problems.push(format!("{file}: {message:?} is only a placeholder, not a message"));
+                problems.push(format!(
+                    "{file}: {message:?} is only a placeholder, not a message"
+                ));
             }
         }
         for locale in Locale::ALL.into_iter().filter(|l| *l != Locale::En) {
@@ -555,8 +594,10 @@ mod tests {
                 if *file_locale != locale {
                     continue;
                 }
-                let entries: BTreeMap<String, String> = serde_json::from_str(text)
-                    .unwrap_or_else(|e| panic!("locales/{file} is not a JSON object of strings: {e}"));
+                let entries: BTreeMap<String, String> =
+                    serde_json::from_str(text).unwrap_or_else(|e| {
+                        panic!("locales/{file} is not a JSON object of strings: {e}")
+                    });
                 for (english, translated) in entries {
                     let Some(key) = normalize(&english) else {
                         problems.push(format!("locales/{file}: unclosed brace in key {english:?}"));
@@ -585,15 +626,25 @@ mod tests {
             }
             for (message, file) in &messages {
                 if !merged.contains_key(message) {
-                    problems.push(format!("{}: {file}: no translation for {message:?}", locale.tag()));
+                    problems.push(format!(
+                        "{}: {file}: no translation for {message:?}",
+                        locale.tag()
+                    ));
                 }
             }
             for (key, (_, file)) in &merged {
                 if !messages.contains_key(key) {
-                    problems.push(format!("locales/{file}: {key:?} is no longer a message in the code"));
+                    problems.push(format!(
+                        "locales/{file}: {key:?} is no longer a message in the code"
+                    ));
                 }
             }
         }
-        assert!(problems.is_empty(), "{} catalog problems:\n{}", problems.len(), problems.join("\n"));
+        assert!(
+            problems.is_empty(),
+            "{} catalog problems:\n{}",
+            problems.len(),
+            problems.join("\n")
+        );
     }
 }

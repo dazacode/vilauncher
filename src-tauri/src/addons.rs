@@ -99,7 +99,8 @@ impl Addon {
                 return Err(format!("{} has no {what}", self.id));
             }
         }
-        if !self.source.repo.starts_with("https://") || self.source.repo.contains(char::is_whitespace)
+        if !self.source.repo.starts_with("https://")
+            || self.source.repo.contains(char::is_whitespace)
         {
             return Err(format!("{}: the source must be an https address", self.id));
         }
@@ -137,8 +138,15 @@ impl Addon {
                 return Err(format!("{}: \"{key}\" is not a VICTORY_* switch", self.id));
             }
         }
-        if self.args.iter().any(|arg| arg.is_empty() || arg.contains(['\n', '\r'])) {
-            return Err(format!("{}: launch arguments must be single words", self.id));
+        if self
+            .args
+            .iter()
+            .any(|arg| arg.is_empty() || arg.contains(['\n', '\r']))
+        {
+            return Err(format!(
+                "{}: launch arguments must be single words",
+                self.id
+            ));
         }
         Ok(())
     }
@@ -205,10 +213,18 @@ pub fn switch_value(text: &str, key: &str) -> Option<String> {
 pub fn restore_switches(current: &str, prior: &BTreeMap<String, Option<String>>) -> String {
     let mut lines: Vec<String> = current
         .lines()
-        .filter(|line| !line.split_once('=').is_some_and(|(key, _)| prior.contains_key(key.trim())))
+        .filter(|line| {
+            !line
+                .split_once('=')
+                .is_some_and(|(key, _)| prior.contains_key(key.trim()))
+        })
         .map(str::to_owned)
         .collect();
-    lines.extend(prior.iter().filter_map(|(key, value)| value.as_ref().map(|v| format!("{key}={v}"))));
+    lines.extend(
+        prior
+            .iter()
+            .filter_map(|(key, value)| value.as_ref().map(|v| format!("{key}={v}"))),
+    );
     lines.join("\n")
 }
 
@@ -276,12 +292,19 @@ pub fn fetch_source(addon: &Addon, cache: &Path) -> Result<PathBuf, String> {
                 .map_err(|error| format!("could not create {}: {error}", parent.display()))?;
         }
         let mut c = tools::git();
-        c.args(["clone", "--quiet", "--"]).arg(&addon.source.repo).arg(cache);
-        git_output(c).map_err(|error| format!("could not download {}: {error}", addon.source.repo))?;
+        c.args(["clone", "--quiet", "--"])
+            .arg(&addon.source.repo)
+            .arg(cache);
+        git_output(c)
+            .map_err(|error| format!("could not download {}: {error}", addon.source.repo))?;
     }
     git(cache, &["fetch", "--quiet", "origin"])
         .map_err(|error| format!("could not update {}: {error}", addon.source.repo))?;
-    git(cache, &["checkout", "--quiet", "--detach", &addon.source.reference]).map_err(|error| {
+    git(
+        cache,
+        &["checkout", "--quiet", "--detach", &addon.source.reference],
+    )
+    .map_err(|error| {
         format!(
             "{} has no commit {}: {error}",
             addon.source.repo, addon.source.reference
@@ -338,10 +361,23 @@ pub fn apply(repo: &Path, addon: &Addon, source: &Path) -> Result<Applied, Strin
     };
     let files = patch_files(&source.join(&patches.dir))?;
     let branch = format!("vilauncher/{}", addon.id);
-    if git(repo, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_ok() {
+    if git(
+        repo,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{branch}"),
+        ],
+    )
+    .is_ok()
+    {
         // Our branch from an earlier turn-on: keep what is on it (the player may have
         // committed there), as long as it still has the add-on's commits on the original.
-        let ahead = git(repo, &["rev-list", "--count", &format!("{original}..{branch}")])?;
+        let ahead = git(
+            repo,
+            &["rev-list", "--count", &format!("{original}..{branch}")],
+        )?;
         if ahead == "0" {
             return Err(format!(
                 "The branch {branch} exists without the add-on's commits. Delete it, then turn the add-on on again."
@@ -379,7 +415,12 @@ pub fn apply(repo: &Path, addon: &Addon, source: &Path) -> Result<Applied, Strin
             let guide = addon
                 .guide
                 .as_deref()
-                .map(|guide| format!(" To port it by hand, read {guide} in {}.", addon.source.repo))
+                .map(|guide| {
+                    format!(
+                        " To port it by hand, read {guide} in {}.",
+                        addon.source.repo
+                    )
+                })
                 .unwrap_or_default();
             Err(format!(
                 "The add-on's patches do not apply to this project, so nothing was changed ({error}).{guide}"
@@ -422,7 +463,9 @@ mod tests {
 
     fn run_git(dir: &Path, args: &[&str]) -> String {
         let mut c = Command::new("git");
-        c.current_dir(dir).args(["-c", "user.name=t", "-c", "user.email=t@t"]).args(args);
+        c.current_dir(dir)
+            .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+            .args(args);
         git_output(c).unwrap()
     }
 
@@ -488,7 +531,10 @@ mod tests {
         .into();
         let applied = with_switches("VICTORY_GLOBAL=1\nVICTORY_A=40", &on, true);
         assert_eq!(switch_value(&applied, "VICTORY_A").as_deref(), Some("60"));
-        assert_eq!(restore_switches(&applied, &prior), "VICTORY_GLOBAL=1\nVICTORY_A=40");
+        assert_eq!(
+            restore_switches(&applied, &prior),
+            "VICTORY_GLOBAL=1\nVICTORY_A=40"
+        );
     }
 
     #[test]
@@ -518,7 +564,17 @@ mod tests {
         run_git(&source, &["commit", "-qam", "Add a line"]);
         let patch_dir = source.join("patches");
         std::fs::create_dir_all(&patch_dir).unwrap();
-        run_git(&source, &["format-patch", "-q", "-1", "HEAD", "-o", patch_dir.to_str().unwrap()]);
+        run_git(
+            &source,
+            &[
+                "format-patch",
+                "-q",
+                "-1",
+                "HEAD",
+                "-o",
+                patch_dir.to_str().unwrap(),
+            ],
+        );
         run_git(&source, &["add", "patches"]);
         run_git(&source, &["commit", "-q", "-m", "Patches for the add-on"]);
         let pinned = run_git(&source, &["rev-parse", "HEAD"]);
@@ -537,13 +593,19 @@ mod tests {
         let applied = apply(&project, &addon, &source_cache).unwrap();
         assert_eq!(applied.original, "main");
         assert_eq!(applied.branch, "vilauncher/test-addon");
-        assert_eq!(run_git(&project, &["rev-parse", "--abbrev-ref", "HEAD"]), "vilauncher/test-addon");
+        assert_eq!(
+            run_git(&project, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            "vilauncher/test-addon"
+        );
         // Git on Windows may write CRLF line endings; compare the text, not the bytes.
         let text = |path: PathBuf| std::fs::read_to_string(path).unwrap().replace("\r\n", "\n");
         assert_eq!(text(project.join("engine.txt")), "one\ntwo\n");
 
         remove(&project, &applied).unwrap();
-        assert_eq!(run_git(&project, &["rev-parse", "--abbrev-ref", "HEAD"]), "main");
+        assert_eq!(
+            run_git(&project, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            "main"
+        );
         assert_eq!(text(project.join("engine.txt")), "one\n");
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -554,25 +616,47 @@ mod tests {
         let source = root.join("source");
         std::fs::create_dir_all(&source).unwrap();
         run_git(&source, &["init", "-q", "-b", "main"]);
-        std::fs::write(source.join("engine.txt"), "one
-").unwrap();
+        std::fs::write(
+            source.join("engine.txt"),
+            "one
+",
+        )
+        .unwrap();
         run_git(&source, &["add", "."]);
         run_git(&source, &["commit", "-q", "-m", "base"]);
-        std::fs::write(source.join("engine.txt"), "one
+        std::fs::write(
+            source.join("engine.txt"),
+            "one
 two
-").unwrap();
+",
+        )
+        .unwrap();
         run_git(&source, &["commit", "-qam", "Add a line"]);
         let patch_dir = source.join("patches");
         std::fs::create_dir_all(&patch_dir).unwrap();
-        run_git(&source, &["format-patch", "-q", "-1", "HEAD", "-o", patch_dir.to_str().unwrap()]);
+        run_git(
+            &source,
+            &[
+                "format-patch",
+                "-q",
+                "-1",
+                "HEAD",
+                "-o",
+                patch_dir.to_str().unwrap(),
+            ],
+        );
         run_git(&source, &["add", "patches"]);
         run_git(&source, &["commit", "-q", "-m", "Patches for the add-on"]);
         let pinned = run_git(&source, &["rev-parse", "HEAD"]);
         let project = root.join("project");
         std::fs::create_dir_all(&project).unwrap();
         run_git(&project, &["init", "-q", "-b", "main"]);
-        std::fs::write(project.join("engine.txt"), "one
-").unwrap();
+        std::fs::write(
+            project.join("engine.txt"),
+            "one
+",
+        )
+        .unwrap();
         run_git(&project, &["add", "."]);
         run_git(&project, &["commit", "-q", "-m", "base"]);
 
@@ -582,12 +666,19 @@ two
 
         let first = apply(&project, &addon, &source_cache).unwrap();
         // The player works on the add-on's branch and commits there.
-        std::fs::write(project.join("mine.txt"), "mine
-").unwrap();
+        std::fs::write(
+            project.join("mine.txt"),
+            "mine
+",
+        )
+        .unwrap();
         run_git(&project, &["add", "mine.txt"]);
         run_git(&project, &["commit", "-q", "-m", "Player work"]);
         remove(&project, &first).unwrap();
-        assert_eq!(run_git(&project, &["rev-parse", "--abbrev-ref", "HEAD"]), "main");
+        assert_eq!(
+            run_git(&project, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            "main"
+        );
 
         // Turning it on again reuses the branch: the player's commit is still there.
         let again = apply(&project, &addon, &source_cache).unwrap();
@@ -613,7 +704,17 @@ two
         run_git(&source, &["commit", "-qam", "Add a line"]);
         let patch_dir = source.join("patches");
         std::fs::create_dir_all(&patch_dir).unwrap();
-        run_git(&source, &["format-patch", "-q", "-1", "HEAD", "-o", patch_dir.to_str().unwrap()]);
+        run_git(
+            &source,
+            &[
+                "format-patch",
+                "-q",
+                "-1",
+                "HEAD",
+                "-o",
+                patch_dir.to_str().unwrap(),
+            ],
+        );
         run_git(&source, &["add", "patches"]);
         run_git(&source, &["commit", "-q", "-m", "Patches for the add-on"]);
         let pinned = run_git(&source, &["rev-parse", "HEAD"]);
@@ -632,7 +733,10 @@ two
 
         let error = apply(&project, &addon, &source_cache).unwrap_err();
         assert!(error.contains("PORT.md"), "{error}");
-        assert_eq!(run_git(&project, &["rev-parse", "--abbrev-ref", "HEAD"]), "main");
+        assert_eq!(
+            run_git(&project, &["rev-parse", "--abbrev-ref", "HEAD"]),
+            "main"
+        );
         assert!(run_git(&project, &["branch", "--list", "vilauncher/*"]).is_empty());
         std::fs::remove_dir_all(root).unwrap();
     }

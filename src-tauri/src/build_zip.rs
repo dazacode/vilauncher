@@ -53,7 +53,9 @@ pub fn extract(input: &Path, destination: &Path) -> Result<Extracted, String> {
 
 fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::Result<Extracted> {
     if zip.len() > 50_000 {
-        return Err(io::Error::other(msg_str!("The build ZIP contains too many entries.")));
+        return Err(io::Error::other(msg_str!(
+            "The build ZIP contains too many entries."
+        )));
     }
     let mut remaining = MAX_EXPANDED_BYTES;
     let mut executables = Vec::new();
@@ -65,13 +67,15 @@ fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::
         let name = entry.name()?;
         let name = name.trim_end_matches('/');
         if !name.split('/').all(valid_component) {
-            return Err(io::Error::other(
-                msg_str!("The build ZIP contains an unsafe file path."),
-            ));
+            return Err(io::Error::other(msg_str!(
+                "The build ZIP contains an unsafe file path."
+            )));
         }
         let relative = PathBuf::from(name);
         let output = destination.join(&relative);
-        if relative.file_name().is_some_and(|file| file == "Cargo.toml")
+        if relative
+            .file_name()
+            .is_some_and(|file| file == "Cargo.toml")
             && relative.components().count() <= 2
         {
             manifest = true;
@@ -85,9 +89,9 @@ fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::
                 || target.starts_with('/')
                 || !target.split('/').all(valid_component)
             {
-                return Err(io::Error::other(
-                    msg_str!("The build ZIP contains an unsafe symbolic link."),
-                ));
+                return Err(io::Error::other(msg_str!(
+                    "The build ZIP contains an unsafe symbolic link."
+                )));
             }
             fs::create_dir_all(output.parent().expect("a link has a parent"))?;
             #[cfg(unix)]
@@ -102,7 +106,9 @@ fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::
             continue;
         }
         if entry.size() > remaining {
-            return Err(io::Error::other(msg_str!("The extracted build exceeds 8 GiB.")));
+            return Err(io::Error::other(msg_str!(
+                "The extracted build exceeds 8 GiB."
+            )));
         }
         fs::create_dir_all(output.parent().expect("extracted file has a parent"))?;
         let mut file = OpenOptions::new()
@@ -139,9 +145,9 @@ fn extract_contents(zip: &mut zip::ZipArchive<File>, destination: &Path) -> io::
         (None, None, []) => Err(io::Error::other(msg_str!(
             "The ZIP contains multiple possible launch programs."
         ))),
-        _ => Err(io::Error::other(
-            msg_str!("The ZIP contains multiple possible launch executables."),
-        )),
+        _ => Err(io::Error::other(msg_str!(
+            "The ZIP contains multiple possible launch executables."
+        ))),
     }?;
     if let Extracted::Program(exe) = &chosen {
         // Bundles keep their own inner permissions; a lone binary is made runnable.
@@ -285,7 +291,10 @@ mod tests {
                 ("VICTORY_FSR_PC".to_string(), "1".to_string()),
                 ("VICTORY_FRAMEGEN_AHEAD".to_string(), "1".to_string()),
                 ("VICTORY_KBM_PC".to_string(), "1".to_string()),
-                ("VICTORY_SKIP_PIPELINES".to_string(), "240cb516c1af0bc3".to_string()),
+                (
+                    "VICTORY_SKIP_PIPELINES".to_string(),
+                    "240cb516c1af0bc3".to_string()
+                ),
             ]
         );
     }
@@ -319,13 +328,15 @@ mod tests {
         // A source tree whose scripts look like programs is imported for building.
         let source = root.join("source.zip");
         let mut writer = zip::ZipWriter::new(File::create(&source).unwrap());
-        writer
-            .start_file("tree-src/Cargo.toml", options)
-            .unwrap();
+        writer.start_file("tree-src/Cargo.toml", options).unwrap();
         writer.write_all(b"[workspace]\n").unwrap();
-        writer.start_file("tree-src/.githooks/pre-commit", options).unwrap();
+        writer
+            .start_file("tree-src/.githooks/pre-commit", options)
+            .unwrap();
         writer.write_all(b"#!/bin/sh\n").unwrap();
-        writer.start_file("tree-src/launcher/build.sh", options).unwrap();
+        writer
+            .start_file("tree-src/launcher/build.sh", options)
+            .unwrap();
         writer.write_all(b"#!/bin/sh\n").unwrap();
         writer.finish().unwrap();
         assert_eq!(

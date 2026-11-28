@@ -391,7 +391,10 @@ mod tests {
                 .unwrap_or_else(|| panic!("{marker} out of order:\n{text}"));
             at += found + marker.len();
         }
-        assert!(text.contains("driver: not recorded; video memory: 8 GB"), "{text}");
+        assert!(
+            text.contains("driver: not recorded; video memory: 8 GB"),
+            "{text}"
+        );
         assert!(text.contains("  VICTORY_A=1\n  VICTORY_B=2"), "{text}");
         assert!(text.ends_with("frame 1\n"));
     }
@@ -414,7 +417,10 @@ mod tests {
         assert!(text.contains("Memory: not found"));
         assert!(text.contains("Log: no log yet"));
         // Only the VICTORY_ line is shown, and without a value it shows the name alone.
-        assert!(text.contains("Switches:\n  VICTORY_ONLY\nGraphics:"), "{text}");
+        assert!(
+            text.contains("Switches:\n  VICTORY_ONLY\nGraphics:"),
+            "{text}"
+        );
         assert!(!text.contains("PATH"));
     }
 

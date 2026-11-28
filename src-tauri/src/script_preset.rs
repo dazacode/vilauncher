@@ -34,7 +34,9 @@ pub fn parse(script: &str) -> Result<(String, Options), String> {
                 None
             }
         })
-        .ok_or(msg_str!("Expected a $set or $settings PowerShell launch hashtable."))?;
+        .ok_or(msg_str!(
+            "Expected a $set or $settings PowerShell launch hashtable."
+        ))?;
     let (start, variable) = block;
     let end = lines[start..]
         .iter()
@@ -53,7 +55,9 @@ pub fn parse(script: &str) -> Result<(String, Options), String> {
         })
         .collect();
     if defaults.is_empty() {
-        return Err(msg_str!("The script has no supported literal VICTORY_* launch defaults.").into());
+        return Err(
+            msg_str!("The script has no supported literal VICTORY_* launch defaults.").into(),
+        );
     }
     let prefix = format!("{variable}.");
     let after = &lines[end + 1..];

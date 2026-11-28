@@ -91,10 +91,8 @@ mod tests {
     use super::*;
 
     fn temp(name: &str) -> std::path::PathBuf {
-        let root = std::env::temp_dir().join(format!(
-            "vilauncher-shader-{name}-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("vilauncher-shader-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
         root
@@ -118,8 +116,15 @@ mod tests {
         assert_eq!(clear(&cache, &project), Ok(150));
         assert!(project.is_dir(), "the folder itself is kept, now empty");
         assert_eq!(fs::read_dir(&project).unwrap().count(), 0);
-        assert!(other.join("keep.bin").is_file(), "another project's cache is untouched");
-        assert_eq!(fs::read(&outside).unwrap(), b"saves", "nothing outside the cache is touched");
+        assert!(
+            other.join("keep.bin").is_file(),
+            "another project's cache is untouched"
+        );
+        assert_eq!(
+            fs::read(&outside).unwrap(),
+            b"saves",
+            "nothing outside the cache is touched"
+        );
         fs::remove_dir_all(base).unwrap();
     }
 
@@ -141,8 +146,14 @@ mod tests {
         fs::create_dir_all(&data).unwrap();
         fs::write(data.join("save.dat"), b"keep").unwrap();
 
-        assert!(clear(&cache, &data).is_err(), "a data folder beside the cache is refused");
-        assert!(clear(&cache, &cache).is_err(), "the whole cache folder is refused");
+        assert!(
+            clear(&cache, &data).is_err(),
+            "a data folder beside the cache is refused"
+        );
+        assert!(
+            clear(&cache, &cache).is_err(),
+            "the whole cache folder is refused"
+        );
         assert!(clear(&cache, &cache.join("..").join("data").join("owner_victory")).is_err());
         assert_eq!(fs::read(data.join("save.dat")).unwrap(), b"keep");
         fs::remove_dir_all(base).unwrap();

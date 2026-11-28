@@ -17,30 +17,126 @@ pub struct Control {
 }
 
 pub const CONTROLS: &[Control] = &[
-    Control { id: "menu", label: "Menu", default_key: 0x1B },
-    Control { id: "view", label: "View", default_key: 0x09 },
-    Control { id: "a", label: "A", default_key: 0x0D },
-    Control { id: "b", label: "B", default_key: 0x08 },
-    Control { id: "x", label: "X", default_key: 0x58 },
-    Control { id: "y", label: "Y", default_key: 0x59 },
-    Control { id: "up", label: "D-pad up", default_key: 0x26 },
-    Control { id: "down", label: "D-pad down", default_key: 0x28 },
-    Control { id: "left", label: "D-pad left", default_key: 0x25 },
-    Control { id: "right", label: "D-pad right", default_key: 0x27 },
-    Control { id: "left_shoulder", label: "Left shoulder", default_key: 0x51 },
-    Control { id: "right_shoulder", label: "Right shoulder", default_key: 0x45 },
-    Control { id: "left_stick_click", label: "Left stick click", default_key: 0x46 },
-    Control { id: "right_stick_click", label: "Right stick click", default_key: 0x48 },
-    Control { id: "left_stick_up", label: "Left stick up", default_key: 0x57 },
-    Control { id: "left_stick_left", label: "Left stick left", default_key: 0x41 },
-    Control { id: "left_stick_down", label: "Left stick down", default_key: 0x53 },
-    Control { id: "left_stick_right", label: "Left stick right", default_key: 0x44 },
-    Control { id: "right_stick_up", label: "Right stick up", default_key: 0x49 },
-    Control { id: "right_stick_left", label: "Right stick left", default_key: 0x4A },
-    Control { id: "right_stick_down", label: "Right stick down", default_key: 0x4B },
-    Control { id: "right_stick_right", label: "Right stick right", default_key: 0x4C },
-    Control { id: "left_trigger", label: "Left trigger", default_key: 0x5A },
-    Control { id: "right_trigger", label: "Right trigger", default_key: 0x43 },
+    Control {
+        id: "menu",
+        label: "Menu",
+        default_key: 0x1B,
+    },
+    Control {
+        id: "view",
+        label: "View",
+        default_key: 0x09,
+    },
+    Control {
+        id: "a",
+        label: "A",
+        default_key: 0x0D,
+    },
+    Control {
+        id: "b",
+        label: "B",
+        default_key: 0x08,
+    },
+    Control {
+        id: "x",
+        label: "X",
+        default_key: 0x58,
+    },
+    Control {
+        id: "y",
+        label: "Y",
+        default_key: 0x59,
+    },
+    Control {
+        id: "up",
+        label: "D-pad up",
+        default_key: 0x26,
+    },
+    Control {
+        id: "down",
+        label: "D-pad down",
+        default_key: 0x28,
+    },
+    Control {
+        id: "left",
+        label: "D-pad left",
+        default_key: 0x25,
+    },
+    Control {
+        id: "right",
+        label: "D-pad right",
+        default_key: 0x27,
+    },
+    Control {
+        id: "left_shoulder",
+        label: "Left shoulder",
+        default_key: 0x51,
+    },
+    Control {
+        id: "right_shoulder",
+        label: "Right shoulder",
+        default_key: 0x45,
+    },
+    Control {
+        id: "left_stick_click",
+        label: "Left stick click",
+        default_key: 0x46,
+    },
+    Control {
+        id: "right_stick_click",
+        label: "Right stick click",
+        default_key: 0x48,
+    },
+    Control {
+        id: "left_stick_up",
+        label: "Left stick up",
+        default_key: 0x57,
+    },
+    Control {
+        id: "left_stick_left",
+        label: "Left stick left",
+        default_key: 0x41,
+    },
+    Control {
+        id: "left_stick_down",
+        label: "Left stick down",
+        default_key: 0x53,
+    },
+    Control {
+        id: "left_stick_right",
+        label: "Left stick right",
+        default_key: 0x44,
+    },
+    Control {
+        id: "right_stick_up",
+        label: "Right stick up",
+        default_key: 0x49,
+    },
+    Control {
+        id: "right_stick_left",
+        label: "Right stick left",
+        default_key: 0x4A,
+    },
+    Control {
+        id: "right_stick_down",
+        label: "Right stick down",
+        default_key: 0x4B,
+    },
+    Control {
+        id: "right_stick_right",
+        label: "Right stick right",
+        default_key: 0x4C,
+    },
+    Control {
+        id: "left_trigger",
+        label: "Left trigger",
+        default_key: 0x5A,
+    },
+    Control {
+        id: "right_trigger",
+        label: "Right trigger",
+        default_key: 0x43,
+    },
 ];
 
 pub fn control(id: &str) -> Option<&'static Control> {
@@ -49,13 +145,19 @@ pub fn control(id: &str) -> Option<&'static Control> {
 
 /// The key the player uses for a control: their own, else the layer's.
 pub fn key_of(bindings: &BTreeMap<String, u16>, control: &Control) -> u16 {
-    bindings.get(control.id).copied().unwrap_or(control.default_key)
+    bindings
+        .get(control.id)
+        .copied()
+        .unwrap_or(control.default_key)
 }
 
 /// Whether `key` may be given to control `id`: a real key, and not one another control uses.
 pub fn check_key(bindings: &BTreeMap<String, u16>, id: &str, key: u16) -> Result<(), String> {
     // 0 and 0xFF are not keys; the rest stay with Windows or are modifiers the game needs.
-    const RESERVED: &[u16] = &[0x03, 0x10, 0x11, 0x12, 0x14, 0x2C, 0x5B, 0x5C, 0x5D, 0x90, 0x91, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5];
+    const RESERVED: &[u16] = &[
+        0x03, 0x10, 0x11, 0x12, 0x14, 0x2C, 0x5B, 0x5C, 0x5D, 0x90, 0x91, 0xA0, 0xA1, 0xA2, 0xA3,
+        0xA4, 0xA5,
+    ];
     if key == 0 || key == 0xFF || RESERVED.contains(&key) {
         return Err("That key cannot be used for a controller control.".into());
     }
@@ -106,8 +208,8 @@ mod hook {
         OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-        MapVirtualKeyW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY,
-        KEYEVENTF_KEYUP, MAPVK_VK_TO_VSC,
+        MapVirtualKeyW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
+        KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, MAPVK_VK_TO_VSC,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId,
@@ -144,7 +246,12 @@ mod hook {
         if on {
             HOOK_STARTED.call_once(|| {
                 std::thread::spawn(|| unsafe {
-                    let hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook), std::ptr::null_mut(), 0);
+                    let hook = SetWindowsHookExW(
+                        WH_KEYBOARD_LL,
+                        Some(keyboard_hook),
+                        std::ptr::null_mut(),
+                        0,
+                    );
                     if hook.is_null() {
                         return;
                     }
@@ -286,7 +393,10 @@ mod tests {
     use super::*;
 
     fn bind(pairs: &[(&str, u16)]) -> BTreeMap<String, u16> {
-        pairs.iter().map(|(id, key)| (id.to_string(), *key)).collect()
+        pairs
+            .iter()
+            .map(|(id, key)| (id.to_string(), *key))
+            .collect()
     }
 
     #[test]

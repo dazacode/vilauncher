@@ -362,7 +362,6 @@ mod tests {
         assert!(by_hand_hint(&["Git", "Rust"]).contains("git-scm.com"));
     }
 
-
     #[test]
     fn winget_nothing_to_upgrade_counts_as_installed() {
         // The exact text from issues #6 and #8.

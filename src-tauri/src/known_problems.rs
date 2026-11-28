@@ -121,7 +121,9 @@ impl Evidence {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Evidence::SingleRunReport => {
-                msg_str!("possible setting, not verified on your hardware (reported in a single run)")
+                msg_str!(
+                    "possible setting, not verified on your hardware (reported in a single run)"
+                )
             }
             Evidence::SelfReported => {
                 msg_str!("possible setting, not verified on your hardware (self-reported)")
@@ -222,14 +224,22 @@ fn validate(manifest: &Manifest) -> Result<(), String> {
         }
         ids.push(id);
         if entry.project.trim().is_empty() || entry.project.contains(['/', '\\']) {
-            return Err(format!("{id}: project must be a repo name without its owner"));
+            return Err(format!(
+                "{id}: project must be a repo name without its owner"
+            ));
         }
         if let Some(gpu) = &entry.gpu_vendor {
             if !matches!(gpu.as_str(), "nvidia" | "amd" | "intel") {
-                return Err(format!("{id}: gpu_vendor {gpu} is not nvidia, amd or intel"));
+                return Err(format!(
+                    "{id}: gpu_vendor {gpu} is not nvidia, amd or intel"
+                ));
             }
         }
-        if entry.symptom.as_deref().is_some_and(|s| s.trim().is_empty()) {
+        if entry
+            .symptom
+            .as_deref()
+            .is_some_and(|s| s.trim().is_empty())
+        {
             return Err(format!("{id}: symptom is empty; leave it out instead"));
         }
         if !valid_switch(&entry.switch) {
@@ -261,7 +271,9 @@ fn validate_advice(id: &str, advice: &Advice) -> Result<(), String> {
         return Err(format!("{id}: advice.source is required"));
     }
     if advice.when.is_empty() {
-        return Err(format!("{id}: advice.when needs at least one hardware condition"));
+        return Err(format!(
+            "{id}: advice.when needs at least one hardware condition"
+        ));
     }
     for condition in &advice.when {
         let ok = match condition {
@@ -272,7 +284,9 @@ fn validate_advice(id: &str, advice: &Advice) -> Result<(), String> {
             Condition::WindowsOnly(on) => *on,
         };
         if !ok {
-            return Err(format!("{id}: advice.when has a condition with a bad value: {condition:?}"));
+            return Err(format!(
+                "{id}: advice.when has a condition with a bad value: {condition:?}"
+            ));
         }
     }
     Ok(())
@@ -302,7 +316,9 @@ fn valid_switch(text: &str) -> bool {
 fn project_matches(project: &str, slug: &str) -> bool {
     let project = project.to_lowercase();
     let slug = slug.to_lowercase();
-    slug == project || slug.ends_with(&format!("_{project}")) || slug.ends_with(&format!("/{project}"))
+    slug == project
+        || slug.ends_with(&format!("_{project}"))
+        || slug.ends_with(&format!("/{project}"))
 }
 
 /// Whether the project's switch text already sets `name`.
@@ -479,14 +495,30 @@ mod tests {
         let bad = [
             r#"{"schema": 3, "entries": []}"#.to_string(),
             r#"{"schema": 2, "entries": [], "extra": true}"#.to_string(),
-            with(r#"{"id":"a","project":"victory","switch":"VICTORY_A=1","summary":"s","source":"x","status":"bogus"}"#),
-            with(r#"{"id":"a","project":"a/victory","switch":"VICTORY_A=1","summary":"s","source":"x","status":"confirmed"}"#),
-            with(r#"{"id":"a","project":"victory","switch":"PATH=1","summary":"s","source":"x","status":"confirmed"}"#),
-            with(r#"{"id":"a","project":"victory","switch":"VICTORY_a=1","summary":"s","source":"x","status":"confirmed"}"#),
-            with(r#"{"id":"a","project":"victory","switch":"VICTORY_A=C:\\x","summary":"s","source":"x","status":"confirmed"}"#),
-            with(r#"{"id":"a","project":"victory","gpu_vendor":"matrox","switch":"VICTORY_A=1","summary":"s","source":"x","status":"confirmed"}"#),
-            with(r#"{"id":"a","project":"victory","symptom":" ","switch":"VICTORY_A=1","summary":"s","source":"x","status":"confirmed"}"#),
-            with(r#"{"id":"a","project":"victory","switch":"VICTORY_A=1","summary":"","source":"x","status":"confirmed"}"#),
+            with(
+                r#"{"id":"a","project":"victory","switch":"VICTORY_A=1","summary":"s","source":"x","status":"bogus"}"#,
+            ),
+            with(
+                r#"{"id":"a","project":"a/victory","switch":"VICTORY_A=1","summary":"s","source":"x","status":"confirmed"}"#,
+            ),
+            with(
+                r#"{"id":"a","project":"victory","switch":"PATH=1","summary":"s","source":"x","status":"confirmed"}"#,
+            ),
+            with(
+                r#"{"id":"a","project":"victory","switch":"VICTORY_a=1","summary":"s","source":"x","status":"confirmed"}"#,
+            ),
+            with(
+                r#"{"id":"a","project":"victory","switch":"VICTORY_A=C:\\x","summary":"s","source":"x","status":"confirmed"}"#,
+            ),
+            with(
+                r#"{"id":"a","project":"victory","gpu_vendor":"matrox","switch":"VICTORY_A=1","summary":"s","source":"x","status":"confirmed"}"#,
+            ),
+            with(
+                r#"{"id":"a","project":"victory","symptom":" ","switch":"VICTORY_A=1","summary":"s","source":"x","status":"confirmed"}"#,
+            ),
+            with(
+                r#"{"id":"a","project":"victory","switch":"VICTORY_A=1","summary":"","source":"x","status":"confirmed"}"#,
+            ),
             format!(
                 r#"{{"schema": 2, "entries": [{e}, {e}]}}"#,
                 e = r#"{"id":"a","project":"victory","switch":"VICTORY_A=1","summary":"s","source":"x","status":"confirmed"}"#
@@ -501,10 +533,18 @@ mod tests {
             advised("self_reported", r#"{"wifi_speed": 3}"#),
             advised("self_reported", r#"{"gpu_name_contains": " "}"#),
             // Advice in a schema 1 manifest, advice with a symptom or gpu_vendor, a bad switch.
-            advised("self_reported", r#"{"windows_only": true}"#).replace("\"schema\": 2", "\"schema\": 1"),
-            advised("self_reported", r#"{"windows_only": true}"#).replace("\"status\":\"confirmed\"", "\"status\":\"confirmed\",\"symptom\":\"x\""),
-            advised("self_reported", r#"{"windows_only": true}"#).replace("\"status\":\"confirmed\"", "\"status\":\"confirmed\",\"gpu_vendor\":\"nvidia\""),
-            advised("self_reported", r#"{"windows_only": true}"#).replace("VICTORY_ADV=1", "PATH=1"),
+            advised("self_reported", r#"{"windows_only": true}"#)
+                .replace("\"schema\": 2", "\"schema\": 1"),
+            advised("self_reported", r#"{"windows_only": true}"#).replace(
+                "\"status\":\"confirmed\"",
+                "\"status\":\"confirmed\",\"symptom\":\"x\"",
+            ),
+            advised("self_reported", r#"{"windows_only": true}"#).replace(
+                "\"status\":\"confirmed\"",
+                "\"status\":\"confirmed\",\"gpu_vendor\":\"nvidia\"",
+            ),
+            advised("self_reported", r#"{"windows_only": true}"#)
+                .replace("VICTORY_ADV=1", "PATH=1"),
         ];
         for text in bad {
             assert!(parse(&text).is_err(), "should be refused: {text}");
@@ -535,10 +575,22 @@ mod tests {
             matching(&manifest, slug, gpu, log, switches).len()
         };
         assert_eq!(found("owner_victory", Some("nvidia"), &log, ""), 1);
-        assert_eq!(found("owner_other", Some("nvidia"), &log, ""), 0, "other project");
-        assert_eq!(found("owner_victory", Some("amd"), &log, ""), 0, "other gpu");
+        assert_eq!(
+            found("owner_other", Some("nvidia"), &log, ""),
+            0,
+            "other project"
+        );
+        assert_eq!(
+            found("owner_victory", Some("amd"), &log, ""),
+            0,
+            "other gpu"
+        );
         assert_eq!(found("owner_victory", None, &log, ""), 0, "gpu unknown");
-        assert_eq!(found("owner_victory", Some("nvidia"), &[], ""), 0, "no symptom in log");
+        assert_eq!(
+            found("owner_victory", Some("nvidia"), &[], ""),
+            0,
+            "no symptom in log"
+        );
     }
 
     #[test]
@@ -547,8 +599,14 @@ mod tests {
             r#"{"id":"a","project":"victory","switch":"VICTORY_A=1","summary":"s","source":"x","status":"confirmed"}"#,
         ))
         .unwrap();
-        assert_eq!(matching(&manifest, "owner_victory", None, &[], "VICTORY_A=0").len(), 0);
-        assert_eq!(matching(&manifest, "owner_victory", None, &[], "VICTORY_B=0").len(), 1);
+        assert_eq!(
+            matching(&manifest, "owner_victory", None, &[], "VICTORY_A=0").len(),
+            0
+        );
+        assert_eq!(
+            matching(&manifest, "owner_victory", None, &[], "VICTORY_B=0").len(),
+            1
+        );
 
         let retired = parse(&with(
             r#"{"id":"a","project":"victory","switch":"VICTORY_A=1","summary":"s","source":"x","status":"retired"}"#,
@@ -562,7 +620,10 @@ mod tests {
         let hw = pc();
         assert!(holds(r#"{"gpu_vendor": "nvidia"}"#, &hw));
         assert!(!holds(r#"{"gpu_vendor": "amd"}"#, &hw));
-        assert!(holds(r#"{"gpu_name_contains": "rtx 4070"}"#, &hw), "case-insensitive");
+        assert!(
+            holds(r#"{"gpu_name_contains": "rtx 4070"}"#, &hw),
+            "case-insensitive"
+        );
         assert!(!holds(r#"{"gpu_name_contains": "radeon"}"#, &hw));
         assert!(holds(r#"{"ram_gb_at_least": 32}"#, &hw));
         assert!(!holds(r#"{"ram_gb_at_least": 33}"#, &hw));
@@ -571,7 +632,10 @@ mod tests {
         assert!(holds(r#"{"os_build_at_least": 22621}"#, &hw));
         assert!(!holds(r#"{"os_build_at_least": 26100}"#, &hw));
         assert!(holds(r#"{"windows_only": true}"#, &hw));
-        let mac = Hardware { windows: false, ..pc() };
+        let mac = Hardware {
+            windows: false,
+            ..pc()
+        };
         assert!(!holds(r#"{"windows_only": true}"#, &mac));
     }
 
@@ -586,7 +650,10 @@ mod tests {
             r#"{"os_build_at_least": 1}"#,
             r#"{"windows_only": true}"#,
         ] {
-            assert!(!holds(when, &unknown), "{when} must not match unknown hardware");
+            assert!(
+                !holds(when, &unknown),
+                "{when} must not match unknown hardware"
+            );
         }
         // A card of another maker has no key, so a vendor condition does not match it.
         let other = Hardware {
@@ -604,8 +671,14 @@ mod tests {
             r#"{"gpu_vendor": "nvidia"}, {"ram_gb_at_least": 64}"#,
         ))
         .unwrap();
-        assert!(advice_for(&manifest, "owner_victory", &pc(), "").is_empty(), "32 GB is not 64");
-        let bigger = Hardware { ram_gb: Some(64.0), ..pc() };
+        assert!(
+            advice_for(&manifest, "owner_victory", &pc(), "").is_empty(),
+            "32 GB is not 64"
+        );
+        let bigger = Hardware {
+            ram_gb: Some(64.0),
+            ..pc()
+        };
         assert_eq!(advice_for(&manifest, "owner_victory", &bigger, "").len(), 1);
     }
 
@@ -613,11 +686,21 @@ mod tests {
     fn advice_is_for_its_project_and_not_already_set() {
         let manifest = parse(&advised("two_machine_ab", r#"{"windows_only": true}"#)).unwrap();
         assert_eq!(advice_for(&manifest, "owner_victory", &pc(), "").len(), 1);
-        assert!(advice_for(&manifest, "owner_other", &pc(), "").is_empty(), "other project");
+        assert!(
+            advice_for(&manifest, "owner_other", &pc(), "").is_empty(),
+            "other project"
+        );
         assert!(advice_for(&manifest, "owner_victory", &pc(), "VICTORY_ADV=0").is_empty());
-        assert_eq!(advice_for(&manifest, "owner_victory", &pc(), "VICTORY_BASE=0").len(), 1);
+        assert_eq!(
+            advice_for(&manifest, "owner_victory", &pc(), "VICTORY_BASE=0").len(),
+            1
+        );
 
-        let retired = parse(&advised("two_machine_ab", r#"{"windows_only": true}"#).replace("\"confirmed\"", "\"retired\"")).unwrap();
+        let retired = parse(
+            &advised("two_machine_ab", r#"{"windows_only": true}"#)
+                .replace("\"confirmed\"", "\"retired\""),
+        )
+        .unwrap();
         assert!(advice_for(&retired, "owner_victory", &pc(), "").is_empty());
     }
 
@@ -629,9 +712,15 @@ mod tests {
 
     #[test]
     fn only_two_machine_evidence_is_presented_as_recommended() {
-        assert_eq!(presentation(Evidence::TwoMachineAb), Presentation::Recommended);
+        assert_eq!(
+            presentation(Evidence::TwoMachineAb),
+            Presentation::Recommended
+        );
         assert_eq!(presentation(Evidence::SelfReported), Presentation::Possible);
-        assert_eq!(presentation(Evidence::SingleRunReport), Presentation::Possible);
+        assert_eq!(
+            presentation(Evidence::SingleRunReport),
+            Presentation::Possible
+        );
         for evidence in [Evidence::SelfReported, Evidence::SingleRunReport] {
             let label = evidence.label().to_lowercase();
             assert!(!label.contains("recommended"), "{label}");

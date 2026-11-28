@@ -159,8 +159,14 @@ fn the_first_run_after_a_build_is_flagged_until_a_run_follows_it() {
     // Never run: pending. A run after the build: done. A build after the last run: pending.
     assert!(warm_up_pending(1_000, None));
     assert!(!warm_up_pending(1_000, Some(1_500)));
-    assert!(!warm_up_pending(1_000, Some(1_000)), "a run in the same second as the build counts");
-    assert!(warm_up_pending(2_000, Some(1_500)), "an update after the last run is pending again");
+    assert!(
+        !warm_up_pending(1_000, Some(1_000)),
+        "a run in the same second as the build counts"
+    );
+    assert!(
+        warm_up_pending(2_000, Some(1_500)),
+        "an update after the last run is pending again"
+    );
 }
 
 #[cfg(test)]

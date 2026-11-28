@@ -54,7 +54,9 @@ fn file_name(slug: &str) -> String {
 /// The last `count` lines of a project's log file, or None when there is no log yet.
 /// The header line is not returned; the file is already scrubbed when it is written.
 pub(crate) fn read_tail(workspace: &Path, slug: &str, count: usize) -> Option<Vec<String>> {
-    let path = workspace.join("logs").join(format!("{}.log", file_name(slug)));
+    let path = workspace
+        .join("logs")
+        .join(format!("{}.log", file_name(slug)));
     let text = std::fs::read_to_string(path).ok()?;
     let lines: Vec<String> = text.lines().skip(1).map(str::to_owned).collect();
     let start = lines.len().saturating_sub(count);

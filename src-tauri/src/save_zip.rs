@@ -36,9 +36,9 @@ pub fn import(root: &Path, input: &Path) -> io::Result<(String, PathBuf)> {
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b" _-".contains(&byte))
     {
-        return Err(invalid(
-            msg_str!("Rename the ZIP using up to 60 letters, numbers, spaces, hyphens, or underscores."),
-        ));
+        return Err(invalid(msg_str!(
+            "Rename the ZIP using up to 60 letters, numbers, spaces, hyphens, or underscores."
+        )));
     }
     let file = File::open(input)?;
     if file.metadata()?.len() > MAX_BYTES {
@@ -46,7 +46,9 @@ pub fn import(root: &Path, input: &Path) -> io::Result<(String, PathBuf)> {
     }
     let mut archive = ZipArchive::new(file)?;
     if archive.len() > MAX_FILES {
-        return Err(invalid(msg_str!("This save ZIP contains too many entries.")));
+        return Err(invalid(msg_str!(
+            "This save ZIP contains too many entries."
+        )));
     }
     fs::create_dir_all(root)?;
     let destination = root.join(format!("Checkpoint - {name}"));
@@ -95,12 +97,16 @@ pub fn import(root: &Path, input: &Path) -> io::Result<(String, PathBuf)> {
                 .as_ref()
                 .is_some_and(|previous| previous != &prefix)
             {
-                return Err(invalid(msg_str!("The ZIP contains more than one save folder.")));
+                return Err(invalid(msg_str!(
+                    "The ZIP contains more than one save folder."
+                )));
             }
             save_root = Some(prefix);
             let size = entry.size();
             if size > MAX_BYTES - total {
-                return Err(invalid(msg_str!("The extracted saves exceed the size limit.")));
+                return Err(invalid(msg_str!(
+                    "The extracted saves exceed the size limit."
+                )));
             }
             let path = relative
                 .iter()
@@ -111,12 +117,16 @@ pub fn import(root: &Path, input: &Path) -> io::Result<(String, PathBuf)> {
             fs::create_dir_all(path.parent().unwrap())?;
             let mut output = OpenOptions::new().write(true).create_new(true).open(path)?;
             if io::copy(&mut (&mut entry).take(size + 1), &mut output)? != size {
-                return Err(invalid(msg_str!("A ZIP entry did not match its declared size.")));
+                return Err(invalid(msg_str!(
+                    "A ZIP entry did not match its declared size."
+                )));
             }
             total += size;
         }
         if manifests == 0 {
-            return Err(invalid(msg_str!("No VIctory save manifests were found in the ZIP.")));
+            return Err(invalid(msg_str!(
+                "No VIctory save manifests were found in the ZIP."
+            )));
         }
         fs::rename(&stage, &destination)
     })();
@@ -175,12 +185,16 @@ fn write_tree(
             let max = MAX_BYTES - limits.1;
             let written = io::copy(&mut File::open(entry.path())?.take(max + 1), archive)?;
             if written > max {
-                return Err(invalid(msg_str!("This save exceeds the export size limit.")));
+                return Err(invalid(msg_str!(
+                    "This save exceeds the export size limit."
+                )));
             }
             limits.0 += 1;
             limits.1 += written;
         } else {
-            return Err(invalid(msg_str!("The save folder contains an unsupported entry.")));
+            return Err(invalid(msg_str!(
+                "The save folder contains an unsupported entry."
+            )));
         }
     }
     Ok(())

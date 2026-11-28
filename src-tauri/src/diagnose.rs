@@ -197,9 +197,9 @@ fn hashes_near(lines: &[&str], start: usize, window: usize) -> Vec<String> {
 /// The file types a project's Agility version or hash may sit in: source, scripts,
 /// build manifests (MSBuild, CMake, Cargo), config and docs.
 const PROJECT_TEXT_EXTENSIONS: &[&str] = &[
-    "rs", "ps1", "cmd", "bat", "sh", "py", "js", "ts", "cs", "cpp", "cc", "c", "h", "hpp",
-    "lua", "toml", "json", "yml", "yaml", "ini", "cfg", "xml", "props", "targets", "csproj",
-    "vcxproj", "sln", "cmake", "md", "txt",
+    "rs", "ps1", "cmd", "bat", "sh", "py", "js", "ts", "cs", "cpp", "cc", "c", "h", "hpp", "lua",
+    "toml", "json", "yml", "yaml", "ini", "cfg", "xml", "props", "targets", "csproj", "vcxproj",
+    "sln", "cmake", "md", "txt",
 ];
 
 /// A project's own text files (source, scripts, manifests), capped so a large repo is
@@ -459,8 +459,7 @@ fn resolve_package(
         .ok_or("The expected Agility files name no D3D12Core.dll.")?
         .1;
     let dir = cache.join("D3D12");
-    if cached_core(cache)
-        .is_some_and(|cached| core_shas.contains(&cached))
+    if cached_core(cache).is_some_and(|cached| core_shas.contains(&cached))
         && agility_folder_ok(&dir, agility)
     {
         log(format!("Using the checked copy in {}.", dir.display()));
@@ -519,8 +518,11 @@ fn resolve_package(
             actual.push((name.clone(), vec![got]));
             write_verified(&dir.join(name), &bytes, &sha256(&bytes), log)?;
         }
-        std::fs::write(cache.join("package.txt"), format!("{core_hash}\n{version}\n"))
-            .map_err(|error| format!("Could not record the package: {error}"))?;
+        std::fs::write(
+            cache.join("package.txt"),
+            format!("{core_hash}\n{version}\n"),
+        )
+        .map_err(|error| format!("Could not record the package: {error}"))?;
         if !agility_folder_ok(&dir, &actual) {
             return Err("The downloaded D3D12 Agility SDK files did not pass the check.".into());
         }
@@ -985,9 +987,10 @@ pub(crate) fn preflight(check: &Check) -> Vec<Finding> {
             ) {
                 let name = entry.switch_name();
                 let named = found.iter().any(|f| {
-                    f.data
-                        .as_deref()
-                        .is_some_and(|data| data.lines().any(|line| line.split('=').next() == Some(name)))
+                    f.data.as_deref().is_some_and(|data| {
+                        data.lines()
+                            .any(|line| line.split('=').next() == Some(name))
+                    })
                 });
                 if named {
                     continue;
@@ -1019,7 +1022,9 @@ pub(crate) fn preflight(check: &Check) -> Vec<Finding> {
             check.repo_dir.file_name().and_then(|name| name.to_str()),
             crate::known_problems::shipped(),
         ) {
-            for entry in crate::known_problems::advice_for(&manifest, slug, hardware, check.switches) {
+            for entry in
+                crate::known_problems::advice_for(&manifest, slug, hardware, check.switches)
+            {
                 let Some(advice) = &entry.advice else {
                     continue;
                 };
@@ -1399,7 +1404,10 @@ mod tests {
             versions_in("Microsoft.Direct3D.D3D12 1.614.1, D3D12Core.dll 1.614.1.0"),
             vec!["1.614.1"]
         );
-        assert_eq!(versions_in("param([string]$Version = '1.620.2')"), vec!["1.620.2"]);
+        assert_eq!(
+            versions_in("param([string]$Version = '1.620.2')"),
+            vec!["1.620.2"]
+        );
         assert!(versions_in("Windows 11 22H2 build 22623, D3D12 1.0.0").is_empty());
 
         let root = temp("versions");
@@ -1766,7 +1774,9 @@ mod tests {
         assert_eq!(hint.fix, Some(FIX_AGILITY));
         // Unrelated log lines do not raise it.
         let other = vec!["shader model 6.5 compiled".to_string()];
-        assert!(!from_log(&other).iter().any(|f| f.title.contains("shader model 6.6")));
+        assert!(!from_log(&other)
+            .iter()
+            .any(|f| f.title.contains("shader model 6.6")));
     }
 
     #[test]
@@ -1779,7 +1789,9 @@ mod tests {
             .expect("an unhandled exception finding");
         assert_eq!(hint.fix, None);
         assert!(hint.detail.contains("Launch options"));
-        assert!(!from_log(&["all good".to_string()]).iter().any(|f| f.title.contains("unhandled exception")));
+        assert!(!from_log(&["all good".to_string()])
+            .iter()
+            .any(|f| f.title.contains("unhandled exception")));
     }
 
     #[test]
@@ -1857,7 +1869,9 @@ mod tests {
                 && f.title.contains("does not load the D3D12 Agility SDK")),
             cfg!(windows)
         );
-        assert!(!preflight(&check).iter().any(|f| f.title.contains("missing or not the expected")));
+        assert!(!preflight(&check)
+            .iter()
+            .any(|f| f.title.contains("missing or not the expected")));
         std::fs::remove_dir_all(root).unwrap();
     }
 
