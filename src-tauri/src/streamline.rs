@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+#[cfg(windows)]
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -23,6 +24,7 @@ use crate::notify::Ctx;
 pub(crate) const URL: &str = "https://github.com/NVIDIA-RTX/Streamline/releases/download/v2.14.16/streamline-sdk-v2.14.16.zip";
 const ZIP_SIZE: u64 = 276_016_170;
 const ZIP_SHA256: &str = "32041e51db0cab709a271b72a352281b690c2abbd669a827809401a5dd23956b";
+#[cfg(windows)]
 const SIGNER: &str = "NVIDIA Corporation";
 const MARKER: &str = "verified.txt";
 
