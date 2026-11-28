@@ -2,7 +2,7 @@
 
 The release notes for each tag are taken from the section for that version.
 
-## 1.0.5
+## 1.1.0
 
 ### New
 - **Controller keys (keyboard as controller):** the 24 controls VIctory reads from the keyboard can each get another key, set in Settings. Off by default. A low-level keyboard hook sends the layer's own key only while `victory.exe` is in front. Windows only.
