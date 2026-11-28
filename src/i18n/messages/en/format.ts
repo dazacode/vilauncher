@@ -30,6 +30,7 @@ export default {
   },
   /** The project list's orders (SORTS in src/lib/compat.ts). */
   sort: {
+    personalFps: "Personal FPS",
     listing: "VIPortLive order",
     name: "Name",
     fps: "Frame rate",

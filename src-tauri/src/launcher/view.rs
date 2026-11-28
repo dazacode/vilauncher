@@ -86,6 +86,8 @@ pub(crate) struct ProjectView {
     owner: Option<String>,
     gpu: Vec<String>,
     fps: Option<f64>,
+    personal_fps: Option<f64>,
+    playtime: Option<String>,
     render: Option<f64>,
     verified: bool,
     summary: String,
@@ -159,6 +161,7 @@ struct SettingsView {
     gpu_filter: usize,
     show_nuked: bool,
     list_sort: usize,
+    include_exact_60_fps: bool,
     list_tier: usize,
     spec_ram_gb: Option<f64>,
     spec_vram_gb: Option<f64>,
@@ -311,7 +314,8 @@ impl App {
                 graphics: self.saved.default_graphics(),
                 gpu_filter: self.saved.gpu_filter.min(2),
                 show_nuked: self.saved.show_nuked,
-                list_sort: self.saved.list_sort.min(4),
+                list_sort: self.saved.list_sort.min(5),
+                include_exact_60_fps: self.saved.include_exact_60_fps,
                 list_tier: self.saved.list_tier.min(2),
                 spec_ram_gb: self.saved.spec_ram_gb,
                 spec_vram_gb: self.saved.spec_vram_gb,
@@ -407,6 +411,10 @@ impl App {
             || p.archive_exe.is_some()
             || rust_install(&p.repo).is_some_and(|i| i.executable.is_some());
         let key = project_key(&p.repo);
+        let stats = self
+            .saved
+            .play_stats
+            .profile(&key, self.saved.include_exact_60_fps);
         let launch = self.saved.project_launch.get(&key);
         let switches = launch.and_then(|l| l.switches.clone());
         let effective = switches
@@ -433,6 +441,8 @@ impl App {
             owner,
             gpu: p.gpu.clone(),
             fps: p.fps,
+            personal_fps: stats.as_ref().and_then(|stats| stats.average_fps),
+            playtime: stats.map(|stats| stats.playtime),
             render: p.render,
             verified: p.verified,
             summary: p.summary.clone(),

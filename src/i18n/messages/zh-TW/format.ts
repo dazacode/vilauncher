@@ -27,6 +27,7 @@ export default {
     paws: "貓掌",
   },
   sort: {
+    personalFps: "個人平均幀率",
     listing: "VIPortLive 順序",
     name: "名稱",
     fps: "影格率",

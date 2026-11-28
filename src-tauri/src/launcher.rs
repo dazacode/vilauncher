@@ -140,7 +140,7 @@ pub(crate) struct Saved {
     gpu_filter: usize,
     /// Show the projects VIPortLive took down. Off: hidden; on: listed, and they open VIPortLive's page.
     show_nuked: bool,
-    /// The list's order: 0 VIPortLive's own, 1 name, 2 frame rate, 3 stars, 4 recent commits.
+    /// The list's order: catalog, name, reported FPS, stars, recent commits, personal FPS.
     list_sort: usize,
     /// Which projects to list: 0 all, 1 tracked, 2 watchlist.
     list_tier: usize,
@@ -155,6 +155,8 @@ pub(crate) struct Saved {
     launch_args: String,
     project_launch: std::collections::BTreeMap<String, ProjectLaunch>,
     launch_presets: Vec<LaunchPreset>,
+    play_stats: crate::play_stats::History,
+    include_exact_60_fps: bool,
     /// The version of the legal notice the player agreed to (0: not yet).
     notice_accepted: u32,
     /// Skip the warning shown before an update replaces a build (off: it is shown).
@@ -417,6 +419,8 @@ fn project_launch_overrides_are_independent_and_can_be_empty() {
 #[derive(Default)]
 pub(crate) struct Job {
     running: bool,
+    play_stats: Option<crate::play_stats::History>,
+    session: Option<crate::play_stats::Session>,
     /// The project the job works on.
     repo: Option<String>,
     stage: String,
@@ -1523,6 +1527,7 @@ impl App {
                 running: true,
                 stage: msg_str!("Starting").into(),
                 repo: Some(p.repo.clone()),
+                play_stats: matches!(kind, Kind::Play(_)).then(|| self.saved.play_stats.clone()),
                 last_log: last,
                 ..Default::default()
             };
@@ -2886,7 +2891,7 @@ fn play(
                 .join("last-run.txt"),
         );
         let result = run_with(job, ctx, &mut command, |pid| {
-            job.lock().unwrap().pid = Some(pid);
+            record_play_spawn(job, p, pid);
             if let Err(error) = build_activity::BuildActivity::record_run(&target_dir(&p.repo)) {
                 job.lock()
                     .unwrap()
@@ -2951,7 +2956,7 @@ fn play(
             .join("last-run.txt"),
     );
     let result = run_with(job, ctx, &mut c, |pid| {
-        job.lock().unwrap().pid = Some(pid);
+        record_play_spawn(job, p, pid);
         if p.local_exe.is_none() {
             if let Err(error) = build_activity::BuildActivity::record_run(&target_dir(&p.repo)) {
                 job.lock()
@@ -3018,6 +3023,15 @@ fn run_with(
     run_with_output(job, ctx, c, spawned, Some)
 }
 
+fn record_play_spawn(job: &Arc<Mutex<Job>>, p: &Project, pid: u32) {
+    let mut job = job.lock().unwrap();
+    job.pid = Some(pid);
+    job.session = job
+        .play_stats
+        .take()
+        .map(|history| history.start(project_key(&p.repo)));
+}
+
 fn run_with_output(
     job: &Arc<Mutex<Job>>,
     ctx: &Ctx,
@@ -3048,6 +3062,9 @@ fn run_with_output(
                     continue;
                 };
                 let mut j = job.lock().unwrap();
+                if let Some(session) = &j.session {
+                    session.observe(&line);
+                }
                 j.log.push(line);
                 if j.log.len() > 4000 {
                     j.log.drain(..1000);
@@ -3060,10 +3077,19 @@ fn run_with_output(
     };
     let a = out.map(|o| pipe(Box::new(o), true));
     let b = err.map(|e| pipe(Box::new(e), false));
-    let status = child.wait().map_err(|e| e.to_string())?;
+    let status = child.wait().map_err(|e| e.to_string());
+    if let Some(session) = &job.lock().unwrap().session {
+        session.stop_clock();
+    }
     for t in [a, b].into_iter().flatten() {
         let _ = t.join();
     }
+    let mut j = job.lock().unwrap();
+    if let Some(session) = j.session.take() {
+        j.log.push(session.summary());
+    }
+    drop(j);
+    let status = status?;
     status
         .success()
         .then_some(())

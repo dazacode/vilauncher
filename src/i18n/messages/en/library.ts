@@ -7,6 +7,11 @@ export default {
   },
   loading: "Loading the library",
   hero: {
+    playtime: "Playtime",
+    personalFps: "Personal FPS",
+    resetPersonalFps: "Reset personal FPS",
+    exclude60Fps: "Exclude exactly 60 FPS",
+    include60Fps: "Include exactly 60 FPS",
     imported: "Imported build",
     addedByLink: "Added by link",
     verified: "Verified",
