@@ -16,6 +16,12 @@ pub(crate) enum Action {
         repo: Option<String>,
     },
     RefreshProjects,
+    ResetPersonalFps {
+        repo: String,
+    },
+    SetIncludeExact60Fps {
+        include: bool,
+    },
     SetGpuFilter {
         value: usize,
     },
@@ -268,6 +274,15 @@ impl App {
                 self.refresh_projects(&ctx);
                 Value::Null
             }
+            Action::ResetPersonalFps { repo } => {
+                self.project(&repo)?;
+                self.saved.play_stats.reset_fps(&project_key(&repo));
+                Value::Null
+            }
+            Action::SetIncludeExact60Fps { include } => {
+                self.saved.include_exact_60_fps = include;
+                Value::Null
+            }
             Action::SetGpuFilter { value } => {
                 self.saved.gpu_filter = value.min(2);
                 Value::Null
@@ -310,7 +325,7 @@ impl App {
                 tier,
             } => {
                 self.saved.show_nuked = show_nuked;
-                self.saved.list_sort = sort.min(4);
+                self.saved.list_sort = sort.min(5);
                 self.saved.list_tier = tier.min(2);
                 Value::Null
             }

@@ -55,6 +55,8 @@ export interface Project {
   owner: string | null
   gpu: string[]
   fps: number | null
+  personal_fps: number | null
+  playtime: string | null
   render: number | null
   verified: boolean
   summary: string
@@ -125,6 +127,7 @@ export interface Snapshot {
     show_nuked: boolean
     /** 0 VIPortLive's order, 1 name, 2 frame rate, 3 stars, 4 recent commits. */
     list_sort: number
+    include_exact_60_fps: boolean
     /** 0 all, 1 tracked, 2 watchlist. */
     list_tier: number
     spec_ram_gb: number | null
@@ -253,6 +256,8 @@ export type ResponsibilityId = "import-repo" | "agent-access" | "agent-patch"
 export type Action =
   | { type: "select"; repo: string | null }
   | { type: "refresh_projects" }
+  | { type: "reset_personal_fps"; repo: string }
+  | { type: "set_include_exact60_fps"; include: boolean }
   | { type: "set_gpu_filter"; value: number }
   | { type: "set_list_options"; show_nuked: boolean; sort: number; tier: number }
   | { type: "report"; repo: string }

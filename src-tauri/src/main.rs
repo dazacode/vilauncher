@@ -21,6 +21,7 @@ mod job_log;
 mod launcher;
 mod notify;
 mod patches;
+mod play_stats;
 mod previous;
 mod report;
 mod rust_project;

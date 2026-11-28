@@ -80,6 +80,9 @@ function Stats({ project: p }: { project: Project }) {
   const t = useT()
   const f = fps(p)
   const stats: { value: string; label: string; tip?: string }[] = []
+  if (p.playtime) stats.push({ value: p.playtime, label: t("library.hero.playtime") })
+  if (p.personal_fps != null)
+    stats.push({ value: `${p.personal_fps.toFixed(1)} fps`, label: t("library.hero.personalFps") })
   if (f != null) stats.push({ value: `${f} fps`, label: t("library.hero.average") })
   if (p.render != null && (p.render > 0 || f != null))
     stats.push({ value: `${Math.round(p.render * 100)}%`, label: t("library.hero.accuracy"), tip: t("library.hero.accuracyTip") })
@@ -117,6 +120,16 @@ function MoreMenu({ project: p }: { project: Project }) {
         </MenuTrigger>
       </Tooltip>
       <MenuContent>
+        {p.playtime && (
+          <>
+            <MenuItem disabled={busy} onSelect={() => void run({ type: "reset_personal_fps", repo: p.repo })}>
+              {t("library.hero.resetPersonalFps")}
+            </MenuItem>
+            <MenuItem onSelect={() => void run({ type: "set_include_exact60_fps", include: !snap.settings.include_exact_60_fps })}>
+              {t(snap.settings.include_exact_60_fps ? "library.hero.exclude60Fps" : "library.hero.include60Fps")}
+            </MenuItem>
+          </>
+        )}
         {p.installed && p.kind === "git" && (
           <MenuItem disabled={p.checking} onSelect={() => void run({ type: "check_repo", repo: p.repo })}>
             <RefreshCw /> {t("library.menu.checkUpdates")}

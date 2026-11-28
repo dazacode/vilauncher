@@ -69,7 +69,7 @@ export function withSpec(
  * The list's orders, by their index (`list_sort`). 0 keeps the order the launcher was given
  * (VIPortLive's), the rest sort by it. Their names: `sortLabel`.
  */
-export const SORTS = ["listing", "name", "fps", "stars", "commits"] as const
+export const SORTS = ["listing", "name", "fps", "stars", "commits", "personalFps"] as const
 
 export type SortId = (typeof SORTS)[number]
 
@@ -84,6 +84,7 @@ export function sortProjects(list: Project[], sort: number): Project[] {
     2: (p) => p.fps,
     3: (p) => p.listing.stars,
     4: (p) => p.listing.commits7d,
+    5: (p) => p.personal_fps,
   }
   const k = key[sort]
   return [...list].sort((a, b) => {
