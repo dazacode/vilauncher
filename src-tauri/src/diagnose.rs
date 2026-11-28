@@ -955,6 +955,22 @@ pub(crate) fn from_log(lines: &[String]) -> Vec<Finding> {
             data: None,
         });
     }
+    // Shader model 6.6 needs D3D12 features the Windows 10 inbox runtime may not have. The
+    // Agility SDK carries them, so the same fix applies on Windows 10 as on Windows 11.
+    if has(&[
+        "shader model 6.6 is not supported",
+        "shader model 6.6 not supported",
+        "shader model 6.6 unsupported",
+        "SM 6.6 is not supported",
+    ]) {
+        found.push(Finding {
+            title: "This PC's D3D12 runtime does not support shader model 6.6.".to_string(),
+            detail: "On Windows 10 the inbox Direct3D 12 runtime may be too old. Fix and verify installs the D3D12 Agility SDK beside the program, which provides shader model 6.6; the program must load it (its build must export D3D12SDKVersion and D3D12SDKPath). The GPU driver must support shader model 6.6 too: update it if Fix and verify still reports this.".to_string(),
+            fix: Some(FIX_AGILITY),
+            heavy: false,
+            data: None,
+        });
+    }
     if has(&[
         "DXGI_ERROR_DEVICE_REMOVED",
         "0x887A0005",
@@ -1446,6 +1462,20 @@ mod tests {
         let found = from_log(&lines);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].fix, Some(FIX_AGILITY));
+    }
+
+    #[test]
+    fn a_shader_model_6_6_refusal_points_at_the_agility_sdk() {
+        let lines = vec!["error: shader model 6.6 is not supported by this device".to_string()];
+        let found = from_log(&lines);
+        let hint = found
+            .iter()
+            .find(|f| f.title.contains("shader model 6.6"))
+            .expect("a shader model 6.6 finding");
+        assert_eq!(hint.fix, Some(FIX_AGILITY));
+        // Unrelated log lines do not raise it.
+        let other = vec!["shader model 6.5 compiled".to_string()];
+        assert!(!from_log(&other).iter().any(|f| f.title.contains("shader model 6.6")));
     }
 
     #[test]
