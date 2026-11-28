@@ -22,6 +22,7 @@ pub(crate) struct Snapshot {
     files: FilesView,
     tools: Option<ToolsView>,
     job: JobView,
+    active_builds: usize,
     updater: UpdaterView,
     pending_move: Option<(String, String)>,
     presets: Vec<LaunchPreset>,
@@ -88,6 +89,7 @@ pub(crate) struct ProjectView {
     fps: Option<f64>,
     personal_fps: Option<f64>,
     playtime: Option<String>,
+    build_job: Option<JobView>,
     render: Option<f64>,
     verified: bool,
     summary: String,
@@ -195,6 +197,7 @@ struct ToolsView {
 #[derive(Serialize)]
 struct JobView {
     running: bool,
+    generation: u64,
     repo: Option<String>,
     /// What the job is doing, for the player (translated).
     stage: String,
@@ -204,6 +207,22 @@ struct JobView {
     stoppable: bool,
     log_lines: usize,
     import_error: Option<String>,
+}
+
+impl From<&Job> for JobView {
+    fn from(job: &Job) -> Self {
+        Self {
+            running: job.running,
+            generation: job.generation,
+            repo: job.repo.clone(),
+            stage: localize(&job.stage),
+            stage_kind: stage_kind(&job.stage),
+            failed: job.failed,
+            stoppable: job.running && job.stoppable,
+            log_lines: job.omitted_log_lines + job.log.len(),
+            import_error: localize_opt(job.import_error.as_deref()),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -271,19 +290,7 @@ impl App {
             .iter()
             .map(|p| self.project_view(p))
             .collect();
-        let job = {
-            let j = self.job.lock().unwrap();
-            JobView {
-                running: j.running,
-                repo: j.repo.clone(),
-                stage: localize(&j.stage),
-                stage_kind: stage_kind(&j.stage),
-                failed: j.failed,
-                stoppable: j.running && j.stoppable,
-                log_lines: j.omitted_log_lines + j.log.len(),
-                import_error: localize_opt(j.import_error.as_deref()),
-            }
-        };
+        let job = JobView::from(&*self.job.lock().unwrap());
         let searching = matches!(&*self.finding.lock().unwrap(), Some(None));
         Snapshot {
             version: env!("CARGO_PKG_VERSION"),
@@ -340,6 +347,7 @@ impl App {
                 missing: t.missing().into_iter().map(localize).collect(),
             }),
             job,
+            active_builds: self.builds.running(),
             updater: self.updater_view(),
             pending_move: self
                 .pending_move
@@ -356,7 +364,22 @@ impl App {
 
     /// The log from line `from` on (lines dropped from the buffer are skipped).
     pub(crate) fn log_from(&self, from: usize) -> LogView {
-        let j = self.job.lock().unwrap();
+        self.project_log_from(None, from)
+    }
+
+    pub(crate) fn project_log_from(&self, repo: Option<&str>, from: usize) -> LogView {
+        let job = match repo {
+            Some(repo) => self.project_job(repo),
+            None => Some(&self.job),
+        };
+        let Some(job) = job else {
+            return LogView {
+                from: 0,
+                lines: Vec::new(),
+                omitted: 0,
+            };
+        };
+        let j = job.lock().unwrap();
         let start = from.max(j.omitted_log_lines);
         let skip = start - j.omitted_log_lines;
         LogView {
@@ -366,8 +389,13 @@ impl App {
         }
     }
 
-    pub(crate) fn whole_log(&self) -> String {
-        self.job.lock().unwrap().log.join("\n")
+    pub(crate) fn whole_log(&self, repo: Option<&str>) -> String {
+        match repo {
+            Some(repo) => self.project_job(repo),
+            None => Some(&self.job),
+        }
+        .map(|job| job.lock().unwrap().log.join("\n"))
+        .unwrap_or_default()
     }
 
     fn updater_view(&self) -> UpdaterView {
@@ -443,6 +471,10 @@ impl App {
             fps: p.fps,
             personal_fps: stats.as_ref().and_then(|stats| stats.average_fps),
             playtime: stats.map(|stats| stats.playtime),
+            build_job: self
+                .builds
+                .get(&p.repo)
+                .map(|job| JobView::from(&*job.lock().unwrap())),
             render: p.render,
             verified: p.verified,
             summary: p.summary.clone(),
@@ -504,8 +536,36 @@ impl App {
     /// What background work finished since the last look.
     fn tick(&mut self) {
         self.updater.poll();
+        let builds: Vec<_> = self.builds.0.values().cloned().collect();
+        for job in builds {
+            self.apply_job_results(&job);
+        }
+        self.apply_job_results(&self.job.clone());
+        let found = {
+            let mut finding = self.finding.lock().unwrap();
+            if matches!(*finding, Some(Some(_))) {
+                finding.take().flatten()
+            } else {
+                None
+            }
+        };
+        match found {
+            Some(Ok(dir)) => {
+                self.saved.game_dir = dir;
+                self.files.clear();
+                self.find_error = None;
+            }
+            Some(Err(e)) => self.find_error = Some(e),
+            None => {}
+        }
+        self.check_files();
+        let ctx = self.ctx.clone();
+        self.auto_check(&ctx);
+    }
+
+    fn apply_job_results(&mut self, job: &Arc<Mutex<Job>>) {
         let (imported, removed, fixed_dir, adjusted, switches) = {
-            let mut job = self.job.lock().unwrap();
+            let mut job = job.lock().unwrap();
             (
                 job.imported_project.take(),
                 job.removed_archive.take(),
@@ -548,25 +608,5 @@ impl App {
                 self.saved.selected = None;
             }
         }
-        let found = {
-            let mut finding = self.finding.lock().unwrap();
-            if matches!(*finding, Some(Some(_))) {
-                finding.take().flatten()
-            } else {
-                None
-            }
-        };
-        match found {
-            Some(Ok(dir)) => {
-                self.saved.game_dir = dir;
-                self.files.clear();
-                self.find_error = None;
-            }
-            Some(Err(e)) => self.find_error = Some(e),
-            None => {}
-        }
-        self.check_files();
-        let ctx = self.ctx.clone();
-        self.auto_check(&ctx);
     }
 }

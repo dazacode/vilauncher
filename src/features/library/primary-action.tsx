@@ -22,6 +22,7 @@ export type ActionState =
 /** What the main button does for `p` now: never off without a way forward. Texts are in the current language. */
 export function actionState(p: Project, snap: Snapshot, name: (p: Project) => string): ActionState {
   const job = snap.job
+  if (p.build_job?.running) return { kind: "busy", label: shortStage(p.build_job.stage_kind, p.build_job.stage) }
   // While the game runs, the main button stops it, as Steam does. "Playing" is the stage a game run sets.
   if (job.running && job.repo === p.repo && job.stoppable && job.stage_kind === "playing") return { kind: "stop" }
   if (job.running && job.repo === p.repo) return { kind: "busy", label: shortStage(job.stage_kind, job.stage) }
@@ -36,6 +37,7 @@ export function actionState(p: Project, snap: Snapshot, name: (p: Project) => st
     return p.kind === "git" ? { kind: "install" } : { kind: "nothing" }
   }
   if (p.update) return { kind: "update" }
+  if (snap.active_builds > 0) return { kind: "waiting", other: null }
   if (!p.runnable) return { kind: "nothing" }
   if (needsFiles) return { kind: "setup", reason: t("library.action.needsFiles") }
   return { kind: "play" }
@@ -124,7 +126,7 @@ export function ActionNote({ project: p }: { project: Project }) {
   let text: React.ReactNode
   switch (state.kind) {
     case "busy":
-      text = <>{snap.job.stage} · {link(t("library.note.viewLog"), () => setTab("activity"))}</>
+      text = <>{p.build_job?.stage ?? snap.job.stage} · {link(t("library.note.viewLog"), () => setTab("activity"))}</>
       break
     case "waiting":
       text = state.other ? t("library.note.waitingFor", { name: state.other }) : t("library.note.waitingForJob")
@@ -140,9 +142,9 @@ export function ActionNote({ project: p }: { project: Project }) {
       break
     case "play":
       text =
-        snap.job.failed && snap.job.repo === p.repo ? (
+        (p.build_job ?? (snap.job.repo === p.repo ? snap.job : null))?.failed ? (
           <>
-            {snap.job.stage} · {link(t("library.fix"), () => void run({ type: "fix", repo: p.repo }))} · {link(t("library.note.viewLog"), () => setTab("activity"))}
+            {p.build_job?.stage ?? snap.job.stage} · {link(t("library.fix"), () => void run({ type: "fix", repo: p.repo }))} · {link(t("library.note.viewLog"), () => setTab("activity"))}
           </>
         ) : p.activity ? (
           [p.activity.updated_ago, p.activity.last_run ? t("library.note.lastPlayed", { time: p.activity.last_run }) : p.activity.pending].filter(Boolean).join(" · ")

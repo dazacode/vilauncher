@@ -69,42 +69,48 @@ function ReportBar({ project }: { project: Project }) {
 
 export function ActivityTab({ project }: { project: Project }) {
   const t = useT()
-  const job = useStore((s) => s.snap!.job)
+  const snap = useStore((s) => s.snap!)
+  const job = project.build_job ?? (snap.job.repo === project.repo ? snap.job : null)
+  const logLines = job?.log_lines ?? 0
+  const logKey = `${project.repo}:${job?.generation ?? 0}`
   const [lines, setLines] = useState<string[]>([])
   const [omitted, setOmitted] = useState(0)
   const box = useRef<HTMLPreElement>(null)
   const stick = useRef(true)
-  const have = useRef(0)
+  const have = useRef({ key: "", count: 0 })
   useEffect(() => {
-    // Only what is new is fetched; a cleared log starts over.
-    if (job.log_lines < have.current) {
-      have.current = 0
+    if (have.current.key !== logKey || logLines < have.current.count) {
+      have.current = { key: logKey, count: 0 }
       setLines([])
+      setOmitted(0)
     }
-    if (job.log_lines === have.current) return
+    if (logLines === have.current.count) return
+    let cancelled = false
     void getBackend().then(async (b) => {
-      const view = await b.log(have.current)
-      have.current = view.from + view.lines.length
+      const view = await b.log(have.current.count, project.repo)
+      if (cancelled) return
+      have.current.count = view.from + view.lines.length
       setOmitted(view.omitted)
       setLines((old) => [...(view.from === 0 ? [] : old), ...view.lines].slice(-4000))
     })
-  }, [job.log_lines])
+    return () => { cancelled = true }
+  }, [logLines, logKey, project.repo])
   useEffect(() => {
     if (stick.current && box.current) box.current.scrollTop = box.current.scrollHeight
   }, [lines])
-  const status = !job.stage ? t("library.activity.nothing") : job.stage
+  const status = job?.stage || t("library.activity.nothing")
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        {job.running ? <Spinner className="text-accent-fg" /> : job.failed ? <AlertCircle className="size-4 text-bad" /> : job.stage ? <CheckCircle2 className="size-4 text-ok" /> : null}
-        <p className={job.failed ? "text-body text-bad" : "text-body text-fg-2"}>{status}</p>
+        {job?.running ? <Spinner className="text-accent-fg" /> : job?.failed ? <AlertCircle className="size-4 text-bad" /> : job?.stage ? <CheckCircle2 className="size-4 text-ok" /> : null}
+        <p className={job?.failed ? "text-body text-bad" : "text-body text-fg-2"}>{status}</p>
         <div className="ml-auto flex gap-1">
-          {!job.running && project.installed && (
+          {!snap.job.running && !snap.active_builds && project.installed && (
             <Button size="sm" variant="ghost" title={t("library.activity.fixTitle")} onClick={() => void run({ type: "fix", repo: project.repo })}>
               <Wrench /> {t("library.fix")}
             </Button>
           )}
-          {job.stoppable && (
+          {job?.stoppable && (
             <Button size="sm" variant="danger" onClick={() => void run({ type: "stop" })}><Square /> {t("library.action.stop")}</Button>
           )}
           <Button size="sm" variant="ghost" disabled={!lines.length} onClick={() => void copyText(lines.join("\n")).then(() => toast.success(t("library.activity.logCopied")))}><Copy /> {t("common.copy")}</Button>
@@ -115,14 +121,14 @@ export function ActivityTab({ project }: { project: Project }) {
             onClick={async () => {
               // i18n-ignore: the file's default name
               const path = await saveFile(t("library.activity.exportTitle"), "vilauncher.log", [{ name: t("library.activity.exportFilter"), extensions: ["log", "txt"] }])
-              if (path) void run({ type: "export_log", path }, t("library.activity.exported"))
+              if (path) void run({ type: "export_log", path, repo: project.repo }, t("library.activity.exported"))
             }}
           >
             <Download /> {t("library.activity.export")}
           </Button>
         </div>
       </div>
-      {job.failed && !job.running && <ReportBar project={project} />}
+      {job?.failed && !job.running && <ReportBar project={project} />}
       {omitted > 0 && <p className="text-caption text-fg-3">{t("library.activity.omitted", { count: omitted })}</p>}
       <p className="text-caption text-fg-3">{t("library.activity.fixExplain")}</p>
       <pre

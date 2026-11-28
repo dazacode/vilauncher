@@ -382,11 +382,12 @@ function Row({ project: p, snap, tabbable, onFocus }: { project: Project; snap: 
   const alias = useAlias()(p)
   const selected = snap.selected === p.repo
   const setView = useStore((s) => s.setView)
-  const working = snap.job.running && snap.job.repo === p.repo
+  const job = p.build_job ?? (snap.job.repo === p.repo ? snap.job : null)
+  const working = !!job?.running
   let line: React.ReactNode
   let tone = "text-fg-3"
   if (working) {
-    line = <><Spinner className="size-3 text-accent-fg" /> {shortStage(snap.job.stage_kind, snap.job.stage)}</>
+    line = <><Spinner className="size-3 text-accent-fg" /> {shortStage(job.stage_kind, job.stage)}</>
     tone = "text-accent-fg"
   } else if (p.listing.nuked) {
     line = t("shell.row.takenDown")

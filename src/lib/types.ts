@@ -57,6 +57,7 @@ export interface Project {
   fps: number | null
   personal_fps: number | null
   playtime: string | null
+  build_job: Snapshot["job"] | null
   render: number | null
   verified: boolean
   summary: string
@@ -155,6 +156,7 @@ export interface Snapshot {
   tools: { ready: boolean; missing: string[] } | null
   job: {
     running: boolean
+    generation: number
     repo: string | null
     /** What the job is doing, in the player's language. */
     stage: string
@@ -165,6 +167,7 @@ export interface Snapshot {
     log_lines: number
     import_error: string | null
   }
+  active_builds: number
   updater: {
     state: "idle" | "checking" | "current" | "available" | "downloading" | "downloaded" | "failed"
     tag: string | null
@@ -308,7 +311,7 @@ export type Action =
   | { type: "use_default_install_dir" }
   | { type: "confirm_move"; answer: "move" | "keep" | "cancel" }
   | { type: "open"; what: "project_folder" | "backgrounds" | "workspace" | "update"; repo?: string }
-  | { type: "export_log"; path: string }
+  | { type: "export_log"; path: string; repo?: string }
   | { type: "check_update" }
   | { type: "download_update" }
   | { type: "restart_to_update" }
