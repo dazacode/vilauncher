@@ -71,6 +71,7 @@ function project(s: (typeof SAMPLE)[number], index: number): Project {
   const installed = state.installed.has(s.repo)
   return {
     ...s,
+    build_job: null,
     highlights: index === 1 ? ["Open world renders lit, with textures, people and vehicles", "Plays through story missions without crashing"] : [],
     blockers: index === 1 ? ["About 3 fps in busy streets", "Needs 30 GB of system memory"] : [],
     listing: {
@@ -146,8 +147,10 @@ function snapshot(): Snapshot {
     },
     files: { chosen: !!state.gameDir, ok: !!state.gameDir, empty: false, unplugged: false, missing: state.gameDir ? [] : [], searching: false, find_error: null },
     tools: { ready: state.toolsReady, missing: state.toolsReady ? [] : ["C++ build tools"] },
+    active_builds: 0,
     job: {
       running: !!state.job,
+      generation: 0,
       repo: state.job?.repo ?? null,
       stage: state.job?.stage ?? "",
       stage_kind: stageKind(state.job?.stage ?? ""),

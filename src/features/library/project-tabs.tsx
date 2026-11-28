@@ -26,7 +26,7 @@ export function ProjectTabs({ project }: { project: Project }) {
   const t = useT()
   const tab = useStore((s) => s.tab)
   const setTab = useStore((s) => s.setTab)
-  const running = useStore((s) => s.snap?.job.running)
+  const running = useStore((s) => s.snap?.job.running || (s.snap?.active_builds ?? 0) > 0)
   const screenshot = useStore((s) => s.screenshot)
   const listRef = useRef<HTMLDivElement>(null)
   const hidden = screenshot && (tab === "launch" || tab === "notes" || tab === "activity")
