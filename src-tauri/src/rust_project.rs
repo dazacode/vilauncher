@@ -33,14 +33,23 @@ fn binaries(package: &Value) -> impl Iterator<Item = &str> {
         })
 }
 
+/// Whether the workspace has the `victory` package with its `victory` program: the one
+/// the launcher builds by name (`cargo build -p victory`).
+pub fn has_victory_program(metadata: &Value) -> bool {
+    metadata["packages"].as_array().is_some_and(|packages| {
+        packages.iter().any(|package| {
+            package["name"] == "victory" && binaries(package).any(|name| name == "victory")
+        })
+    })
+}
+
+/// Whether a custom project is a VIctory build: the program, plus the layer's own folders
+/// or crates.
 pub fn is_victory(workspace: &Path, metadata: &Value) -> bool {
     let Some(packages) = metadata["packages"].as_array() else {
         return false;
     };
-    let has_victory_binary = packages.iter().any(|package| {
-        package["name"] == "victory" && binaries(package).any(|name| name == "victory")
-    });
-    has_victory_binary
+    has_victory_program(metadata)
         && (["apps/victory", "crates/victory", "victory"]
             .iter()
             .any(|path| workspace.join(path).join("Cargo.toml").is_file())
@@ -75,6 +84,28 @@ pub fn select_executable<'a>(metadata: &Value, artifacts: &'a [Value]) -> Option
 }
 
 #[cfg(test)]
+#[test]
+fn a_listed_project_without_the_victory_package_is_not_built_by_name() {
+    // AnyXboxX: a VIctory-based workspace whose programs are not called `victory`.
+    let without = serde_json::json!({
+        "packages": [{
+            "name": "victory-pe",
+            "targets": [{ "kind": ["lib"], "name": "victory_pe" }]
+        }, {
+            "name": "anyxboxx",
+            "targets": [{ "kind": ["bin"], "name": "anyxboxx" }]
+        }]
+    });
+    assert!(!has_victory_program(&without));
+    let with = serde_json::json!({
+        "packages": [{
+            "name": "victory",
+            "targets": [{ "kind": ["bin"], "name": "victory" }]
+        }]
+    });
+    assert!(has_victory_program(&with));
+}
+
 #[test]
 fn chooses_default_run_from_workspace_artifacts() {
     let metadata = serde_json::json!({
