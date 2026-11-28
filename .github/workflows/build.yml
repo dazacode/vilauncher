@@ -61,6 +61,15 @@ jobs:
       - name: Build the UI
         run: pnpm exec vite build
 
+      # Warnings fail the build, so new ones cannot come back (CONTRIBUTING.md).
+      - name: Check the Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Lint the launcher
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --locked -- -D warnings
+
       - name: Test the launcher
         working-directory: src-tauri
         run: cargo test --locked
@@ -150,6 +159,15 @@ jobs:
       - name: Build the UI
         run: pnpm exec vite build
 
+      # Warnings fail the build, so new ones cannot come back (CONTRIBUTING.md).
+      - name: Check the Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Lint the launcher
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --locked -- -D warnings
+
       - name: Test the launcher
         working-directory: src-tauri
         run: cargo test --locked
@@ -213,6 +231,15 @@ jobs:
 
       - name: Build the UI
         run: pnpm exec vite build
+
+      # Warnings fail the build, so new ones cannot come back (CONTRIBUTING.md).
+      - name: Check the Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: Lint the launcher
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --locked -- -D warnings
 
       - name: Test the launcher
         working-directory: src-tauri

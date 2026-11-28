@@ -511,7 +511,11 @@ impl App {
                 }
                 match key {
                     Some(key) => {
-                        crate::controller_keys::check_key(&self.saved.controller_key_bindings, &control, key)?;
+                        crate::controller_keys::check_key(
+                            &self.saved.controller_key_bindings,
+                            &control,
+                            key,
+                        )?;
                         self.saved.controller_key_bindings.insert(control, key);
                     }
                     None => {
@@ -529,8 +533,7 @@ impl App {
                 Value::Null
             }
             Action::Acknowledge { id } => {
-                let id =
-                    known_responsibility(&id).ok_or_else(|| msg!("Unknown warning: {id}"))?;
+                let id = known_responsibility(&id).ok_or_else(|| msg!("Unknown warning: {id}"))?;
                 if !self.saved.acknowledged.iter().any(|a| a == id) {
                     self.saved.acknowledged.push(id.to_string());
                 }
@@ -580,9 +583,12 @@ impl App {
                 if let Some(path) = &path {
                     let file = std::path::Path::new(path);
                     if !file.is_file() {
-                        return Err(msg!("The upscaler DLL {path} is not a file.").into());
+                        return Err(msg!("The upscaler DLL {path} is not a file."));
                     }
-                    if !file.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("dll")) {
+                    if !file
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("dll"))
+                    {
                         return Err(msg_str!("The upscaler must be a .dll file.").into());
                     }
                 }
@@ -679,9 +685,9 @@ impl App {
                         return Err(msg_str!("That is not a branch name.").into());
                     }
                 }
-                self.saved
-                    .branches
-                    .retain(|(saved, _)| crate::launcher::project_key(saved) != crate::launcher::project_key(&repo));
+                self.saved.branches.retain(|(saved, _)| {
+                    crate::launcher::project_key(saved) != crate::launcher::project_key(&repo)
+                });
                 if let Some(branch) = value {
                     self.saved.branches.push((repo, branch));
                 }
@@ -1083,7 +1089,8 @@ impl App {
             if !dir.join(".git").is_dir() {
                 return Err("Install the project first.".into());
             }
-            let source = addons::fetch_source(&addon, &workspace().join("add-on-sources").join(id))?;
+            let source =
+                addons::fetch_source(&addon, &workspace().join("add-on-sources").join(id))?;
             let mut applied = addons::apply(&dir, &addon, &source)?;
             // Remember what the player had, so turning the add-on off gives it back.
             let switches = self.effective_switches(repo);
@@ -1112,7 +1119,12 @@ impl App {
             if !turned_on {
                 return Ok(());
             }
-            let applied = self.launch_mut(repo).addons.get(id).cloned().unwrap_or_default();
+            let applied = self
+                .launch_mut(repo)
+                .addons
+                .get(id)
+                .cloned()
+                .unwrap_or_default();
             addons::remove(&dir, &applied)?;
             let switches = self.effective_switches(repo);
             let args = self.effective_args(repo);
@@ -1146,10 +1158,11 @@ impl App {
         self.project(repo)?;
         let manifest = crate::known_problems::shipped()?;
         let effective = self.effective_switches(repo);
-        let entry = crate::known_problems::advice_for(&manifest, repo, &self.hardware(), &effective)
-            .into_iter()
-            .find(|entry| entry.id == id)
-            .ok_or_else(|| msg!("That setting does not apply to this PC any more."))?;
+        let entry =
+            crate::known_problems::advice_for(&manifest, repo, &self.hardware(), &effective)
+                .into_iter()
+                .find(|entry| entry.id == id)
+                .ok_or_else(|| msg!("That setting does not apply to this PC any more."))?;
         let Some(advice) = &entry.advice else {
             return Err(msg!("That setting does not apply to this PC any more."));
         };
@@ -1413,7 +1426,10 @@ mod advice_tests {
             with_advice_switch(current, "VICTORY_A=1").unwrap(),
             "VICTORY_B=1\nVICTORY_A=1"
         );
-        assert_eq!(with_advice_switch("", "VICTORY_X=2").unwrap(), "VICTORY_X=2");
+        assert_eq!(
+            with_advice_switch("", "VICTORY_X=2").unwrap(),
+            "VICTORY_X=2"
+        );
         assert!(with_advice_switch(current, "VICTORY_A").is_err());
     }
 

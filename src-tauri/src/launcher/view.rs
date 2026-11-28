@@ -391,7 +391,11 @@ impl App {
                 game_dir: self.saved.game_dir.clone(),
                 nvidia: self.nvidia_view(),
                 fsr_dll: self.saved.fsr_dll.clone(),
-                fsr_ok: self.saved.fsr_dll.as_ref().is_none_or(|path| std::path::Path::new(path).is_file()),
+                fsr_ok: self
+                    .saved
+                    .fsr_dll
+                    .as_ref()
+                    .is_none_or(|path| std::path::Path::new(path).is_file()),
                 workspace: workspace().display().to_string(),
                 install_dir_custom: !self.saved.install_dir.is_empty(),
                 warm_before_play: self.saved.warm_before_play,
@@ -484,7 +488,8 @@ impl App {
         NvidiaView {
             busy: fetch.busy,
             status: localize_opt(fetch.status.as_deref()),
-            ready: crate::streamline::missing(&dir, &crate::streamline::needed(true, true)).is_none(),
+            ready: crate::streamline::missing(&dir, &crate::streamline::needed(true, true))
+                .is_none(),
             got_mb: fetch.got >> 20,
             total_mb: fetch.total >> 20,
             dir: dir.display().to_string(),

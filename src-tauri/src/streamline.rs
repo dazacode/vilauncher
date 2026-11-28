@@ -29,7 +29,12 @@ const MARKER: &str = "verified.txt";
 /// Always: the interposer and its common plugin.
 const BASE: [&str; 2] = ["sl.interposer.dll", "sl.common.dll"];
 /// Frame generation (9.9 MB with the base).
-const FRAMEGEN: [&str; 4] = ["sl.dlss_g.dll", "nvngx_dlssg.dll", "sl.reflex.dll", "sl.pcl.dll"];
+const FRAMEGEN: [&str; 4] = [
+    "sl.dlss_g.dll",
+    "nvngx_dlssg.dll",
+    "sl.reflex.dll",
+    "sl.pcl.dll",
+];
 /// DLSS upscaling (56.6 MB more).
 const UPSCALE: [&str; 2] = ["sl.dlss.dll", "nvngx_dlss.dll"];
 
@@ -67,8 +72,13 @@ pub(crate) fn missing(dir: &Path, files: &[&str]) -> Option<String> {
             return Some(format!("{file} is not in {}", dir.display()));
         };
         match record.get(*file) {
-            Some((size, hash)) if *size == meta.len() && file_sha256(&path).is_ok_and(|now| &now == hash) => {}
-            _ => return Some(format!("{file} is not checked as NVIDIA's: use Get NVIDIA's files")),
+            Some((size, hash))
+                if *size == meta.len() && file_sha256(&path).is_ok_and(|now| &now == hash) => {}
+            _ => {
+                return Some(format!(
+                    "{file} is not checked as NVIDIA's: use Get NVIDIA's files"
+                ))
+            }
         }
     }
     None
@@ -119,7 +129,8 @@ pub(crate) fn verify_and_record(dir: &Path, files: &[&str]) -> Result<(), String
         let hash = file_sha256(&path).map_err(|error| msg!("{file} could not be read: {error}"))?;
         lines.push_str(&format!("{file}\t{size}\t{hash}\n"));
     }
-    fs::write(dir.join(MARKER), lines).map_err(|error| msg!("could not record the checked files: {error}"))
+    fs::write(dir.join(MARKER), lines)
+        .map_err(|error| msg!("could not record the checked files: {error}"))
 }
 
 /// Whether the file is validly signed by NVIDIA Corporation. Windows only: it asks the system's own
@@ -127,14 +138,26 @@ pub(crate) fn verify_and_record(dir: &Path, files: &[&str]) -> Result<(), String
 #[cfg(windows)]
 fn signed_by_nvidia(path: &Path) -> Result<(), String> {
     const SCRIPT: &str = "$s = Get-AuthenticodeSignature -LiteralPath $env:VL_SIGNED_FILE; if ($s.Status -ne 'Valid') { 'status:' + $s.Status } else { 'signer:' + $s.SignerCertificate.GetNameInfo('SimpleName', $false) }";
-    let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
     // The full path to Windows PowerShell: a plain name would be looked up in the search path, where a
     // writable folder could hold a copy.
-    let root = std::env::var_os("SystemRoot").ok_or_else(|| msg!("{name}: the system folder is not known"))?;
+    let root = std::env::var_os("SystemRoot")
+        .ok_or_else(|| msg!("{name}: the system folder is not known"))?;
     let powershell = PathBuf::from(root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");
     let mut command = Command::new(powershell);
     command
-        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", SCRIPT])
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            SCRIPT,
+        ])
         .env("VL_SIGNED_FILE", path)
         .stdin(std::process::Stdio::null());
     crate::launcher::hide_window(&mut command);
@@ -148,7 +171,9 @@ fn signed_by_nvidia(path: &Path) -> Result<(), String> {
         return if signer == SIGNER {
             Ok(())
         } else {
-            Err(msg!("{name} is signed by \"{signer}\", not by NVIDIA Corporation"))
+            Err(msg!(
+                "{name} is signed by \"{signer}\", not by NVIDIA Corporation"
+            ))
         };
     }
     let status = line.strip_prefix("status:").unwrap_or("unknown");
@@ -172,7 +197,9 @@ pub(crate) struct Fetch {
 pub(crate) type Shared = Arc<Mutex<Fetch>>;
 
 fn lock(state: &Shared) -> std::sync::MutexGuard<'_, Fetch> {
-    state.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Starts the fetch on its own thread, unless one runs already.
@@ -182,7 +209,12 @@ pub(crate) fn start(state: &Shared, ctx: &Ctx, dir: PathBuf) {
         if fetch.busy {
             return;
         }
-        *fetch = Fetch { busy: true, status: Some(msg_str!("Connecting to GitHub…").to_string()), got: 0, total: ZIP_SIZE };
+        *fetch = Fetch {
+            busy: true,
+            status: Some(msg_str!("Connecting to GitHub…").to_string()),
+            got: 0,
+            total: ZIP_SIZE,
+        };
     }
     let (state, ctx) = (state.clone(), ctx.clone());
     std::thread::spawn(move || {
@@ -201,7 +233,9 @@ pub(crate) fn start(state: &Shared, ctx: &Ctx, dir: PathBuf) {
         let status = match outcome {
             Ok(Ok(text)) => text,
             Ok(Err(error)) => error,
-            Err(_) => msg_str!("Getting NVIDIA's files stopped unexpectedly: nothing kept.").to_string(),
+            Err(_) => {
+                msg_str!("Getting NVIDIA's files stopped unexpectedly: nothing kept.").to_string()
+            }
         };
         {
             let mut fetch = lock(&state);
@@ -215,7 +249,10 @@ pub(crate) fn start(state: &Shared, ctx: &Ctx, dir: PathBuf) {
 /// The fetch itself: returns the closing status line, or the error to show. Keeps nothing on an error.
 fn fetch_into(dir: &Path, progress: &dyn Fn(u64), say: &dyn Fn(String)) -> Result<String, String> {
     if dir.as_os_str().is_empty() {
-        return Err(msg_str!("LOCALAPPDATA is not set, so there is no folder to keep NVIDIA's files in.").to_string());
+        return Err(msg_str!(
+            "LOCALAPPDATA is not set, so there is no folder to keep NVIDIA's files in."
+        )
+        .to_string());
     }
     let files = needed(true, true);
     let dir_text = dir.display().to_string();
@@ -223,16 +260,20 @@ fn fetch_into(dir: &Path, progress: &dyn Fn(u64), say: &dyn Fn(String)) -> Resul
         // Files already there (fetched by Neptune's launcher, perhaps): checked, not downloaded again.
         say(msg!("Checking the files already in {dir_text}…"));
         if verify_and_record(dir, &files).is_ok() {
-            return Ok(msg!("NVIDIA's files are ready in {dir_text}, signed by NVIDIA Corporation."));
+            return Ok(msg!(
+                "NVIDIA's files are ready in {dir_text}, signed by NVIDIA Corporation."
+            ));
         }
     }
-    fs::create_dir_all(dir).map_err(|error| msg!("Could not create {dir_text}: {error}. Nothing was kept."))?;
+    fs::create_dir_all(dir)
+        .map_err(|error| msg!("Could not create {dir_text}: {error}. Nothing was kept."))?;
     let work = dir
         .parent()
         .unwrap_or(dir)
         .join(format!("streamline-download-{}", std::process::id()));
     let _ = fs::remove_dir_all(&work);
-    fs::create_dir_all(&work).map_err(|error| msg!("Could not create a download folder: {error}. Nothing was kept."))?;
+    fs::create_dir_all(&work)
+        .map_err(|error| msg!("Could not create a download folder: {error}. Nothing was kept."))?;
     let result = download_and_check(&work, dir, &files, progress, say);
     let _ = fs::remove_dir_all(&work);
     result.map(|()| msg!("NVIDIA's files are ready in {dir_text}, signed by NVIDIA Corporation."))
@@ -255,21 +296,24 @@ fn download_and_check(
             other => msg!("Could not reach GitHub: {other}. Nothing was kept."),
         })?;
     let mut body = response.into_reader();
-    let mut out = File::create(&zip_path).map_err(|error| msg!("Could not write the download: {error}. Nothing was kept."))?;
+    let mut out = File::create(&zip_path)
+        .map_err(|error| msg!("Could not write the download: {error}. Nothing was kept."))?;
     let mut digest = ring::digest::Context::new(&ring::digest::SHA256);
     let mut buffer = vec![0u8; 1 << 20];
     let mut got: u64 = 0;
     let mut shown = Instant::now();
     loop {
-        let read = body
-            .read(&mut buffer)
-            .map_err(|error| msg!("The download stopped at {got} bytes ({error}). Nothing was kept."))?;
+        let read = body.read(&mut buffer).map_err(|error| {
+            msg!("The download stopped at {got} bytes ({error}). Nothing was kept.")
+        })?;
         if read == 0 {
             break;
         }
         got += read as u64;
         if got > ZIP_SIZE {
-            return Err(msg_str!("The download is larger than NVIDIA's release: nothing kept.").to_string());
+            return Err(
+                msg_str!("The download is larger than NVIDIA's release: nothing kept.").to_string(),
+            );
         }
         digest.update(&buffer[..read]);
         out.write_all(&buffer[..read])
@@ -278,20 +322,27 @@ fn download_and_check(
             shown = Instant::now();
             progress(got);
             let (done, total) = (got >> 20, ZIP_SIZE >> 20);
-            say(msg!("Downloading NVIDIA's Streamline SDK: {done} of {total} MB"));
+            say(msg!(
+                "Downloading NVIDIA's Streamline SDK: {done} of {total} MB"
+            ));
         }
     }
     drop(out);
     if got != ZIP_SIZE {
-        return Err(msg!("The download ended early at {got} bytes: nothing kept."));
+        return Err(msg!(
+            "The download ended early at {got} bytes: nothing kept."
+        ));
     }
     let hash = hex(digest.finish().as_ref());
     if hash != ZIP_SHA256 {
-        return Err(msg_str!("The download's SHA-256 is not NVIDIA's release's: nothing kept.").to_string());
+        return Err(
+            msg_str!("The download's SHA-256 is not NVIDIA's release's: nothing kept.").to_string(),
+        );
     }
     say(msg_str!("Checking NVIDIA's signatures…").to_string());
-    let mut archive = zip::ZipArchive::new(File::open(&zip_path).map_err(|error| error.to_string())?)
-        .map_err(|error| msg!("Could not read the SDK: {error}. Nothing was kept."))?;
+    let mut archive =
+        zip::ZipArchive::new(File::open(&zip_path).map_err(|error| error.to_string())?)
+            .map_err(|error| msg!("Could not read the SDK: {error}. Nothing was kept."))?;
     let mut extracted = Vec::new();
     for file in files {
         let wanted = format!("bin/x64/{file}");
@@ -302,7 +353,9 @@ fn download_and_check(
                 .ok()
                 .and_then(|entry| entry.name().ok().map(|name| name.replace('\\', "/")))
                 .unwrap_or_default();
-            if name.eq_ignore_ascii_case(&wanted) || name.to_ascii_lowercase().ends_with(&format!("/{wanted}")) {
+            if name.eq_ignore_ascii_case(&wanted)
+                || name.to_ascii_lowercase().ends_with(&format!("/{wanted}"))
+            {
                 found = Some(index);
                 break;
             }
@@ -310,11 +363,13 @@ fn download_and_check(
         let index = found.ok_or_else(|| msg!("{file} is not in the SDK: nothing kept."))?;
         // The output name is the constant name from our own list, never the zip's entry name.
         let fresh = work.join(file);
-        let mut entry = archive
-            .by_index(index)
-            .map_err(|error| msg!("Could not read {file} from the SDK: {error}. Nothing was kept."))?;
-        let mut out = File::create(&fresh).map_err(|error| msg!("Could not write {file}: {error}. Nothing was kept."))?;
-        io::copy(&mut entry, &mut out).map_err(|error| msg!("Could not write {file}: {error}. Nothing was kept."))?;
+        let mut entry = archive.by_index(index).map_err(|error| {
+            msg!("Could not read {file} from the SDK: {error}. Nothing was kept.")
+        })?;
+        let mut out = File::create(&fresh)
+            .map_err(|error| msg!("Could not write {file}: {error}. Nothing was kept."))?;
+        io::copy(&mut entry, &mut out)
+            .map_err(|error| msg!("Could not write {file}: {error}. Nothing was kept."))?;
         drop(out);
         extracted.push(*file);
     }

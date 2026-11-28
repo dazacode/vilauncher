@@ -147,8 +147,8 @@ fn check_release() -> Result<State, String> {
     };
     let available = version(&release.tag_name)
         .ok_or(msg_str!("The release tag is not a supported version."))?;
-    let current = version(env!("CARGO_PKG_VERSION"))
-        .ok_or(msg_str!("The installed version is invalid."))?;
+    let current =
+        version(env!("CARGO_PKG_VERSION")).ok_or(msg_str!("The installed version is invalid."))?;
     // A release without this system's download is not offered (a macOS build may follow later).
     if available > current && pick_asset(&release, ASSET).is_ok() {
         Ok(State::Available(release))
@@ -172,7 +172,9 @@ fn download_release(release: &Release) -> Result<DownloadedUpdate, String> {
         .digest
         .as_deref()
         .and_then(|digest| digest.strip_prefix("sha256:"))
-        .ok_or(msg_str!("GitHub did not provide a SHA-256 checksum for the download."))?;
+        .ok_or(msg_str!(
+            "GitHub did not provide a SHA-256 checksum for the download."
+        ))?;
     if asset.size == 0 || asset.size > MAX_BYTES {
         return Err(msg_str!("The download size is outside the supported limit.").into());
     }
@@ -188,7 +190,9 @@ fn download_release(release: &Release) -> Result<DownloadedUpdate, String> {
         .read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
     if !matches_asset(&bytes, asset.size, digest) {
-        return Err(msg_str!("The download did not match GitHub’s size and SHA-256 checksum.").into());
+        return Err(
+            msg_str!("The download did not match GitHub’s size and SHA-256 checksum.").into(),
+        );
     }
     let folder = crate::default_workspace()
         .join("updates")
@@ -240,11 +244,7 @@ pub fn restart_with(update: &DownloadedUpdate) -> Result<(), String> {
         match fs::remove_file(&backup) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => {
-                return Err(msg!(
-                    "Could not remove the previous update backup: {error}"
-                ))
-            }
+            Err(error) => return Err(msg!("Could not remove the previous update backup: {error}")),
         }
         fs::rename(&executable, &backup)
             .map_err(|error| msg!("Could not move the running launcher aside: {error}"))?;

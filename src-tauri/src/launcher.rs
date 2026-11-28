@@ -19,9 +19,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 mod actions;
-mod presets;
 #[cfg(all(test, windows))]
 mod parallel_install_tests;
+mod presets;
 mod reported;
 mod view;
 
@@ -370,7 +370,11 @@ fn default_graphics_round_trip_and_respect_project_overrides() {
         assert!(saved.graphics_for("Owner/Custom") == local);
     }
 
-    saved.project_launch.get_mut("owner/custom").unwrap().graphics = None;
+    saved
+        .project_launch
+        .get_mut("owner/custom")
+        .unwrap()
+        .graphics = None;
     assert!(saved.graphics_for("owner/custom") == graphics);
 }
 
@@ -380,7 +384,10 @@ fn the_game_program_must_start_like_a_windows_program() {
     let root = std::env::temp_dir().join(format!("vl-game-magic-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
-    assert!(game_program_problem(&root).is_none(), "a missing file is not this check's");
+    assert!(
+        game_program_problem(&root).is_none(),
+        "a missing file is not this check's"
+    );
     std::fs::write(root.join(EXE_NAME), b"PKzip archive").unwrap();
     let problem = game_program_problem(&root).expect("a zip under the game's name");
     assert!(problem.contains("not a Windows program"));
@@ -404,10 +411,14 @@ fn keeping_the_game_settings_leaves_the_render_variables_unset() {
             .map(|(key, _)| key.to_string_lossy().into_owned())
             .collect::<Vec<_>>()
     };
-    assert!(names(&launch).iter().any(|key| key == "VICTORY_RENDER_SCALE"));
+    assert!(names(&launch)
+        .iter()
+        .any(|key| key == "VICTORY_RENDER_SCALE"));
     launch.keep_game_settings = true;
     let kept = names(&launch);
-    assert!(!kept.iter().any(|key| key == "VICTORY_RENDER_SCALE" || key == "VICTORY_OUTPUT" || key == "VICTORY_OWN_UPSCALER"));
+    assert!(!kept.iter().any(|key| key == "VICTORY_RENDER_SCALE"
+        || key == "VICTORY_OUTPUT"
+        || key == "VICTORY_OWN_UPSCALER"));
 }
 
 #[cfg(test)]
@@ -426,10 +437,18 @@ fn a_repo_with_no_rust_source_says_so() {
 #[cfg(test)]
 #[test]
 fn a_chosen_branch_must_be_a_plain_git_branch_name() {
-    for good in ["dev", "main", "feat/auto-vram", "release-1.2", "v2026.11.27"] {
+    for good in [
+        "dev",
+        "main",
+        "feat/auto-vram",
+        "release-1.2",
+        "v2026.11.27",
+    ] {
         assert!(valid_branch(good), "{good}");
     }
-    for bad in ["", "-x", "a..b", "a//b", "/a", "a/", "a.lock", "a b", "a;rm", "a$b", "x.", "é"] {
+    for bad in [
+        "", "-x", "a..b", "a//b", "/a", "a/", "a.lock", "a b", "a;rm", "a$b", "x.", "é",
+    ] {
         assert!(!valid_branch(bad), "{bad}");
     }
 }
@@ -635,7 +654,12 @@ mod tests {
         let dlss = menu("VICTORY_DLSS=1\nVICTORY_DLSS_MODE=quality\n");
         let (env, notes) = streamline_switches(&dlss, "", &rtx40, true, true, &dir);
         assert!(env.is_empty());
-        assert!(notes.iter().any(|n| n.contains("sl.interposer.dll is not in")), "{notes:?}");
+        assert!(
+            notes
+                .iter()
+                .any(|n| n.contains("sl.interposer.dll is not in")),
+            "{notes:?}"
+        );
 
         // With the files: DLSS on, with the menu's mode.
         let files = crate::streamline::needed(true, true);
@@ -653,19 +677,30 @@ mod tests {
         let frames = menu("VICTORY_FRAMEGEN=1\nVICTORY_FRAMEGEN_X=3\n");
         let (env, notes) = streamline_switches(&frames, "", &rtx40, true, true, &dir);
         assert!(env.is_empty());
-        assert!(notes.iter().any(|n| n.contains("Extra draw threads")), "{notes:?}");
+        assert!(
+            notes.iter().any(|n| n.contains("Extra draw threads")),
+            "{notes:?}"
+        );
 
         // With draw threads, an RTX 40 card gets 2x (3x needs RTX 50).
         let (env, notes) = streamline_switches(&frames, "VICTORY_THIN=1", &rtx40, true, true, &dir);
         assert!(env.contains(&("VICTORY_FRAMEGEN".to_string(), "1".to_string())));
         assert!(env.contains(&("VICTORY_FRAMEGEN_X".to_string(), "2".to_string())));
-        assert!(notes.iter().any(|n| n.contains("more than 2x needs an RTX 50")), "{notes:?}");
+        assert!(
+            notes
+                .iter()
+                .any(|n| n.contains("more than 2x needs an RTX 50")),
+            "{notes:?}"
+        );
 
         // No NVIDIA card, or the player's own Launch options name the switches: nothing is set.
         let amd = [(Some("amd"), "AMD Radeon RX 7900 XT".to_string())];
         let (env, notes) = streamline_switches(&dlss, "", &amd, true, true, &dir);
         assert!(env.is_empty());
-        assert!(notes.iter().any(|n| n.contains("no NVIDIA RTX card")), "{notes:?}");
+        assert!(
+            notes.iter().any(|n| n.contains("no NVIDIA RTX card")),
+            "{notes:?}"
+        );
         let (env, _) = streamline_switches(&dlss, "VICTORY_DLSS=0", &rtx40, true, true, &dir);
         assert!(env.is_empty());
 
@@ -1597,8 +1632,9 @@ impl App {
                 let executable = match build_zip::extract(&input, &folder)? {
                     build_zip::Extracted::Program(exe) => Some(exe),
                     build_zip::Extracted::Source => {
-                        let is_victory = cargo_workspace(&folder)
-                            .is_ok_and(|workspace| workspace.join("apps/victory/Cargo.toml").is_file());
+                        let is_victory = cargo_workspace(&folder).is_ok_and(|workspace| {
+                            workspace.join("apps/victory/Cargo.toml").is_file()
+                        });
                         if !is_victory {
                             let _ = std::fs::remove_dir_all(&folder);
                             return Err(msg_str!("The ZIP contains no program.").into());
@@ -1801,7 +1837,11 @@ impl App {
         self.saved
             .kept
             .iter()
-            .filter(|k| !list.iter().any(|p| project_key(&p.repo) == project_key(&k.repo)))
+            .filter(|k| {
+                !list
+                    .iter()
+                    .any(|p| project_key(&p.repo) == project_key(&k.repo))
+            })
             .cloned()
             .collect()
     }
@@ -2087,7 +2127,14 @@ fn init_submodules(job: &Arc<Mutex<Job>>, ctx: &Ctx, dir: &std::path::Path) -> R
         job,
         ctx,
         tools::git()
-            .args(["submodule", "update", "--init", "--recursive", "--depth", "1"])
+            .args([
+                "submodule",
+                "update",
+                "--init",
+                "--recursive",
+                "--depth",
+                "1",
+            ])
             .current_dir(dir),
     )
 }
@@ -2165,7 +2212,11 @@ fn install(
         run(job, ctx, &mut c)?;
         init_submodules(job, ctx, &dir)?;
     }
-    stage(job, ctx, msg_str!("Building (the first time takes several minutes)"));
+    stage(
+        job,
+        ctx,
+        msg_str!("Building (the first time takes several minutes)"),
+    );
     let target = target_dir(&p.repo);
     // An update keeps the build it replaces, so a failed build can be put back (previous.rs).
     let previous = previous_dir(&p.repo);
@@ -2718,12 +2769,20 @@ fn rtx_generation(name: &str) -> u32 {
     let Some(at) = lower.find("rtx") else {
         return 0;
     };
-    if lower[..at].chars().last().is_some_and(|c| c.is_ascii_alphanumeric()) {
+    if lower[..at]
+        .chars()
+        .last()
+        .is_some_and(|c| c.is_ascii_alphanumeric())
+    {
         return 0;
     }
     let rest = lower[at + 3..].trim_start();
     let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
-    if rest[digits.len()..].chars().next().is_some_and(|c| c.is_ascii_alphanumeric()) {
+    if rest[digits.len()..]
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphanumeric())
+    {
         return 0;
     }
     let b = digits.as_bytes();
@@ -2755,11 +2814,20 @@ fn streamline_switches(
     let mut notes = Vec::new();
     let names_own = ["VICTORY_STREAMLINE_DIR", "VICTORY_DLSS", "VICTORY_FRAMEGEN"]
         .iter()
-        .any(|name| extra.lines().any(|line| line.split_once('=').is_some_and(|(k, _)| k.trim() == *name)));
+        .any(|name| {
+            extra
+                .lines()
+                .any(|line| line.split_once('=').is_some_and(|(k, _)| k.trim() == *name))
+        });
     if names_own {
         return (Vec::new(), notes);
     }
-    let value = |name: &str| menu.iter().rev().find(|(k, _)| k == name).map(|(_, v)| v.as_str());
+    let value = |name: &str| {
+        menu.iter()
+            .rev()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v.as_str())
+    };
     let dlss = value("VICTORY_DLSS") == Some("1");
     let mut frames: u32 = if value("VICTORY_FRAMEGEN") == Some("1") {
         value("VICTORY_FRAMEGEN_X")
@@ -2792,9 +2860,13 @@ fn streamline_switches(
             notes.push("more than 2x needs an RTX 50 card: 2x".into());
             frames = 1;
         }
-        let draw_threads = extra_sets(extra, "VICTORY_THIN", "1") || extra_sets(extra, "VICTORY_ASYNC_SUBMIT", "1");
+        let draw_threads = extra_sets(extra, "VICTORY_THIN", "1")
+            || extra_sets(extra, "VICTORY_ASYNC_SUBMIT", "1");
         if frames > 0 && !draw_threads {
-            notes.push("frame generation needs Extra draw threads (VICTORY_THIN=1 in Launch options): off".into());
+            notes.push(
+                "frame generation needs Extra draw threads (VICTORY_THIN=1 in Launch options): off"
+                    .into(),
+            );
             frames = 0;
         }
         if frames > 0 && !dlss && !series_s {
@@ -2812,7 +2884,10 @@ fn streamline_switches(
         notes.push(format!("DLSS and frame generation off: {why}"));
         return (Vec::new(), notes);
     }
-    let mut env = vec![("VICTORY_STREAMLINE_DIR".to_string(), dir.display().to_string())];
+    let mut env = vec![(
+        "VICTORY_STREAMLINE_DIR".to_string(),
+        dir.display().to_string(),
+    )];
     if frames > 0 {
         env.push(("VICTORY_FRAMEGEN".into(), "1".into()));
         env.push(("VICTORY_FRAMEGEN_FRAMES".into(), frames.to_string()));
@@ -2824,7 +2899,11 @@ fn streamline_switches(
             env.push(("VICTORY_DLSS_MODE".into(), mode.to_string()));
         }
     }
-    let frame_gen = if frames > 0 { format!("{}x", frames + 1) } else { "off".into() };
+    let frame_gen = if frames > 0 {
+        format!("{}x", frames + 1)
+    } else {
+        "off".into()
+    };
     notes.push(format!(
         "using NVIDIA's Streamline: DLSS upscaling {}, frame generation {frame_gen}, NVIDIA's files in {}",
         if dlss { "on" } else { "off" },
@@ -2835,7 +2914,12 @@ fn streamline_switches(
 
 /// Sets this run's Streamline switches on `c` from the F1 menu's file `menu` (see [`streamline_switches`]),
 /// logs why any are off, and returns the names it set so the next start can clear them.
-fn set_streamline_switches(c: &mut Command, job: &Arc<Mutex<Job>>, l: &Launch, menu: &str) -> Vec<String> {
+fn set_streamline_switches(
+    c: &mut Command,
+    job: &Arc<Mutex<Job>>,
+    l: &Launch,
+    menu: &str,
+) -> Vec<String> {
     let dir = crate::streamline::default_dir();
     let (mut env, notes) = streamline_switches(
         &f1_menu_switches(menu),
@@ -2848,7 +2932,9 @@ fn set_streamline_switches(c: &mut Command, job: &Arc<Mutex<Job>>, l: &Launch, m
     // The FSR upscaler DLL (Settings › Graphics): only when DLSS upscaling is off, as in Neptune's launcher,
     // and not when the player's own Launch options name it. The runtime does not say when its DLL is
     // missing, so the launcher does.
-    let dlss_on = env.iter().any(|(name, value)| name == "VICTORY_DLSS" && value == "1")
+    let dlss_on = env
+        .iter()
+        .any(|(name, value)| name == "VICTORY_DLSS" && value == "1")
         || extra_sets(&l.extra, "VICTORY_DLSS", "1");
     let names_fsr = l
         .extra
@@ -2928,7 +3014,7 @@ fn run_until_f1_restart(
                 }
             })
         };
-        let result = run_with(job, ctx, c, |pid| spawned(pid));
+        let result = run_with(job, ctx, c, &spawned);
         // The process has exited: no pid is left for the watcher to end.
         job.lock().unwrap().pid = None;
         finished.store(true, Ordering::Relaxed);

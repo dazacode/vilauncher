@@ -256,7 +256,11 @@ fn linux_gpus(bus: &std::path::Path) -> Vec<Gpu> {
         })
         .collect();
     // The biggest card first: that is the one games use.
-    gpus.sort_by(|a, b| b.vram_gb.unwrap_or(0.0).total_cmp(&a.vram_gb.unwrap_or(0.0)));
+    gpus.sort_by(|a, b| {
+        b.vram_gb
+            .unwrap_or(0.0)
+            .total_cmp(&a.vram_gb.unwrap_or(0.0))
+    });
     gpus
 }
 
@@ -754,7 +758,12 @@ mod tests {
             }
         };
         card("0000-01-00.0", "0x030000\n", "0x10de\n", None);
-        card("0000-06-00.0", "0x030000\n", "0x1002\n", Some("17179869184\n"));
+        card(
+            "0000-06-00.0",
+            "0x030000\n",
+            "0x1002\n",
+            Some("17179869184\n"),
+        );
         card("0000-00-1f.3", "0x040300\n", "0x8086\n", None);
         let gpus = linux_gpus(&root);
         assert_eq!(gpus.len(), 2, "the audio device is not a card");
@@ -814,7 +823,11 @@ mod tests {
         let charge = commit_from_pages(14_155_776, 2_621_440, 4096).unwrap();
         assert_eq!(charge.limit_gb, 54.0);
         assert_eq!(charge.used_gb, 10.0);
-        assert_eq!(commit_from_pages(0, 10, 4096), None, "an empty limit is no answer");
+        assert_eq!(
+            commit_from_pages(0, 10, 4096),
+            None,
+            "an empty limit is no answer"
+        );
         assert_eq!(commit_from_pages(10, 10, 0), None, "a page size is needed");
     }
 }
