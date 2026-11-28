@@ -53,6 +53,18 @@ pub(crate) fn default_dir() -> PathBuf {
         .unwrap_or_default()
 }
 
+/// Why the player's own folder `dir` lacks one of `files`, or None when each is there. Nothing is
+/// checked beyond that: on a Mac the files come from the player's own download (see runner.rs).
+pub(crate) fn present(dir: &Path, files: &[&str]) -> Option<String> {
+    if !dir.is_dir() {
+        return Some(format!("no folder {}", dir.display()));
+    }
+    files
+        .iter()
+        .find(|file| !dir.join(file).is_file())
+        .map(|file| format!("{file} is not in {}", dir.display()))
+}
+
 /// Why `dir` cannot serve `files` for a run, or None when it can: each is there and matches the record
 /// written when it was checked (same size and SHA-256). It runs at each Play, so it reads and hashes the
 /// files but does not run the signature check again.

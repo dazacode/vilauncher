@@ -4,7 +4,7 @@
 // ?platform=macos (or windows) previews the other system's labels and chrome.
 
 import { isLocale, systemLocale } from "@/i18n/locales"
-import type { Action, Graphics, LogView, Project, ResponsibilityId, Snapshot, StageKind, StorageView } from "@/lib/types"
+import type { Action, Graphics, LogView, MacRunner, MacRunnerChoice, Project, ResponsibilityId, Snapshot, StageKind, StorageView } from "@/lib/types"
 
 // The controls VIctory reads from the keyboard, as src-tauri/src/controller_keys.rs lists them.
 const CONTROLLER_CONTROLS: { id: string; label: string; default_key: number }[] = [
@@ -58,6 +58,7 @@ const state = {
   controllerKeysOn: false,
   controllerBindings: {} as Record<string, number>,
   acknowledged: [] as ResponsibilityId[],
+  macRunner: { kind: "none", bottle: "", wine: "", prefix: "", metalfx: false, streamline_dir: "" } as MacRunnerChoice,
   // ?lang=zh-TW starts in that language, as if the player had chosen it.
   language: (isLocale(params.get("lang")) ? params.get("lang") : null) as string | null,
   systemLanguages: [] as string[],
@@ -152,6 +153,7 @@ function snapshot(): Snapshot {
       nvidia: { busy: false, status: null, ready: false, got_mb: 0, total_mb: 0, dir: "C:\\Users\\you\\AppData\\Local\\Neptune\\streamline" },
       fsr_dll: null,
       fsr_ok: true,
+      mac_runner: macRunnerView(),
       gpu_filter: state.gpu,
       show_nuked: state.showNuked ?? false,
       list_sort: state.listSort ?? 0,
@@ -378,6 +380,9 @@ async function act(a: Action): Promise<unknown> {
       }
       return view
     }
+    case "set_mac_runner":
+      state.macRunner = a.runner
+      break
     case "clear_cache":
     case "clear_previous":
     case "get_nvidia_files":
@@ -396,4 +401,20 @@ export const mockBackend = {
     listeners.add(listener)
     return () => listeners.delete(listener)
   },
+}
+
+// The previewed Mac has CrossOver with two bottles and the Game Porting Toolkit's wine64; off macOS
+// the section is empty, as the launcher sends it.
+function macRunnerView(): MacRunner {
+  const c = state.macRunner
+  if (platform !== "macos") return { ...c, kind: "none", problem: null, crossover: false, bottles: [], found_wine: null, streamline_ok: false }
+  const problem =
+    c.kind === "crossover" && !c.bottle
+      ? "Choose a CrossOver bottle in Settings."
+      : c.kind === "wine" && !c.wine
+        ? "Choose the Wine program in Settings."
+        : c.kind === "wine" && !c.prefix
+          ? "Choose a Wine prefix folder in Settings."
+          : null
+  return { ...c, problem, crossover: true, bottles: ["Games", "Steam"], found_wine: "/usr/local/opt/game-porting-toolkit/bin/wine64", streamline_ok: !!c.streamline_dir }
 }

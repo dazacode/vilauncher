@@ -218,6 +218,8 @@ struct SettingsView {
     /// The FSR upscaler DLL the player chose, and whether that file is still there.
     fsr_dll: Option<String>,
     fsr_ok: bool,
+    /// Windows builds on a Mac (runner.rs); empty elsewhere.
+    mac_runner: MacRunnerView,
     gpu_filter: usize,
     show_nuked: bool,
     list_sort: usize,
@@ -232,6 +234,21 @@ struct SettingsView {
     acknowledged: Vec<String>,
     /// The player's language choice; none: the system's.
     language: Option<String>,
+}
+
+#[derive(Serialize, Default)]
+struct MacRunnerView {
+    #[serde(flatten)]
+    choice: crate::runner::Choice,
+    /// Why the chosen runner cannot start anything (translated), or none.
+    problem: Option<String>,
+    /// CrossOver is installed, and its bottles.
+    crossover: bool,
+    bottles: Vec<String>,
+    /// A Wine program found in the usual places, to offer first.
+    found_wine: Option<String>,
+    /// The chosen Streamline folder has the files DLSS needs.
+    streamline_ok: bool,
 }
 
 #[derive(Serialize)]
@@ -392,6 +409,7 @@ impl App {
                 nvidia: self.nvidia_view(),
                 fsr_dll: self.saved.fsr_dll.clone(),
                 fsr_ok: self.saved.fsr_dll.as_ref().is_none_or(|path| std::path::Path::new(path).is_file()),
+                mac_runner: self.mac_runner_view(),
                 workspace: workspace().display().to_string(),
                 install_dir_custom: !self.saved.install_dir.is_empty(),
                 warm_before_play: self.saved.warm_before_play,
@@ -476,6 +494,23 @@ impl App {
         }
         .map(|job| job.lock().unwrap().log.join("\n"))
         .unwrap_or_default()
+    }
+
+    fn mac_runner_view(&self) -> MacRunnerView {
+        if !cfg!(target_os = "macos") {
+            return MacRunnerView::default();
+        }
+        let choice = self.saved.mac_runner.clone();
+        let streamline = std::path::Path::new(choice.streamline_dir.trim());
+        MacRunnerView {
+            problem: localize_opt(crate::runner::resolve(&choice).err().as_deref()),
+            crossover: crate::runner::crossover_wine().is_some(),
+            bottles: crate::runner::bottles(),
+            found_wine: crate::runner::found_wine().map(|wine| wine.display().to_string()),
+            streamline_ok: !choice.streamline_dir.trim().is_empty()
+                && crate::streamline::present(streamline, &crate::streamline::needed(false, true)).is_none(),
+            choice,
+        }
     }
 
     fn nvidia_view(&self) -> NvidiaView {
@@ -677,6 +712,7 @@ impl App {
     /// What background work finished since the last look.
     fn tick(&mut self) {
         self.updater.poll();
+        crate::runner::apply(&self.saved.mac_runner);
         let builds: Vec<_> = self.builds.0.values().cloned().collect();
         for job in builds {
             self.apply_job_results(&job);

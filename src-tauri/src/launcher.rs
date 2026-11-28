@@ -133,6 +133,8 @@ pub(crate) struct Saved {
     defaults_set: bool,
     /// The FSR upscaler DLL the player chose (Settings › Graphics), for the title's FidelityFX path.
     fsr_dll: Option<String>,
+    /// Windows builds on a Mac: the compatibility runner and MetalFX (runner.rs).
+    mac_runner: crate::runner::Choice,
     /// Play in borderless fullscreen (off: a normal window). Off by default.
     fullscreen: bool,
     /// Default output resolution for projects without their own graphics settings.
@@ -519,6 +521,8 @@ pub(crate) struct Job {
     stoppable: bool,
     /// The player pressed Stop.
     stopped: bool,
+    /// The program runs through a runner on a Mac (runner.rs), so Stop can end it in its bottle.
+    through_runner: bool,
     /// The last job's output, for a finding that is fixed before the next Play.
     last_log: Vec<String>,
     /// A game folder the fixer found: the window moves the setting to it.
@@ -536,6 +540,8 @@ struct Launch {
     game_dir: PathBuf,
     /// The player's FSR upscaler DLL, if one is set (see [`set_streamline_switches`]).
     fsr_dll: Option<PathBuf>,
+    /// On a Mac through a runner with MetalFX on: the player's Streamline folder, for DLSS through MetalFX.
+    metalfx: Option<PathBuf>,
     series_s: bool,
     scale: f32,
     output: OutputResolution,
@@ -633,7 +639,7 @@ mod tests {
 
         // DLSS asked, NVIDIA's files not there: off, and the note names the missing file.
         let dlss = menu("VICTORY_DLSS=1\nVICTORY_DLSS_MODE=quality\n");
-        let (env, notes) = streamline_switches(&dlss, "", &rtx40, true, true, &dir);
+        let (env, notes) = streamline_switches(&dlss, "", &rtx40, true, true, false, &dir);
         assert!(env.is_empty());
         assert!(notes.iter().any(|n| n.contains("sl.interposer.dll is not in")), "{notes:?}");
 
@@ -643,7 +649,7 @@ mod tests {
             std::fs::write(dir.join(file), b"").unwrap();
         }
         crate::streamline::record_for_tests(&dir, &files);
-        let (env, _) = streamline_switches(&dlss, "", &rtx40, true, true, &dir);
+        let (env, _) = streamline_switches(&dlss, "", &rtx40, true, true, false, &dir);
         assert!(env.contains(&("VICTORY_DLSS".to_string(), "1".to_string())));
         assert!(env.contains(&("VICTORY_DLSS_MODE".to_string(), "quality".to_string())));
         assert!(env.iter().any(|(name, _)| name == "VICTORY_STREAMLINE_DIR"));
@@ -651,28 +657,61 @@ mod tests {
 
         // Frame generation needs draw threads; without them it is off.
         let frames = menu("VICTORY_FRAMEGEN=1\nVICTORY_FRAMEGEN_X=3\n");
-        let (env, notes) = streamline_switches(&frames, "", &rtx40, true, true, &dir);
+        let (env, notes) = streamline_switches(&frames, "", &rtx40, true, true, false, &dir);
         assert!(env.is_empty());
         assert!(notes.iter().any(|n| n.contains("Extra draw threads")), "{notes:?}");
 
         // With draw threads, an RTX 40 card gets 2x (3x needs RTX 50).
-        let (env, notes) = streamline_switches(&frames, "VICTORY_THIN=1", &rtx40, true, true, &dir);
+        let (env, notes) = streamline_switches(&frames, "VICTORY_THIN=1", &rtx40, true, true, false, &dir);
         assert!(env.contains(&("VICTORY_FRAMEGEN".to_string(), "1".to_string())));
         assert!(env.contains(&("VICTORY_FRAMEGEN_X".to_string(), "2".to_string())));
         assert!(notes.iter().any(|n| n.contains("more than 2x needs an RTX 50")), "{notes:?}");
 
         // No NVIDIA card, or the player's own Launch options name the switches: nothing is set.
         let amd = [(Some("amd"), "AMD Radeon RX 7900 XT".to_string())];
-        let (env, notes) = streamline_switches(&dlss, "", &amd, true, true, &dir);
+        let (env, notes) = streamline_switches(&dlss, "", &amd, true, true, false, &dir);
         assert!(env.is_empty());
         assert!(notes.iter().any(|n| n.contains("no NVIDIA RTX card")), "{notes:?}");
-        let (env, _) = streamline_switches(&dlss, "VICTORY_DLSS=0", &rtx40, true, true, &dir);
+        let (env, _) = streamline_switches(&dlss, "VICTORY_DLSS=0", &rtx40, true, true, false, &dir);
         assert!(env.is_empty());
 
         // The menu's DLSS off and frame generation off: nothing to do, no note.
         let off = menu("VICTORY_DLSS=0\nVICTORY_FRAMEGEN=0\n");
-        let (env, notes) = streamline_switches(&off, "", &rtx40, true, true, &dir);
+        let (env, notes) = streamline_switches(&off, "", &rtx40, true, true, false, &dir);
         assert!(env.is_empty() && notes.is_empty());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn dlss_runs_through_metalfx_on_a_mac_with_the_players_own_files() {
+        use super::streamline_switches;
+        let apple = [(Some("apple"), "Apple M5 (Unified Memory)".to_string())];
+        let menu = |text: &str| super::f1_menu_switches(text);
+        let dir = std::env::temp_dir().join(format!("vl-metalfx-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let dlss = menu("VICTORY_DLSS=1\nVICTORY_DLSS_MODE=balanced\nVICTORY_FRAMEGEN=1\n");
+
+        // Without MetalFX, a Mac gets nothing (NVIDIA's files are checked on Windows only).
+        let (env, notes) = streamline_switches(&dlss, "", &apple, false, true, false, &dir);
+        assert!(env.is_empty());
+        assert!(notes.iter().any(|n| n.contains("checked on Windows only")), "{notes:?}");
+
+        // With MetalFX but an empty folder: off, and the note names the missing file.
+        let (env, notes) = streamline_switches(&dlss, "", &apple, false, true, true, &dir);
+        assert!(env.is_empty());
+        assert!(notes.iter().any(|n| n.contains("is not in")), "{notes:?}");
+
+        // With the files there (no record needed): DLSS on with the menu's mode; frame generation off.
+        for file in crate::streamline::needed(false, true) {
+            std::fs::write(dir.join(file), b"").unwrap();
+        }
+        let (env, notes) = streamline_switches(&dlss, "", &apple, false, true, true, &dir);
+        assert!(env.contains(&("VICTORY_DLSS".to_string(), "1".to_string())));
+        assert!(env.contains(&("VICTORY_DLSS_MODE".to_string(), "balanced".to_string())));
+        assert!(!env.iter().any(|(name, _)| name == "VICTORY_FRAMEGEN"));
+        assert!(notes.iter().any(|n| n.contains("frame generation does not run through MetalFX")), "{notes:?}");
+        assert!(notes.iter().any(|n| n.contains("through MetalFX, with the Streamline files")), "{notes:?}");
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -1985,6 +2024,10 @@ impl App {
             gpu_vendor,
             hardware: self.hardware(),
             fsr_dll: self.saved.fsr_dll.as_ref().map(PathBuf::from),
+            metalfx: {
+                crate::runner::apply(&self.saved.mac_runner);
+                crate::runner::metalfx_dir()
+            },
         };
         let (ctx, repos) = (ctx.clone(), self.repos.clone());
         std::thread::spawn(move || {
@@ -2481,6 +2524,7 @@ fn test_launch(dir: PathBuf) -> Launch {
         gpu_vendor: Some("nvidia"),
         hardware: Default::default(),
         fsr_dll: None,
+        metalfx: None,
     }
 }
 
@@ -2604,10 +2648,11 @@ fn runnable(path: PathBuf) -> Result<PathBuf, String> {
     if !bundle {
         if crate::platform::binary_kind(&path) == crate::platform::Binary::Windows
             && cfg!(target_os = "macos")
+            && crate::runner::current().is_none()
         {
-            return Err(format!(
-                "{} is a Windows program and this Mac cannot run it directly. Build the project from source on macOS, or run it with a compatibility runner such as CrossOver or Whisky.",
-                path.display()
+            let program = path.display();
+            return Err(msg!(
+                "{program} is a Windows program. Choose a runner (CrossOver or Wine) in Settings under Windows builds on this Mac, or build the project from source on macOS."
             ));
         }
         crate::platform::make_executable(&path);
@@ -2691,7 +2736,10 @@ fn victory_env(c: &mut Command, p: &Project, l: &Launch) {
 /// launcher reads it the same way (`%LOCALAPPDATA%\ProjectNeptune\menu.txt`).
 fn f1_menu_file() -> Option<PathBuf> {
     std::env::var_os("LOCALAPPDATA")
-        .map(|dir| PathBuf::from(dir).join("ProjectNeptune").join("menu.txt"))
+        .map(PathBuf::from)
+        // On a Mac the game runs in a runner's bottle or prefix, and keeps the file there.
+        .or_else(|| crate::runner::current().and_then(|runner| runner.local_app_data()))
+        .map(|dir| dir.join("ProjectNeptune").join("menu.txt"))
 }
 
 fn f1_menu_text() -> Option<String> {
@@ -2750,6 +2798,7 @@ fn streamline_switches(
     gpus: &[(Option<&str>, String)],
     windows: bool,
     series_s: bool,
+    metalfx: bool,
     dir: &Path,
 ) -> (Vec<(String, String)>, Vec<String>) {
     let mut notes = Vec::new();
@@ -2779,7 +2828,16 @@ fn streamline_switches(
         .max()
         .unwrap_or(0);
     let mut why: Option<String> = None;
-    if !windows {
+    if metalfx {
+        // A Mac through a runner: its D3DMetal runs DLSS upscaling on MetalFX, on any Apple GPU.
+        if frames > 0 {
+            notes.push("frame generation does not run through MetalFX: off".into());
+            frames = 0;
+        }
+        if !dlss {
+            why = Some("nothing left to turn on".into());
+        }
+    } else if !windows {
         why = Some("NVIDIA's files are checked on Windows only".into());
     } else if gen < 20 {
         why = Some("no NVIDIA RTX card found".into());
@@ -2806,7 +2864,13 @@ fn streamline_switches(
         }
     }
     if why.is_none() {
-        why = crate::streamline::missing(dir, &crate::streamline::needed(frames > 0, dlss));
+        let files = crate::streamline::needed(frames > 0, dlss);
+        // The player's own folder on a Mac has no Windows signature check behind it: the files must be there.
+        why = if metalfx {
+            crate::streamline::present(dir, &files)
+        } else {
+            crate::streamline::missing(dir, &files)
+        };
     }
     if let Some(why) = why {
         notes.push(format!("DLSS and frame generation off: {why}"));
@@ -2824,6 +2888,13 @@ fn streamline_switches(
             env.push(("VICTORY_DLSS_MODE".into(), mode.to_string()));
         }
     }
+    if metalfx {
+        notes.push(format!(
+            "DLSS upscaling through MetalFX, with the Streamline files in {}; the runner's DLSS setting must be on (in CrossOver: the bottle's DLSS)",
+            dir.display()
+        ));
+        return (env, notes);
+    }
     let frame_gen = if frames > 0 { format!("{}x", frames + 1) } else { "off".into() };
     notes.push(format!(
         "using NVIDIA's Streamline: DLSS upscaling {}, frame generation {frame_gen}, NVIDIA's files in {}",
@@ -2836,13 +2907,14 @@ fn streamline_switches(
 /// Sets this run's Streamline switches on `c` from the F1 menu's file `menu` (see [`streamline_switches`]),
 /// logs why any are off, and returns the names it set so the next start can clear them.
 fn set_streamline_switches(c: &mut Command, job: &Arc<Mutex<Job>>, l: &Launch, menu: &str) -> Vec<String> {
-    let dir = crate::streamline::default_dir();
+    let dir = l.metalfx.clone().unwrap_or_else(crate::streamline::default_dir);
     let (mut env, notes) = streamline_switches(
         &f1_menu_switches(menu),
         &l.extra,
         &l.hardware.gpus,
         l.hardware.windows,
         l.series_s,
+        l.metalfx.is_some(),
         &dir,
     );
     // The FSR upscaler DLL (Settings › Graphics): only when DLSS upscaling is off, as in Neptune's launcher,
@@ -2954,6 +3026,7 @@ fn run_until_f1_restart(
 fn victory_help(exe: &Path, subcommand: &str) -> Option<String> {
     let mut command = Command::new(exe);
     command.args([subcommand, "--help"]);
+    crate::runner::adapt(&mut command);
     hide_window(&mut command);
     let output = command.output().ok()?;
     output
@@ -4117,6 +4190,11 @@ fn run_with_output(
     spawned: impl FnOnce(u32),
     filter: impl Fn(String) -> Option<String> + Send + Sync + 'static,
 ) -> Result<(), String> {
+    if let Some(runner) = crate::runner::adapt(c) {
+        let mut j = job.lock().unwrap();
+        j.through_runner = true;
+        j.log.push(format!("Starting the Windows program through {}.", runner.describe()));
+    }
     c.stdout(Stdio::piped()).stderr(Stdio::piped());
     hide_window(c);
     let mut child = c

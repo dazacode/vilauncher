@@ -26,6 +26,7 @@ mod platform;
 mod play_stats;
 mod previous;
 mod report;
+mod runner;
 mod rust_project;
 mod save_zip;
 mod saves;
